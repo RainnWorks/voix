@@ -1,0 +1,45 @@
+# macOS
+.DS_Store
+
+# Editors / IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python (HA custom integration, scripts)
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / pnpm (Mac app frontend)
+node_modules/
+dist/
+.turbo/
+.next/
+.cache/
+
+# Rust (Tauri backend)
+target/
+**/*.rs.bk
+Cargo.lock
+
+# Tauri build outputs
+src-tauri/target/
+src-tauri/gen/
+
+# Secrets (must never be committed)
+.env
+.env.*
+!.env.example
+secrets.yaml
+*.local
+
+# OS / log clutter
+*.log
+.coverage

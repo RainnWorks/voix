@@ -1,0 +1,48 @@
+# voix — Voice PE thin override
+#
+# Pulls the official Voice PE configuration in as an ESPHome remote package and
+# adds project-specific deltas:
+#   - on_stt_end → write transcript to input_text.dictation_buffer (Mode C)
+#   - (Phase 3) button handler that triggers our custom integration (Mode B)
+#
+# Upstream requires ESPHome min_version: 2026.5.0. Bump the `ref:` to track new
+# releases. See ../docs/setup-voice-pe.md for installation.
+
+substitutions:
+  name: voix-satellite
+  friendly_name: voix satellite
+  dictation_helper: input_text.dictation_buffer
+
+packages:
+  voice_pe:
+    url: https://github.com/esphome/home-assistant-voice-pe
+    files:
+      - home-assistant-voice.yaml
+    # Pin to a known-good commit/tag once Phase 1 verification passes.
+    # Until then, ref tracks main and `refresh:` pulls daily.
+    ref: main
+    refresh: 1d
+
+# ─── Mode C: dictation → input_text helper ──────────────────────────────────
+#
+# Upstream defines `voice_assistant:` at top level with `id: va`. It currently
+# sets on_client_connected / on_client_disconnected / on_error, but NOT
+# on_stt_end. Package merging is non-destructive at the key level, so adding a
+# previously-undefined key here is additive — no !extend needed.
+#
+# If a future upstream release adds its own on_stt_end, this stanza will
+# REPLACE it (list-valued keys aren't merged across packages). Re-check after
+# every upstream bump.
+
+voice_assistant:
+  on_stt_end:
+    - homeassistant.service:
+        service: input_text.set_value
+        data:
+          entity_id: ${dictation_helper}
+          value: !lambda 'return x;'
+
+# ─── Mode B: Realtime button — added in Phase 3 ──────────────────────────────
+# The hardware button currently has an upstream binding. Phase 3 will override
+# it (or add a long-press handler) to publish an event that the custom HA
+# integration listens for. Deliberately not implemented yet.

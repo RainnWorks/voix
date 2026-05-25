@@ -1,0 +1,14 @@
+# Helpers used by voix.
+#
+# If you prefer the UI: Settings → Devices & services → Helpers → Create helper.
+# This file is for the YAML-config camp.
+#
+# Include this from your configuration.yaml:
+#   input_text: !include voix/helpers.yaml
+# (after copying to your HA config directory).
+
+dictation_buffer:
+  name: Dictation buffer
+  initial: ""
+  min: 0
+  max: 255

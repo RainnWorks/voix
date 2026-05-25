@@ -1,8 +1,15 @@
 #pragma once
 
+#include <atomic>
+#include <cstdint>
+#include <string>
+
 #include "esphome/core/automation.h"
 #include "esphome/core/component.h"
 #include "esphome/core/helpers.h"
+
+// Forward-declared so we don't drag esp_websocket_client.h into every includer.
+typedef struct esp_websocket_client *esp_websocket_client_handle_t;
 
 namespace esphome {
 
@@ -15,12 +22,12 @@ class Speaker;
 
 namespace voix_realtime_client {
 
-// Top-level state of the Realtime session.
+// Top-level state of the Realtime session. Set from the main loop only —
+// the WS event handler thread defers state transitions through flags.
 enum class State : uint8_t {
   IDLE = 0,        // No session. Not connected to server.
-  CONNECTING,      // WS handshake in progress.
-  RUNNING,         // WS open. Streaming mic to server.
-  SPEAKING,        // Server is sending audio for us to play.
+  CONNECTING,      // WS client started; handshake in progress.
+  RUNNING,         // WS open. (Mic streaming + speaker playback come later.)
   STOPPING,        // Tearing down on demand.
 };
 
@@ -43,8 +50,8 @@ class VoixRealtimeClient : public Component {
   void interrupt();
 
   // Conditions
-  bool is_running() const { return this->state_ == State::RUNNING || this->state_ == State::SPEAKING; }
-  bool is_speaking() const { return this->state_ == State::SPEAKING; }
+  bool is_running() const { return this->state_ == State::RUNNING; }
+  bool is_speaking() const { return this->speaking_.load(); }
 
   // Triggers (returned to the YAML automation system in __init__.py)
   Trigger<> *get_connected_trigger() { return &this->connected_trigger_; }
@@ -53,14 +60,34 @@ class VoixRealtimeClient : public Component {
   Trigger<> *get_audio_out_end_trigger() { return &this->audio_out_end_trigger_; }
   Trigger<> *get_error_trigger() { return &this->error_trigger_; }
 
+  // Internal — invoked by the static WS event handler. Don't touch ESPHome
+  // state from these; just queue flags / buffers that `loop()` will drain.
+  void on_ws_connected_from_isr();
+  void on_ws_disconnected_from_isr();
+  void on_ws_error_from_isr();
+  void on_ws_text_from_isr(const char *data, size_t len);
+  void on_ws_binary_from_isr(const uint8_t *data, size_t len);
+
  protected:
   void set_state_(State new_state);
+  void teardown_();
+  void send_text_(const std::string &payload);
 
   std::string server_url_;
   microphone::Microphone *microphone_{nullptr};
   speaker::Speaker *speaker_{nullptr};
 
+  esp_websocket_client_handle_t ws_{nullptr};
   State state_{State::IDLE};
+  std::atomic<bool> speaking_{false};
+
+  // Deferred-event flags. Written from WS event handler thread,
+  // drained on the main loop.
+  std::atomic<bool> pending_connected_{false};
+  std::atomic<bool> pending_disconnected_{false};
+  std::atomic<bool> pending_error_{false};
+  std::atomic<bool> pending_audio_start_{false};
+  std::atomic<bool> pending_audio_end_{false};
 
   Trigger<> connected_trigger_{};
   Trigger<> disconnected_trigger_{};

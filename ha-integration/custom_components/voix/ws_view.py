@@ -233,9 +233,13 @@ class _Bridge:
     # ─── OpenAI → Device ─────────────────────────────────────────────────────
 
     async def _openai_to_device(self) -> None:
-        """Read Realtime events, forward audio + control to device."""
-        import audioop
+        """Read Realtime events, forward audio + control to device.
 
+        We forward 24 kHz PCM16 to the device unchanged — the Voice PE's
+        `announcement_resampling_speaker` already takes 24 kHz input and
+        resamples to its 48 kHz I2S output. Doing the conversion on the
+        ESP32 would just duplicate work.
+        """
         speaking = False
         async for raw in self._openai:
             try:
@@ -251,16 +255,8 @@ class _Bridge:
                     speaking = True
                     await self._send_device({"type": "audio_start"})
                 pcm24k = base64.b64decode(b64)
-                pcm16k, self._downsample_state = audioop.ratecv(
-                    pcm24k,
-                    AUDIO_FORMAT_BYTES_PER_SAMPLE,
-                    1,
-                    REALTIME_SAMPLE_RATE,
-                    SATELLITE_SAMPLE_RATE,
-                    self._downsample_state,
-                )
-                if pcm16k:
-                    await self._device.send_bytes(pcm16k)
+                if pcm24k:
+                    await self._device.send_bytes(pcm24k)
             elif t == "response.done":
                 if speaking:
                     speaking = False

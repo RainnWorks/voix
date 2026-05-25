@@ -32,6 +32,22 @@ esphome:
 api:
   encryption:
     key: !secret voice_pe_095e4e_api_key
+  # Manual start/stop so we can test the WS bridge from HA without wiring
+  # the wake-word path yet. Call from HA: Settings → Devices & services →
+  # ESPHome → 095e4e → Services → voix_realtime_start.
+  actions:
+    - action: voix_realtime_start
+      then:
+        - voix_realtime_client.start:
+            id: voix_rt
+    - action: voix_realtime_stop
+      then:
+        - voix_realtime_client.stop:
+            id: voix_rt
+    - action: voix_realtime_interrupt
+      then:
+        - voix_realtime_client.interrupt:
+            id: voix_rt
 
 wifi:
   networks:
@@ -56,10 +72,22 @@ voix_realtime_client:
   speaker: announcement_resampling_speaker
   on_connected:
     - logger.log: "voix_rt: connected"
+    # Magenta tint on the outer ring while Realtime is active.
+    - light.turn_on:
+        id: led_ring
+        red: 80%
+        green: 20%
+        blue: 90%
+        brightness: 60%
   on_disconnected:
     - logger.log: "voix_rt: disconnected"
+    - light.turn_off:
+        id: led_ring
   on_error:
-    - logger.log: "voix_rt: error"
+    - logger.log:
+        format: "voix_rt: error"
+        level: WARN
+
 
 # ─── voix globals ────────────────────────────────────────────────────────────
 # Mode-specific behaviour (helper writes, TTS suppression, etc.) is owned by

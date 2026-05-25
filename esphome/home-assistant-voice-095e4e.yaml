@@ -38,6 +38,29 @@ wifi:
     - ssid: !secret wifi_ssid
       password: !secret wifi_password
 
+# ─── voix custom firmware component (Mode B) ─────────────────────────────────
+# Layers on top of the stock Voice PE — does NOT replace voice_assistant.
+# Mode A and Mode C still run through upstream's pipeline. This component
+# only fires when we hand it the audio path (currently nothing routes here;
+# the next iteration will wire mWW's "Hey Mycroft" branch to start() it).
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [voix_realtime_client]
+
+voix_realtime_client:
+  id: voix_rt
+  server_url: ws://192.168.96.15:8123/api/voix/realtime
+  microphone: i2s_mics
+  speaker: announcement_resampling_speaker
+  on_connected:
+    - logger.log: "voix_rt: connected"
+  on_disconnected:
+    - logger.log: "voix_rt: disconnected"
+  on_error:
+    - logger.log: "voix_rt: error"
+
 # ─── voix globals ────────────────────────────────────────────────────────────
 # Mode-specific behaviour (helper writes, TTS suppression, etc.) is owned by
 # the `voix` custom HA integration. The firmware just tracks WHICH mode the

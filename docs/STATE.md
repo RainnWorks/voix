@@ -147,7 +147,43 @@ WebSocket endpoint:
 5. **Cost safeguards in place** in `ws_view.py`: lazy OpenAI open,
    30 s idle timeout, 120 s hard max, byte counters logged on close.
 
-## What's NOT working
+## Session 3 update (end of context):
+
+**Bridge confirmed alive end-to-end.** OpenAI received our session,
+responded with a default greeting ("Hi there! How can I help you today?"),
+and the audio reached the satellite speaker (crackled — output format
+is also off). Two specific bugs identified, both audio-format related:
+
+1. **Input bytes not being recognized as audio.** Error from OpenAI when
+   we force-committed: `input_audio_buffer_commit_empty - "buffer too
+   small. Expected at least 100ms of audio, but buffer only has
+   0.00ms of audio."` — despite 808 KB sent over 31 s. **OpenAI is
+   silently treating every `input_audio_buffer.append` as having 0 ms
+   of valid audio.** Possible causes:
+   - Audio format declaration disagrees with actual byte format
+     (`audio.input.format` shape might be wrong — try
+     `"format": "pcm16"` string instead of `{type, rate}` dict)
+   - `audioop.ratecv` 16→24 kHz upsample producing degenerate samples
+     (verify by dumping a chunk and inspecting)
+   - Wrong byte order, bit depth, or sample width
+   - Device is sending 32-bit samples not 16-bit
+     (byte math doesn't quite match either: 25.7 KB/s actual vs
+     32 KB/s expected for mono PCM16 16 kHz — the de-interleave may
+     be cutting wrong stride)
+
+2. **Output playback crackles.** Server sends raw 24 kHz PCM16 mono;
+   device routes to `announcement_resampling_speaker`. Crackling
+   suggests the speaker either expects a different bit depth or a
+   different rate. Verify the resampler's declared input rate; may
+   need an intermediate explicit-rate speaker.
+
+3. **`session.update` may still not be applying.** Even with `type:
+   realtime` included, `session.created` shows the DEFAULT
+   instructions, not ours. OpenAI may emit `session.updated` somewhere
+   we're missing. Need to scan all logged event types and verify.
+   (But this is secondary — we got an audio response anyway.)
+
+## Session 2 status:
 
 **OpenAI doesn't respond.** After 70 s of mic audio (both stereo and
 mono variants), server logged 0 bytes out. Suspects in priority order:

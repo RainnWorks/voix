@@ -137,6 +137,7 @@ class _Bridge:
         self._last_audio_in = 0.0
         self._bytes_in = 0
         self._bytes_out = 0
+        self._force_response_task: asyncio.Task | None = None
 
     async def run(self) -> None:
         # IMPORTANT: do NOT open OpenAI here. Wait until the device sends its
@@ -172,6 +173,29 @@ class _Bridge:
                 "voix WS: session closed after %.1fs (in=%dB, out=%dB)",
                 duration, self._bytes_in, self._bytes_out,
             )
+
+    async def _force_response_after(self, delay_s: float) -> None:
+        """Diagnostic: force commit + response.create after delay.
+
+        Bypasses server_vad. Lets us tell whether the audio path works
+        end-to-end vs whether server_vad just isn't firing on our audio.
+        Remove once Mode B is working reliably.
+        """
+        try:
+            await asyncio.sleep(delay_s)
+            if self._openai is None:
+                return
+            _LOGGER.warning(
+                "voix WS: forcing commit+response.create after %.1fs", delay_s
+            )
+            await self._openai.send(
+                json.dumps({"type": "input_audio_buffer.commit"})
+            )
+            await self._openai.send(json.dumps({"type": "response.create"}))
+        except asyncio.CancelledError:
+            pass
+        except Exception:  # noqa: BLE001
+            _LOGGER.exception("voix WS: force_response failed")
 
     async def _watchdog(self) -> None:
         """Force-close on hard max or idle timeout."""
@@ -213,34 +237,42 @@ class _Bridge:
         except Exception as e:  # noqa: BLE001
             _LOGGER.warning("voix WS: OpenAI Realtime connect failed: %s", e)
             raise
-        await self._openai.send(
-            json.dumps(
-                {
-                    "type": "session.update",
-                    "session": {
-                        "type": "realtime",
-                        "model": self._model,
-                        "instructions": self._instructions,
-                        "audio": {
-                            "input": {
-                                "format": {
-                                    "type": "audio/pcm",
-                                    "rate": REALTIME_SAMPLE_RATE,
-                                },
-                            },
-                            "output": {
-                                "format": {
-                                    "type": "audio/pcm",
-                                    "rate": REALTIME_SAMPLE_RATE,
-                                },
-                                "voice": self._voice,
-                            },
+        # session.type is REQUIRED in session.update — OpenAI returns
+        # missing_required_parameter without it. Model is set by URL query
+        # so we leave it out of the session body.
+        session_update = {
+            "type": "session.update",
+            "session": {
+                "type": "realtime",
+                "instructions": self._instructions,
+                "audio": {
+                    "input": {
+                        "format": {
+                            "type": "audio/pcm",
+                            "rate": REALTIME_SAMPLE_RATE,
+                        },
+                        "turn_detection": {
+                            "type": "server_vad",
+                            "threshold": 0.5,
+                            "prefix_padding_ms": 300,
+                            "silence_duration_ms": 500,
                         },
                     },
-                }
-            )
+                    "output": {
+                        "format": {
+                            "type": "audio/pcm",
+                            "rate": REALTIME_SAMPLE_RATE,
+                        },
+                        "voice": self._voice,
+                    },
+                },
+            },
+        }
+        await self._openai.send(json.dumps(session_update))
+        _LOGGER.warning(
+            "voix WS: OpenAI Realtime session opened (model=%s) — session.update sent",
+            self._model,
         )
-        _LOGGER.info("voix WS: OpenAI Realtime session opened")
 
     # ─── Device → OpenAI ─────────────────────────────────────────────────────
 
@@ -252,13 +284,15 @@ class _Bridge:
         """
         import audioop
 
+        first_append_logged = False
         async for msg in self._device:
             if msg.type == WSMsgType.BINARY:
                 self._bytes_in += len(msg.data)
                 self._last_audio_in = time.monotonic()
                 if self._openai is None:
                     _LOGGER.warning(
-                        "voix WS: first audio chunk; opening OpenAI Realtime"
+                        "voix WS: first audio chunk (%d bytes); opening OpenAI Realtime",
+                        len(msg.data),
                     )
                     await self._connect_openai()
                 pcm16k = msg.data
@@ -270,6 +304,19 @@ class _Bridge:
                     REALTIME_SAMPLE_RATE,
                     self._upsample_state,
                 )
+                if not first_append_logged:
+                    _LOGGER.warning(
+                        "voix WS: forwarding first input_audio_buffer.append "
+                        "(in=%d bytes 16k mono → out=%d bytes 24k base64)",
+                        len(pcm16k), len(pcm24k),
+                    )
+                    first_append_logged = True
+                    # Diagnostic: force a response 5 s in if server_vad
+                    # never fires. Lets us prove OpenAI is alive even if
+                    # our audio shape is wrong.
+                    self._force_response_task = asyncio.create_task(
+                        self._force_response_after(5.0)
+                    )
                 await self._openai.send(
                     json.dumps(
                         {
@@ -284,13 +331,14 @@ class _Bridge:
                 except json.JSONDecodeError:
                     continue
                 t = data.get("type")
+                _LOGGER.warning("voix WS: device→server %s %s", t, json.dumps(data)[:200])
                 if t == "interrupt":
-                    await self._openai.send(json.dumps({"type": "response.cancel"}))
+                    if self._openai is not None:
+                        await self._openai.send(
+                            json.dumps({"type": "response.cancel"})
+                        )
                 elif t == "stop":
                     return
-                # hello / others — log and continue
-                else:
-                    _LOGGER.debug("voix WS device: %s", data)
             elif msg.type in (WSMsgType.CLOSE, WSMsgType.CLOSED, WSMsgType.ERROR):
                 return
 
@@ -303,6 +351,10 @@ class _Bridge:
         `announcement_resampling_speaker` already takes 24 kHz input and
         resamples to its 48 kHz I2S output. Doing the conversion on the
         ESP32 would just duplicate work.
+
+        Logs every event type at WARNING so the HA system_log surfaces
+        them; debug-only audio.delta frames are sniffed at INFO so we
+        don't spam.
         """
         # Idle wait: device might not have triggered OpenAI yet. Spin briefly.
         for _ in range(50):
@@ -312,18 +364,30 @@ class _Bridge:
         if self._openai is None:
             return
         speaking = False
+        event_counts: dict[str, int] = {}
         async for raw in self._openai:
             try:
                 msg = json.loads(raw)
             except json.JSONDecodeError:
+                _LOGGER.warning("voix WS: OpenAI non-JSON frame: %r", raw[:200])
                 continue
             t = msg.get("type", "")
+            event_counts[t] = event_counts.get(t, 0) + 1
+
+            # Surface anything we haven't seen before, plus error/session
+            # events. audio.delta is high-frequency so we count instead.
+            if not t.endswith("audio.delta") and not t.endswith("audio_transcript.delta"):
+                # Trim large fields before logging.
+                preview = {k: v for k, v in msg.items() if k not in ("audio", "delta")}
+                _LOGGER.warning("voix WS: openai %s %s", t, json.dumps(preview)[:400])
+
             if t.endswith("audio.delta"):
                 b64 = msg.get("delta") or msg.get("audio") or ""
                 if not b64:
                     continue
                 if not speaking:
                     speaking = True
+                    _LOGGER.warning("voix WS: first audio.delta — playback starting")
                     await self._send_device({"type": "audio_start"})
                 pcm24k = base64.b64decode(b64)
                 if pcm24k:
@@ -339,6 +403,9 @@ class _Bridge:
                 await self._send_device(
                     {"type": "error", "message": err.get("message", str(err))}
                 )
+
+        # Pump exited (WS closed). Summary log so we can see what events arrived.
+        _LOGGER.warning("voix WS: openai pump exited. counts=%s", event_counts)
 
     async def _send_device(self, payload: dict) -> None:
         if self._device.closed:

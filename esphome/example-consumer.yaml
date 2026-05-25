@@ -1,0 +1,39 @@
+# Example consumer YAML.
+#
+# This is what a downstream user drops into /config/esphome/<device>.yaml
+# to bring the voix package onto a Home Assistant Voice PE satellite.
+#
+# Customise the four marked spots and save as `/config/esphome/<your-device>.yaml`.
+# Then compile + install via the ESPHome dashboard (or `esphome run`).
+
+# 1. Optional substitution overrides. The defaults match the project's setup
+#    docs; uncomment any you want to change.
+# substitutions:
+#   voix_dictation_wake_word: "Hey Jarvis"        # "Hey Jarvis" | "Okay Nabu" | "Hey Mycroft"
+#   voix_realtime_wake_word:  "Hey Mycroft"
+#   voix_dictation_helper:    input_text.voix_dictation_buffer
+#   voix_realtime_event:      voix.realtime_requested
+#   voix_voice_pe_ref:        "26.4.0"
+
+# 2. Pull in the voix package.
+packages:
+  voix:
+    url: https://github.com/USER/voix
+    ref: main
+    files:
+      - esphome/voice-pe.yaml
+    refresh: 1d
+
+# 3. Your device's API encryption key. Get it from:
+#    HA → Settings → Devices & services → ESPHome → <device> → ⋮ → Show encryption key
+#    Put the actual value in /config/esphome/secrets.yaml under your chosen name.
+api:
+  encryption:
+    key: !secret voice_pe_REPLACE_ME_api_key
+
+# 4. WiFi credentials. The factory firmware stores these in NVS via Improv,
+#    but dashboard-compiled builds need them in the YAML.
+wifi:
+  networks:
+    - ssid: !secret wifi_ssid
+      password: !secret wifi_password

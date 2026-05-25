@@ -1,48 +1,135 @@
-# voix — Voice PE thin override
+# voix — reusable ESPHome package for Home Assistant Voice PE
 #
-# Pulls the official Voice PE configuration in as an ESPHome remote package and
-# adds project-specific deltas:
-#   - on_stt_end → write transcript to input_text.dictation_buffer (Mode C)
-#   - (Phase 3) button handler that triggers our custom integration (Mode B)
+# This file is a SHARED package. Consumer configs include it via `packages:`,
+# typically referencing this repo over git. Per-device concerns (encryption
+# key, WiFi credentials, exact satellite identity) stay in the consumer YAML
+# so this file can be redistributed without touching it.
 #
-# Upstream requires ESPHome min_version: 2026.5.0. Bump the `ref:` to track new
-# releases. See ../docs/setup-voice-pe.md for installation.
+# ────────────────────────────────────────────────────────────────────────────
+# What this package adds on top of esphome/home-assistant-voice-pe:
+#   - on_wake_word_detected:
+#       • capture the wake-word phrase into a global (so on_stt_end can
+#         discriminate which mode the user invoked)
+#       • when the configured realtime wake word fires: emit a HA event
+#         and stop the standard pipeline so Assist doesn't run for it
+#   - on_stt_end:
+#       • when the dictation wake word triggered the run, write the
+#         transcript to a configurable input_text helper
+#
+# ────────────────────────────────────────────────────────────────────────────
+# Minimum consumer config (e.g. /config/esphome/<your-device>.yaml):
+#
+#     # Optional — override defaults:
+#     # substitutions:
+#     #   voix_dictation_wake_word: "Hey Jarvis"
+#     #   voix_realtime_wake_word: "Hey Mycroft"
+#     #   voix_dictation_helper: input_text.voix_dictation_buffer
+#     #   voix_realtime_event: voix.realtime_requested
+#     #   voix_voice_pe_ref: 26.4.0
+#
+#     packages:
+#       voix: github://USER/voix/esphome/voice-pe.yaml@main
+#
+#     # YOUR encryption key — get it from HA's ESPHome integration:
+#     api:
+#       encryption:
+#         key: !secret voice_pe_<mac>_api_key
+#
+#     # YOUR WiFi credentials:
+#     wifi:
+#       networks:
+#         - ssid: !secret wifi_ssid
+#           password: !secret wifi_password
+#
+# ────────────────────────────────────────────────────────────────────────────
 
 substitutions:
-  name: voix-satellite
-  friendly_name: voix satellite
-  dictation_helper: input_text.dictation_buffer
+  # The wake-word phrase that should write transcripts to the helper.
+  # Must match exactly one of the strings exposed by the Voice PE's wake-word
+  # `select` entity: "Hey Jarvis", "Okay Nabu", "Hey Mycroft".
+  voix_dictation_wake_word: "Hey Jarvis"
 
+  # The wake-word phrase that activates the Realtime bridge (Mode B).
+  # The phrase here MUST match the actual ESPHome wake-word phrase, and our
+  # custom_components/voix integration must be configured for the same phrase.
+  voix_realtime_wake_word: "Hey Mycroft"
+
+  # The HA input_text helper to write dictation transcripts to.
+  # Default is created by following docs/setup-dictation.md.
+  voix_dictation_helper: input_text.voix_dictation_buffer
+
+  # The HA event fired when the realtime wake word is detected. The
+  # custom_components/voix integration subscribes to this.
+  voix_realtime_event: voix.realtime_requested
+
+  # Pinned upstream Voice PE firmware version. Bump deliberately after
+  # checking that nothing we override has changed shape upstream.
+  voix_voice_pe_ref: "26.4.0"
+
+  # Refresh interval for the upstream package. ESPHome will refetch the
+  # upstream YAML at most this often during compile.
+  voix_voice_pe_refresh: 1d
+
+# ────────────────────────────────────────────────────────────────────────────
+# Upstream base configuration. This is the entire Voice PE firmware (mics,
+# speaker, LEDs, button, wake-word engine, microWakeWord models, etc.).
+# Everything below is our delta.
 packages:
   voice_pe:
     url: https://github.com/esphome/home-assistant-voice-pe
     files:
       - home-assistant-voice.yaml
-    # Pin to a known-good commit/tag once Phase 1 verification passes.
-    # Until then, ref tracks main and `refresh:` pulls daily.
-    ref: main
-    refresh: 1d
+    ref: ${voix_voice_pe_ref}
+    refresh: ${voix_voice_pe_refresh}
 
-# ─── Mode C: dictation → input_text helper ──────────────────────────────────
-#
-# Upstream defines `voice_assistant:` at top level with `id: va`. It currently
-# sets on_client_connected / on_client_disconnected / on_error, but NOT
-# on_stt_end. Package merging is non-destructive at the key level, so adding a
-# previously-undefined key here is additive — no !extend needed.
-#
-# If a future upstream release adds its own on_stt_end, this stanza will
-# REPLACE it (list-valued keys aren't merged across packages). Re-check after
-# every upstream bump.
+# ────────────────────────────────────────────────────────────────────────────
+# Mode discrimination: capture the wake word phrase so on_stt_end can decide
+# whether to write the dictation helper. Used by both Mode B and Mode C logic.
+globals:
+  - id: voix_last_wake_word
+    type: std::string
+    restore_value: false
+    initial_value: '""'
 
+# ────────────────────────────────────────────────────────────────────────────
+# Voice-assistant overrides.
+#
+# Upstream defines `voice_assistant:` at top level with id `va`. It sets
+# on_client_connected/disconnected, on_error, and a complex on_wake_word_detected,
+# but NOT on_stt_end. Package merging concatenates list-valued keys, so the
+# actions we add to on_wake_word_detected are APPENDED to the upstream actions
+# (mute/timer handling runs first, then our captures/dispatch). on_stt_end is
+# added fresh.
+#
+# WARNING: if a future upstream ref adds its own on_stt_end, our stanza will
+# REPLACE it (list-valued top-level keys don't merge across packages). Re-check
+# this file after every voix_voice_pe_ref bump.
 voice_assistant:
+  on_wake_word_detected:
+    # Always remember the wake word that fired (read by on_stt_end below).
+    - lambda: 'id(voix_last_wake_word) = wake_word;'
+    # Mode B: realtime wake word diverts to the OpenAI Realtime bridge.
+    # The custom_components/voix integration listens for the event we fire here.
+    # We also stop the standard pipeline so HA Assist doesn't run for this turn.
+    - if:
+        condition:
+          lambda: 'return wake_word == "${voix_realtime_wake_word}";'
+        then:
+          - homeassistant.event:
+              event: ${voix_realtime_event}
+              data:
+                wake_word: !lambda 'return wake_word;'
+          - voice_assistant.stop:
   on_stt_end:
-    - homeassistant.service:
-        service: input_text.set_value
-        data:
-          entity_id: ${dictation_helper}
-          value: !lambda 'return x;'
-
-# ─── Mode B: Realtime button — added in Phase 3 ──────────────────────────────
-# The hardware button currently has an upstream binding. Phase 3 will override
-# it (or add a long-press handler) to publish an event that the custom HA
-# integration listens for. Deliberately not implemented yet.
+    # Mode C: dictation transcript → input_text helper. The wake-word guard
+    # means only the configured dictation wake word writes the helper; other
+    # wake words pass through to their normal pipelines without side effects.
+    - if:
+        condition:
+          lambda: 'return id(voix_last_wake_word) == "${voix_dictation_wake_word}";'
+        then:
+          - homeassistant.service:
+              service: input_text.set_value
+              data:
+                entity_id: ${voix_dictation_helper}
+                value: !lambda 'return x;'

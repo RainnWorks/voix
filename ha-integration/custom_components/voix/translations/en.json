@@ -1,0 +1,21 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add a voix Realtime bridge",
+        "description": "Bridges a Home Assistant Voice PE satellite to OpenAI Realtime when the trigger wake word fires.",
+        "data": {
+          "satellite_host": "Satellite hostname or IP",
+          "satellite_port": "ESPHome API port (usually 6053)",
+          "noise_psk": "ESPHome encryption key (noise PSK)",
+          "openai_api_key": "OpenAI API key",
+          "trigger_wake_word": "Wake word phrase that starts a Realtime session",
+          "realtime_model": "OpenAI Realtime model name"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "This satellite is already configured."
+    }
+  }
+}

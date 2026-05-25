@@ -7,6 +7,7 @@ Phase 0/1 — bring the Voice PE online and verify it can talk to Home Assistant
 - Home Assistant Voice Preview Edition (Voice PE) hardware.
 - Home Assistant running on a reachable local instance (any supported install method).
 - Same Wi-Fi network for both. Voice PE doesn't currently support wired networking.
+- **HA's `internal_url` must be a directly-reachable URL from the satellite's network.** Set under **Settings → System → Network → URLs → Internal URL**. Use the HA Core address, e.g. `http://192.168.96.15:8123` — not a hostname behind a reverse proxy. The satellite uses this URL to fetch TTS audio and other resources; if it can't reach it, the voice_assistant pipeline stays in a degraded state and the wake-word engine may never start. Lives in `/config/.storage/core.config` (`data.internal_url`); not project-level config.
 
 ## Steps
 

@@ -1,0 +1,39 @@
+# Tom's Voice PE consumer YAML.
+#
+# Mirrors upstream's CI build by pulling in the SAME yaml chain the release
+# binary is built from (home-assistant-voice.8mb.yaml → factory.yaml → main),
+# not just the bare home-assistant-voice.yaml.
+#
+# Why this matters (we learned this the hard way):
+#   - factory.yaml adds `wait_until: not ble.enabled` + `delay: 2s` to the
+#     start of `on_client_connected`. Without these, micro_wake_word.start
+#     runs before BLE is shut down and audio is ready → mWW silently fails
+#     to detect anything.
+#   - 8mb.yaml sets `esp32.flash_size: 8MB` — partition table is built from
+#     this. Wrong flash_size → wrong NVS layout → device's stored state
+#     becomes unreadable.
+
+packages:
+  voice_pe:
+    url: https://github.com/esphome/home-assistant-voice-pe
+    files:
+      - home-assistant-voice.8mb.yaml
+    # 26.5.0 fixes issue #582: removed the stale esphome@ff8ce89 external_components
+    # pin that was silently breaking micro_wake_word on newer ESPHome dashboards.
+    # Requires ESPHome dashboard >= 2026.5.0.
+    ref: 26.5.0
+    refresh: 1d
+
+# Keep our specific device identity (not the upstream "ha-voice-8mb" name).
+esphome:
+  name: home-assistant-voice-095e4e
+  name_add_mac_suffix: false
+
+api:
+  encryption:
+    key: !secret voice_pe_095e4e_api_key
+
+wifi:
+  networks:
+    - ssid: !secret wifi_ssid
+      password: !secret wifi_password

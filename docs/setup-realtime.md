@@ -27,6 +27,27 @@ See [adr/0001-hybrid-orchestration.md](adr/0001-hybrid-orchestration.md) and [ad
 - Add a budget guardrail (per-day cost cap) before regular use.
 - Surface a `switch.voix_realtime_active` for observability.
 
+## LED ring animations
+
+The Voice PE's LED ring already animates on the seven standard voice_assistant phases (idle / waiting / listening / thinking / replying / not-ready / error). Realtime doesn't run through that pipeline, so during a Realtime session the ring sits idle unless we drive it.
+
+Design — firmware owns the animations, the integration nudges the phase:
+
+| Realtime event | Phase id (proposed) | LED behaviour |
+|---|---|---|
+| `session.created` | 20 | Ring fades up, dim cyan |
+| `input_audio_buffer.speech_started` | 20 | Cyan pulse — user speaking |
+| `input_audio_buffer.speech_stopped` | 21 | Cyan spinner — model thinking |
+| `response.audio.delta` (first frame) | 22 | Warm amber pulse — assistant speaking |
+| `response.done` | 23 | Brief white flash, then phase 20 (turn end, awaiting next) |
+| WS close / session end | 1 | Fade to idle |
+
+Firmware delta: extend the existing `control_leds` script with cases for phase 20–23, expose a user-defined ESPHome service (`voix_set_realtime_phase`) that writes the `voice_assistant_phase` global.
+
+Integration delta: call the service via `aioesphomeapi.execute_service` on each Realtime event listed above.
+
+Defer until the audio bridge is working end-to-end. Lump the firmware delta in with the wake-word event firing so we don't pay an extra 18-minute compile.
+
 ## Reference implementations
 
 Both for study only. Neither is a dependency.

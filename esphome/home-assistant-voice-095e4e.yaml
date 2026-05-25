@@ -38,18 +38,99 @@ wifi:
     - ssid: !secret wifi_ssid
       password: !secret wifi_password
 
-# ─── Wake-word capture global ────────────────────────────────────────────────
-# Captures the wake-word phrase at detection time. Used by the integration's
-# LED phase script for mode-discriminated animations, and for future Mode B
-# (Realtime) routing. The mode-specific behaviour (helper writes, TTS
-# suppression, etc.) is owned by the `voix` custom HA integration, not the
-# firmware — see ../ha-integration/custom_components/voix/.
+# ─── voix globals ────────────────────────────────────────────────────────────
+# Mode-specific behaviour (helper writes, TTS suppression, etc.) is owned by
+# the `voix` custom HA integration. The firmware just tracks WHICH mode the
+# user invoked so the integration and our LED hooks below can branch on it.
+#
+# voix_mode values:
+#   0 = unknown / no mode active
+#   1 = assist        (default HA voice assistant)
+#   2 = dictation     (Hey Jarvis → conversation.dictation)
+#   3 = realtime      (Hey Mycroft → custom_components/voix Realtime bridge)
 globals:
   - id: voix_last_wake_word
     type: std::string
     restore_value: false
     initial_value: '""'
+  - id: voix_mode
+    type: uint8_t
+    restore_value: false
+    initial_value: '0'
 
+# When a wake word fires, capture it + classify the mode. Our actions are
+# APPENDED to upstream's complex if-chain (which is what actually starts the
+# pipeline), so the mode global is set before any downstream events fire.
+#
+# We also fire a HA event on the Realtime wake word so the integration can
+# claim the satellite's voice_assistant subscription and bridge audio to
+# OpenAI Realtime. The standard pipeline will still kick off briefly (upstream
+# already called voice_assistant.start); the integration races to take over.
 micro_wake_word:
   on_wake_word_detected:
-    - lambda: 'id(voix_last_wake_word) = wake_word;'
+    - lambda: |-
+        id(voix_last_wake_word) = wake_word;
+        if (wake_word == "Hey Jarvis") {
+          id(voix_mode) = 2;          // dictation
+        } else if (wake_word == "Hey Mycroft") {
+          id(voix_mode) = 3;          // realtime
+        } else if (wake_word == "Okay Nabu") {
+          id(voix_mode) = 1;          // assist
+        } else {
+          id(voix_mode) = 0;
+        }
+    - if:
+        condition:
+          lambda: 'return wake_word == "Hey Mycroft";'
+        then:
+          - homeassistant.event:
+              event: voix.realtime_requested
+              data:
+                wake_word: !lambda 'return wake_word;'
+
+# ─── Mode-discriminated LED hints ────────────────────────────────────────────
+# Upstream's control_leds owns the standard pipeline visualisations. We add
+# our own colour washes on top by writing the OUTER `led_ring` (which upstream
+# leaves alone — only the inner `voice_assistant_leds` partition is driven by
+# control_leds). Each pipeline phase sets a mode-specific outer-ring colour;
+# the inner ring keeps its standard listening/thinking/replying behaviour.
+#
+# Palette:
+#   Mode 1 (Assist):    blue tint
+#   Mode 2 (Dictation): amber tint
+#   Mode 3 (Realtime):  magenta tint
+#
+# The integration will overlay its own colours on top during Realtime sessions
+# (response.audio.delta, response.done, etc.) by calling light services on
+# led_ring directly.
+voice_assistant:
+  on_listening:
+    - lambda: |-
+        float r = 0.0f, g = 0.0f, b = 0.0f;
+        switch (id(voix_mode)) {
+          case 1: r = 0.20f; g = 0.40f; b = 1.00f; break;  // assist - blue
+          case 2: r = 1.00f; g = 0.70f; b = 0.00f; break;  // dictation - amber
+          case 3: r = 1.00f; g = 0.20f; b = 0.80f; break;  // realtime - magenta
+          default: return;                                  // unknown mode - leave LED alone
+        }
+        auto call = id(led_ring).turn_on();
+        call.set_brightness(0.4f);
+        call.set_rgb(r, g, b);
+        call.perform();
+  on_end:
+    # When the pipeline ends naturally, fade the outer ring out. The
+    # conversation agent already handles the green capture-flash for
+    # Mode C; this just clears any lingering mode-colour wash.
+    - light.turn_off:
+        id: led_ring
+        transition_length: 300ms
+  on_error:
+    - light.turn_on:
+        id: led_ring
+        brightness: 60%
+        red: 100%
+        green: 0%
+        blue: 0%
+    - delay: 600ms
+    - light.turn_off:
+        id: led_ring

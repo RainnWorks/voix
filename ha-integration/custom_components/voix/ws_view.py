@@ -27,10 +27,16 @@ import base64
 import json
 import logging
 import ssl
+import time
 
 from aiohttp import WSMsgType, web
 from homeassistant.components.http import HomeAssistantView
 from homeassistant.core import HomeAssistant
+
+# Cost safeguards: OpenAI Realtime is billed per audio-minute. These caps
+# keep a forgotten session from quietly burning money.
+SESSION_HARD_MAX_S = 120.0       # absolute ceiling for one session
+IDLE_TIMEOUT_S = 30.0            # close if no device→server audio for this long
 
 from .const import (
     AUDIO_FORMAT_BYTES_PER_SAMPLE,
@@ -127,17 +133,33 @@ class _Bridge:
         self._upsample_state = None
         self._downsample_state = None
 
+        self._session_started = 0.0
+        self._last_audio_in = 0.0
+        self._bytes_in = 0
+        self._bytes_out = 0
+
     async def run(self) -> None:
-        await self._connect_openai()
+        # IMPORTANT: do NOT open OpenAI here. Wait until the device sends its
+        # first audio chunk. If a device connects but never speaks, we never
+        # touch OpenAI = zero cost. _device_to_openai opens lazily.
         await self._send_device({"type": "ready"})
+        self._session_started = time.monotonic()
+        self._last_audio_in = self._session_started
+
         device_task = asyncio.create_task(self._device_to_openai(), name="voix-d2o")
         openai_task = asyncio.create_task(self._openai_to_device(), name="voix-o2d")
+        watchdog_task = asyncio.create_task(self._watchdog(), name="voix-watchdog")
         try:
             done, pending = await asyncio.wait(
-                {device_task, openai_task}, return_when=asyncio.FIRST_COMPLETED
+                {device_task, openai_task, watchdog_task},
+                return_when=asyncio.FIRST_COMPLETED,
             )
+            for t in done:
+                # Surface exceptions for visibility (timeout, openai error, …).
+                if t.exception():
+                    _LOGGER.warning("voix WS: task ended with %s", t.exception())
         finally:
-            for t in (device_task, openai_task):
+            for t in (device_task, openai_task, watchdog_task):
                 if not t.done():
                     t.cancel()
             if self._openai is not None:
@@ -145,6 +167,28 @@ class _Bridge:
                     await self._openai.close()
                 except Exception:  # noqa: BLE001
                     pass
+            duration = time.monotonic() - self._session_started
+            _LOGGER.warning(
+                "voix WS: session closed after %.1fs (in=%dB, out=%dB)",
+                duration, self._bytes_in, self._bytes_out,
+            )
+
+    async def _watchdog(self) -> None:
+        """Force-close on hard max or idle timeout."""
+        while True:
+            await asyncio.sleep(2.0)
+            now = time.monotonic()
+            if now - self._session_started > SESSION_HARD_MAX_S:
+                _LOGGER.warning(
+                    "voix WS: hitting hard max %.0fs; closing", SESSION_HARD_MAX_S
+                )
+                return
+            if now - self._last_audio_in > IDLE_TIMEOUT_S:
+                _LOGGER.warning(
+                    "voix WS: idle %.1fs > %.0fs; closing",
+                    now - self._last_audio_in, IDLE_TIMEOUT_S,
+                )
+                return
 
     async def _connect_openai(self) -> None:
         import websockets
@@ -153,13 +197,22 @@ class _Bridge:
         url = f"{REALTIME_WS_URL}?model={self._model}"
         headers = {"Authorization": f"Bearer {self._openai_key}"}
         try:
-            self._openai = await websockets.connect(
-                url, additional_headers=headers, ssl=ssl_ctx
-            )
-        except TypeError:
-            self._openai = await websockets.connect(
-                url, extra_headers=headers, ssl=ssl_ctx
-            )
+            try:
+                self._openai = await asyncio.wait_for(
+                    websockets.connect(url, additional_headers=headers, ssl=ssl_ctx),
+                    timeout=10.0,
+                )
+            except TypeError:
+                self._openai = await asyncio.wait_for(
+                    websockets.connect(url, extra_headers=headers, ssl=ssl_ctx),
+                    timeout=10.0,
+                )
+        except asyncio.TimeoutError:
+            _LOGGER.warning("voix WS: OpenAI Realtime connect timed out after 10s")
+            raise
+        except Exception as e:  # noqa: BLE001
+            _LOGGER.warning("voix WS: OpenAI Realtime connect failed: %s", e)
+            raise
         await self._openai.send(
             json.dumps(
                 {
@@ -192,11 +245,22 @@ class _Bridge:
     # ─── Device → OpenAI ─────────────────────────────────────────────────────
 
     async def _device_to_openai(self) -> None:
-        """Read mic audio + control messages from the device, forward to OpenAI."""
+        """Read mic audio + control messages from the device, forward to OpenAI.
+
+        Opens the OpenAI Realtime WS lazily on the first audio chunk — if the
+        device never speaks, OpenAI is never billed.
+        """
         import audioop
 
         async for msg in self._device:
             if msg.type == WSMsgType.BINARY:
+                self._bytes_in += len(msg.data)
+                self._last_audio_in = time.monotonic()
+                if self._openai is None:
+                    _LOGGER.warning(
+                        "voix WS: first audio chunk; opening OpenAI Realtime"
+                    )
+                    await self._connect_openai()
                 pcm16k = msg.data
                 pcm24k, self._upsample_state = audioop.ratecv(
                     pcm16k,
@@ -240,6 +304,13 @@ class _Bridge:
         resamples to its 48 kHz I2S output. Doing the conversion on the
         ESP32 would just duplicate work.
         """
+        # Idle wait: device might not have triggered OpenAI yet. Spin briefly.
+        for _ in range(50):
+            if self._openai is not None:
+                break
+            await asyncio.sleep(0.1)
+        if self._openai is None:
+            return
         speaking = False
         async for raw in self._openai:
             try:
@@ -256,6 +327,7 @@ class _Bridge:
                     await self._send_device({"type": "audio_start"})
                 pcm24k = base64.b64decode(b64)
                 if pcm24k:
+                    self._bytes_out += len(pcm24k)
                     await self._device.send_bytes(pcm24k)
             elif t == "response.done":
                 if speaking:

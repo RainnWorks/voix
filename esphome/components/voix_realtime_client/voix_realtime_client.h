@@ -2,7 +2,10 @@
 
 #include <atomic>
 #include <cstdint>
+#include <deque>
+#include <mutex>
 #include <string>
+#include <vector>
 
 #include "esphome/core/automation.h"
 #include "esphome/core/component.h"
@@ -72,6 +75,9 @@ class VoixRealtimeClient : public Component {
   void set_state_(State new_state);
   void teardown_();
   void send_text_(const std::string &payload);
+  void on_mic_data_(const std::vector<uint8_t> &data);
+  void pump_outbound_();
+  void pump_inbound_();
 
   std::string server_url_;
   microphone::Microphone *microphone_{nullptr};
@@ -80,6 +86,7 @@ class VoixRealtimeClient : public Component {
   esp_websocket_client_handle_t ws_{nullptr};
   State state_{State::IDLE};
   std::atomic<bool> speaking_{false};
+  bool mic_callback_registered_{false};
 
   // Deferred-event flags. Written from WS event handler thread,
   // drained on the main loop.
@@ -88,6 +95,27 @@ class VoixRealtimeClient : public Component {
   std::atomic<bool> pending_error_{false};
   std::atomic<bool> pending_audio_start_{false};
   std::atomic<bool> pending_audio_end_{false};
+
+  // Mic → WS queue. Audio callback fires on a separate task; main loop
+  // drains and ships chunks out the WebSocket. Cap with MAX_OUTBOUND
+  // and drop on overflow rather than blocking the audio thread.
+  static constexpr size_t MAX_OUTBOUND_CHUNKS = 32;
+  std::deque<std::vector<uint8_t>> outbound_;
+  std::mutex outbound_mutex_;
+
+  // WS binary → speaker queue. WS event handler pushes received audio;
+  // main loop pops and feeds the speaker.
+  static constexpr size_t MAX_INBOUND_CHUNKS = 64;
+  std::deque<std::vector<uint8_t>> inbound_;
+  std::mutex inbound_mutex_;
+
+  // Diagnostic counters; periodically logged so we can see if audio is
+  // actually flowing without enabling VERY_VERBOSE on the device.
+  uint32_t mic_chunks_seen_{0};
+  uint32_t mic_bytes_sent_{0};
+  uint32_t ws_bytes_received_{0};
+  uint32_t speaker_bytes_played_{0};
+  uint32_t last_stats_log_ms_{0};
 
   Trigger<> connected_trigger_{};
   Trigger<> disconnected_trigger_{};

@@ -1,5 +1,7 @@
 #include "voix_realtime_client.h"
 
+#include "esphome/components/microphone/microphone.h"
+#include "esphome/components/speaker/speaker.h"
 #include "esphome/core/log.h"
 
 #include "esp_event.h"
@@ -55,6 +57,18 @@ float VoixRealtimeClient::get_setup_priority() const {
 
 void VoixRealtimeClient::setup() {
   ESP_LOGCONFIG(TAG, "voix_realtime_client setup (server=%s)", this->server_url_.c_str());
+
+  // Subscribe to the configured microphone's audio callback. The mic is
+  // shared with other consumers (voice_assistant, mWW) — we don't start
+  // or stop it; we just receive chunks whenever it's running. Our send
+  // path gates on state_ == RUNNING so we only forward audio during an
+  // active Realtime session.
+  if (this->microphone_ != nullptr && !this->mic_callback_registered_) {
+    this->microphone_->add_data_callback(
+        [this](const std::vector<uint8_t> &data) { this->on_mic_data_(data); });
+    this->mic_callback_registered_ = true;
+    ESP_LOGCONFIG(TAG, "  mic callback registered");
+  }
 }
 
 void VoixRealtimeClient::loop() {
@@ -79,6 +93,19 @@ void VoixRealtimeClient::loop() {
   if (this->pending_audio_end_.exchange(false)) {
     this->speaking_.store(false);
     this->audio_out_end_trigger_.trigger();
+  }
+
+  // Audio pumps. Cheap when queues are empty.
+  this->pump_outbound_();
+  this->pump_inbound_();
+
+  // Periodic stats so we can see audio flow without setting verbose logs.
+  uint32_t now = millis();
+  if (this->state_ == State::RUNNING && now - this->last_stats_log_ms_ > 2000) {
+    this->last_stats_log_ms_ = now;
+    ESP_LOGI(TAG, "stats: mic_chunks=%u mic_bytes_sent=%u ws_bytes_rx=%u spk_bytes_played=%u",
+             this->mic_chunks_seen_, this->mic_bytes_sent_,
+             this->ws_bytes_received_, this->speaker_bytes_played_);
   }
 }
 
@@ -214,9 +241,107 @@ void VoixRealtimeClient::on_ws_text_from_isr(const char *data, size_t len) {
 }
 
 void VoixRealtimeClient::on_ws_binary_from_isr(const uint8_t *data, size_t len) {
-  // TODO: route to speaker. Push to a ring buffer that main loop drains and
-  // calls speaker->play(). For v1, just count bytes via a debug log.
-  ESP_LOGV(TAG, "ws BIN %u bytes", static_cast<unsigned>(len));
+  if (len == 0 || this->speaker_ == nullptr) {
+    return;
+  }
+  std::lock_guard<std::mutex> lk(this->inbound_mutex_);
+  if (this->inbound_.size() >= MAX_INBOUND_CHUNKS) {
+    // Drop oldest. Better than blocking the WS task or filling unbounded.
+    this->inbound_.pop_front();
+  }
+  this->inbound_.emplace_back(data, data + len);
+}
+
+// ─── Audio pumps (main loop) ────────────────────────────────────────────────
+
+void VoixRealtimeClient::on_mic_data_(const std::vector<uint8_t> &data) {
+  this->mic_chunks_seen_++;  // counts EVERY callback even when idle, so we can
+                              // tell whether the mic is producing at all
+  // Fast path: drop if we're not in an active session. The mic is shared
+  // with voice_assistant / mWW so this callback fires continuously.
+  if (this->state_ != State::RUNNING || data.empty()) {
+    return;
+  }
+
+  // i2s_mics on the Voice PE is 2-channel interleaved PCM16. Channel 0 is the
+  // voice_kit AEC-processed mic — what we want for ASR. Pull out just the
+  // even (left/ch0) samples; OpenAI expects mono.
+  // Frame layout: [L0 L1 R0 R1 L2 L3 R2 R3 ...], each sample = 2 bytes.
+  std::vector<uint8_t> mono;
+  mono.reserve(data.size() / 2);
+  for (size_t i = 0; i + 3 < data.size(); i += 4) {
+    mono.push_back(data[i]);
+    mono.push_back(data[i + 1]);
+  }
+  if (mono.empty()) {
+    return;
+  }
+
+  std::lock_guard<std::mutex> lk(this->outbound_mutex_);
+  if (this->outbound_.size() >= MAX_OUTBOUND_CHUNKS) {
+    // WS slower than mic. Drop oldest.
+    this->outbound_.pop_front();
+  }
+  this->outbound_.emplace_back(std::move(mono));
+}
+
+void VoixRealtimeClient::pump_outbound_() {
+  if (this->ws_ == nullptr) {
+    return;
+  }
+  if (!esp_websocket_client_is_connected(this->ws_)) {
+    // Drop any queued audio while disconnected.
+    std::lock_guard<std::mutex> lk(this->outbound_mutex_);
+    this->outbound_.clear();
+    return;
+  }
+  // Drain a few chunks per loop tick; don't block the loop for long.
+  for (int i = 0; i < 4; ++i) {
+    std::vector<uint8_t> chunk;
+    {
+      std::lock_guard<std::mutex> lk(this->outbound_mutex_);
+      if (this->outbound_.empty()) {
+        return;
+      }
+      chunk = std::move(this->outbound_.front());
+      this->outbound_.pop_front();
+    }
+    int sent = esp_websocket_client_send_bin(
+        this->ws_, reinterpret_cast<const char *>(chunk.data()),
+        static_cast<int>(chunk.size()), 0);  // 0 = non-blocking
+    if (sent < 0) {
+      ESP_LOGW(TAG, "send_bin failed; dropping %u byte chunk",
+               static_cast<unsigned>(chunk.size()));
+    }
+  }
+}
+
+void VoixRealtimeClient::pump_inbound_() {
+  if (this->speaker_ == nullptr) {
+    return;
+  }
+  // Drain a few chunks per tick. The speaker has its own buffer; play()
+  // returns the count it accepted, so we re-queue the tail if the
+  // speaker is full.
+  for (int i = 0; i < 4; ++i) {
+    std::vector<uint8_t> chunk;
+    {
+      std::lock_guard<std::mutex> lk(this->inbound_mutex_);
+      if (this->inbound_.empty()) {
+        return;
+      }
+      chunk = std::move(this->inbound_.front());
+      this->inbound_.pop_front();
+    }
+    size_t accepted = this->speaker_->play(chunk.data(), chunk.size());
+    if (accepted < chunk.size()) {
+      // Speaker is full. Push the tail back to the FRONT so it stays in
+      // order; we'll retry next loop tick.
+      std::lock_guard<std::mutex> lk(this->inbound_mutex_);
+      this->inbound_.emplace_front(chunk.begin() + accepted, chunk.end());
+      return;
+    }
+  }
 }
 
 }  // namespace voix_realtime_client

@@ -28,12 +28,15 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .const import (
+    AUDIO_FORMAT_BYTES_PER_SAMPLE,
+    CONF_LED_RING_ENTITY,
     CONF_NOISE_PSK,
     CONF_OPENAI_API_KEY,
     CONF_REALTIME_MODEL,
     CONF_SATELLITE_HOST,
     CONF_SATELLITE_PORT,
     CONF_TRIGGER_WAKE_WORD,
+    DEFAULT_LED_RING_ENTITY,
     DEFAULT_REALTIME_MODEL,
     DEFAULT_SATELLITE_PORT,
     DEFAULT_TRIGGER_WAKE_WORD,
@@ -43,6 +46,15 @@ from .const import (
     REALTIME_WS_URL,
     SATELLITE_SAMPLE_RATE,
 )
+
+# LED colour palette used during a Realtime session. Matches the firmware
+# YAML's `on_listening` magenta tint so the visual feels continuous from
+# wake-word to Realtime takeover.
+_LED_REALTIME_IDLE = (140, 30, 200)        # dim magenta - waiting / between turns
+_LED_REALTIME_LISTENING = (220, 60, 240)   # bright magenta - mic active
+_LED_REALTIME_THINKING = (180, 40, 220)    # magenta-violet - model processing
+_LED_REALTIME_SPEAKING = (255, 140, 60)    # warm amber - model responding
+_LED_FLASH_TURN_END = (255, 255, 255)      # brief white - turn boundary
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -60,6 +72,9 @@ class RealtimeBridge:
         self._model: str = entry.data.get(CONF_REALTIME_MODEL, DEFAULT_REALTIME_MODEL)
         self._trigger_wake_word: str = entry.data.get(
             CONF_TRIGGER_WAKE_WORD, DEFAULT_TRIGGER_WAKE_WORD
+        )
+        self._led_ring_entity: str = entry.data.get(
+            CONF_LED_RING_ENTITY, DEFAULT_LED_RING_ENTITY
         )
 
         self._session_lock = asyncio.Lock()
@@ -91,12 +106,19 @@ class RealtimeBridge:
                 noise_psk=self._noise_psk,
                 openai_key=self._openai_key,
                 model=self._model,
+                led_ring_entity=self._led_ring_entity,
                 on_close=self._on_session_close,
             )
             try:
                 await self._session.start()
             except Exception:  # noqa: BLE001
-                _LOGGER.exception("voix realtime session failed to start")
+                _LOGGER.exception("voix realtime session failed to start; cleaning up")
+                # Make sure any partial state (api client, subscription, ws) is
+                # released so the satellite reverts to HA's core integration.
+                try:
+                    await self._session.stop()
+                except Exception:  # noqa: BLE001
+                    _LOGGER.exception("voix: cleanup after failed start also failed")
                 self._session = None
                 return
 
@@ -137,6 +159,7 @@ class _RealtimeSession:
         noise_psk: str,
         openai_key: str,
         model: str,
+        led_ring_entity: str | None,
         on_close,
     ) -> None:
         self.hass = hass
@@ -145,6 +168,7 @@ class _RealtimeSession:
         self._noise_psk = noise_psk
         self._openai_key = openai_key
         self._model = model
+        self._led_ring_entity = led_ring_entity
         self._on_close = on_close
 
         self._api_client = None  # aioesphomeapi.APIClient — populated in start()
@@ -152,10 +176,42 @@ class _RealtimeSession:
         self._oai_ws = None
         self._tasks: list[asyncio.Task] = []
         self._closed = asyncio.Event()
+        self._got_first_audio_delta = False
 
         # audioop.ratecv state, threaded through successive calls for continuity.
         self._upsample_state: Any = None     # 16 kHz → 24 kHz (mic → Realtime)
         self._downsample_state: Any = None   # 24 kHz → 16 kHz (Realtime → speaker)
+
+    async def _set_led(self, rgb: tuple[int, int, int], brightness: int = 180) -> None:
+        """Apply a colour to the satellite's outer LED ring via HA service call."""
+        if not self._led_ring_entity:
+            return
+        try:
+            await self.hass.services.async_call(
+                "light",
+                "turn_on",
+                {
+                    "entity_id": self._led_ring_entity,
+                    "brightness": brightness,
+                    "rgb_color": list(rgb),
+                },
+                blocking=False,
+            )
+        except Exception:  # noqa: BLE001
+            _LOGGER.debug("voix: LED set failed", exc_info=True)
+
+    async def _clear_led(self) -> None:
+        if not self._led_ring_entity:
+            return
+        try:
+            await self.hass.services.async_call(
+                "light",
+                "turn_off",
+                {"entity_id": self._led_ring_entity},
+                blocking=False,
+            )
+        except Exception:  # noqa: BLE001
+            _LOGGER.debug("voix: LED clear failed", exc_info=True)
 
     async def start(self) -> None:
         """Claim the satellite voice subscription, open Realtime WS, wire pumps."""
@@ -164,6 +220,12 @@ class _RealtimeSession:
         from aioesphomeapi import APIClient
         import websockets
 
+        _LOGGER.info("voix: starting realtime session for %s", self.satellite_host)
+
+        # Visual feedback: LED goes magenta immediately so the user sees the
+        # session is starting even before the audio bridge is fully wired.
+        await self._set_led(_LED_REALTIME_IDLE, brightness=120)
+
         # 1. Connect to the satellite via the ESPHome native API.
         self._api_client = APIClient(
             address=self.satellite_host,
@@ -171,36 +233,46 @@ class _RealtimeSession:
             password=None,
             noise_psk=self._noise_psk,
         )
-        await self._api_client.connect(login=True)
+        try:
+            await self._api_client.connect(login=True)
+        except Exception as e:  # noqa: BLE001
+            _LOGGER.error("voix: failed to connect to satellite: %s", e)
+            raise
         _LOGGER.info("voix: connected to satellite at %s", self.satellite_host)
 
         # 2. Claim the voice_assistant subscription. Note: this displaces HA's
         #    core ESPHome integration. It will auto-reconnect on session end.
-        self._unsubscribe_va = self._api_client.subscribe_voice_assistant(
-            handle_start=self._on_va_start,
-            handle_stop=self._on_va_stop,
-            handle_audio=self._on_satellite_audio,
-        )
+        try:
+            self._unsubscribe_va = self._api_client.subscribe_voice_assistant(
+                handle_start=self._on_va_start,
+                handle_stop=self._on_va_stop,
+                handle_audio=self._on_satellite_audio,
+            )
+        except Exception as e:  # noqa: BLE001
+            _LOGGER.error("voix: voice_assistant subscribe failed: %s", e)
+            raise
         _LOGGER.info("voix: voice_assistant subscription claimed")
 
-        # 3. Open the OpenAI Realtime WebSocket.
-        #    Header name varies across websockets versions; pass through whichever
-        #    kwarg the installed version accepts.
+        # 3. Open the OpenAI Realtime WebSocket. Header kwarg name varies across
+        #    websockets library versions; try the modern one first.
         headers = {
             "Authorization": f"Bearer {self._openai_key}",
             "OpenAI-Beta": "realtime=v1",
         }
         try:
-            self._oai_ws = await websockets.connect(
-                f"{REALTIME_WS_URL}?model={self._model}",
-                additional_headers=headers,
-            )
-        except TypeError:
-            # Older websockets versions used `extra_headers`
-            self._oai_ws = await websockets.connect(
-                f"{REALTIME_WS_URL}?model={self._model}",
-                extra_headers=headers,
-            )
+            try:
+                self._oai_ws = await websockets.connect(
+                    f"{REALTIME_WS_URL}?model={self._model}",
+                    additional_headers=headers,
+                )
+            except TypeError:
+                self._oai_ws = await websockets.connect(
+                    f"{REALTIME_WS_URL}?model={self._model}",
+                    extra_headers=headers,
+                )
+        except Exception as e:  # noqa: BLE001
+            _LOGGER.error("voix: OpenAI Realtime WS connect failed: %s", e)
+            raise
         _LOGGER.info("voix: Realtime WS connected (model=%s)", self._model)
 
         # 4. Configure the session.
@@ -225,14 +297,21 @@ class _RealtimeSession:
 
         # 5. Start pumping Realtime → satellite.
         self._tasks.append(
-            asyncio.create_task(self._pump_realtime_to_satellite())
+            asyncio.create_task(self._pump_realtime_to_satellite(), name="voix-rt-pump")
         )
+
+        # 6. Listening colour now that everything is wired.
+        await self._set_led(_LED_REALTIME_LISTENING, brightness=200)
 
     async def stop(self) -> None:
         """Release subscription and close WS. Idempotent."""
         if self._closed.is_set():
             return
         self._closed.set()
+
+        # Clear the LED first so the user sees the session ended even if
+        # later cleanup takes a moment.
+        await self._clear_led()
 
         for task in self._tasks:
             task.cancel()
@@ -301,7 +380,7 @@ class _RealtimeSession:
     # ─── Pumps: us → satellite ──────────────────────────────────────────────
 
     async def _pump_realtime_to_satellite(self) -> None:
-        """Read Realtime WS messages; play audio deltas through the satellite."""
+        """Read Realtime WS messages; play audio deltas + drive LED state."""
         import audioop
 
         assert self._oai_ws is not None
@@ -312,9 +391,13 @@ class _RealtimeSession:
                 continue
 
             t = msg.get("type", "")
+
             # Realtime emits both legacy `response.audio.delta` and newer
             # `response.output_audio.delta` depending on version; accept both.
             if t.endswith("audio.delta"):
+                if not self._got_first_audio_delta:
+                    self._got_first_audio_delta = True
+                    await self._set_led(_LED_REALTIME_SPEAKING)
                 b64 = msg.get("delta") or msg.get("audio") or ""
                 if not b64:
                     continue
@@ -331,16 +414,30 @@ class _RealtimeSession:
                     try:
                         await self._api_client.send_voice_assistant_audio(pcm16)
                     except Exception:  # noqa: BLE001
-                        _LOGGER.exception("failed to forward audio to satellite")
+                        _LOGGER.exception("voix: failed to forward audio to satellite")
                         break
+
+            elif t == "input_audio_buffer.speech_started":
+                # User started speaking (server VAD detected speech).
+                await self._set_led(_LED_REALTIME_LISTENING, brightness=220)
+
+            elif t == "input_audio_buffer.speech_stopped":
+                # User stopped speaking; model is about to think.
+                await self._set_led(_LED_REALTIME_THINKING)
+
             elif t == "response.done":
-                # End-of-turn marker. server_vad keeps the session open for the
-                # next user turn; we only tear down on explicit stop or error.
-                _LOGGER.debug("realtime response.done")
-            elif t == "session.created" or t == "session.updated":
-                _LOGGER.debug("realtime %s", t)
+                # End-of-turn marker. With server_vad the session stays open
+                # for the next user turn; flash white briefly, then back to idle.
+                await self._set_led(_LED_FLASH_TURN_END, brightness=255)
+                await asyncio.sleep(0.15)
+                await self._set_led(_LED_REALTIME_IDLE, brightness=120)
+                self._got_first_audio_delta = False  # reset for next turn
+
+            elif t in ("session.created", "session.updated"):
+                _LOGGER.debug("voix: realtime %s", t)
+
             elif t == "error":
-                _LOGGER.warning("realtime error: %s", msg.get("error") or msg)
+                _LOGGER.warning("voix: realtime error: %s", msg.get("error") or msg)
                 break
 
         # WS closed (server or client). Tear down the rest of the session.

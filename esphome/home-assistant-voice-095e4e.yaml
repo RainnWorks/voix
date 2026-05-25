@@ -37,3 +37,19 @@ wifi:
   networks:
     - ssid: !secret wifi_ssid
       password: !secret wifi_password
+
+# ─── Wake-word capture global ────────────────────────────────────────────────
+# Captures the wake-word phrase at detection time. Used by the integration's
+# LED phase script for mode-discriminated animations, and for future Mode B
+# (Realtime) routing. The mode-specific behaviour (helper writes, TTS
+# suppression, etc.) is owned by the `voix` custom HA integration, not the
+# firmware — see ../ha-integration/custom_components/voix/.
+globals:
+  - id: voix_last_wake_word
+    type: std::string
+    restore_value: false
+    initial_value: '""'
+
+micro_wake_word:
+  on_wake_word_detected:
+    - lambda: 'id(voix_last_wake_word) = wake_word;'

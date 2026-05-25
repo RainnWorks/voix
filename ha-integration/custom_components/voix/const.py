@@ -28,6 +28,13 @@ EVENT_REALTIME_STOP_REQUESTED = "voix.realtime_stop_requested"
 # Internal events on HA bus
 EVENT_REALTIME_SESSION_STARTED = "voix_realtime_session_started"
 EVENT_REALTIME_SESSION_ENDED = "voix_realtime_session_ended"
+EVENT_DICTATION_CAPTURED = "voix_dictation_captured"
+
+# Dictation config (Mode C — conversation agent)
+CONF_DICTATION_HELPER = "dictation_helper"
+CONF_LED_RING_ENTITY = "led_ring_entity"
+DEFAULT_DICTATION_HELPER = "input_text.voix_dictation_buffer"
+DEFAULT_LED_RING_ENTITY = "light.home_assistant_voice_095e4e_led_ring"
 
 # OpenAI Realtime WebSocket
 REALTIME_WS_URL = "wss://api.openai.com/v1/realtime"

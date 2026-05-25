@@ -43,3 +43,8 @@ secrets.yaml
 # OS / log clutter
 *.log
 .coverage
+
+# Local ESPHome build state (secrets, PlatformIO cache)
+esphome/secrets.yaml
+esphome/.esphome/
+esphome/build/

@@ -1,18 +1,24 @@
-"""voix — Mode C (dictation conversation agent) + Mode B (Realtime bridge).
+"""voix integration entry point.
 
-Adds two features on top of a stock Voice PE running upstream firmware:
+Registers three HA Assist-pipeline platforms on top of a stock Voice PE
+(or any HA Assist satellite). All hardware-agnostic; no per-device config.
 
-* A **conversation entity** (`conversation.voix_dictation`) used by the
-  voix-dictation pipeline: writes the transcript to an input_text helper,
-  flashes the satellite's LED ring, and returns empty speech so HA doesn't
-  speak a fake reply. See `conversation.py`.
+  - conversation.dictation  — Mode C: captures STT result to an input_text
+                              helper, flashes the LED, returns empty speech.
+  - conversation.realtime   — Mode B: signals continue_conversation=true so
+                              the satellite re-listens after each TTS playback
+                              (multi-turn Realtime).
+  - stt.realtime            — Mode B: streams the pipeline's audio to OpenAI
+                              Realtime, returns transcript, stashes response
+                              audio on the session.
+  - tts.realtime            — Mode B: hands back the response audio captured
+                              by the STT step.
 
-* A **Realtime bridge** (Mode B) activated by a wake word on the satellite
-  (default: "Hey Mycroft"). The firmware fires `voix.realtime_requested`;
-  we claim the voice_assistant subscription via aioesphomeapi, bridge
-  audio to OpenAI Realtime, and release on session end. See `realtime.py`.
+Mode A (HA Assist) is unchanged — still uses HA's default conversation +
+whichever STT/TTS the user picks per pipeline.
 
-See ../../docs/architecture.md.
+The Realtime session is owned by `RealtimeManager`, one per config entry.
+See realtime.py for the WS lifecycle.
 """
 from __future__ import annotations
 
@@ -20,74 +26,51 @@ import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 
-from .const import (
-    CONF_NOISE_PSK,
-    CONF_OPENAI_API_KEY,
-    CONF_SATELLITE_HOST,
-    DOMAIN,
-    EVENT_REALTIME_REQUESTED,
-    EVENT_REALTIME_STOP_REQUESTED,
-)
-from .realtime import RealtimeBridge
+from .const import DOMAIN
+from .realtime import RealtimeManager
+from .ws_view import VoixRealtimeView
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.CONVERSATION]
-
-
-def _realtime_configured(entry: ConfigEntry) -> bool:
-    """True if the entry has the fields needed for the Realtime bridge."""
-    return all(
-        entry.data.get(k)
-        for k in (CONF_SATELLITE_HOST, CONF_NOISE_PSK, CONF_OPENAI_API_KEY)
-    )
+PLATFORMS: list[Platform] = [
+    Platform.CONVERSATION,
+    Platform.STT,
+    Platform.TTS,
+]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up voix from a config entry."""
-    # Mode C: register the dictation conversation entity. Always on; the
-    # entity is harmless if no pipeline points at it.
+    manager = RealtimeManager(hass, entry.data)
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = manager
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # Mode B: spin up the Realtime bridge only if fully configured.
-    if not _realtime_configured(entry):
+    # Register the WebSocket endpoint the firmware's voix_realtime_client
+    # connects to. Always registered; refuses connections with a 503 if no
+    # OpenAI key is configured.
+    hass.http.register_view(VoixRealtimeView(hass, dict(entry.data)))
+
+    if not manager.configured:
         _LOGGER.info(
-            "voix Mode C (conversation agent) ready; Realtime bridge disabled "
-            "(no satellite_host/noise_psk/openai_api_key configured)"
+            "voix: Mode C (dictation) ready. Mode B (Realtime) disabled — "
+            "add an OpenAI API key via Reconfigure to enable."
         )
-        hass.data.setdefault(DOMAIN, {})[entry.entry_id] = None
-        return True
+    else:
+        _LOGGER.info(
+            "voix: Mode C + Mode B ready. Firmware WS endpoint at "
+            "/api/voix/realtime"
+        )
 
-    bridge = RealtimeBridge(hass, entry)
-    await bridge.async_start()
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = bridge
-
-    @callback
-    def _on_request(event: Event) -> None:
-        hass.async_create_task(bridge.async_start_session(event.data))
-
-    @callback
-    def _on_stop(event: Event) -> None:
-        hass.async_create_task(bridge.async_stop_session(event.data))
-
-    entry.async_on_unload(
-        hass.bus.async_listen(EVENT_REALTIME_REQUESTED, _on_request)
-    )
-    entry.async_on_unload(
-        hass.bus.async_listen(EVENT_REALTIME_STOP_REQUESTED, _on_stop)
-    )
-    entry.async_on_unload(bridge.async_stop)
-
-    _LOGGER.info("voix ready (satellite=%s)", bridge.satellite_host)
+    entry.async_on_unload(manager.close)
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a voix config entry."""
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    bridge: RealtimeBridge | None = hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
-    if bridge is not None:
-        await bridge.async_stop()
+    manager: RealtimeManager | None = hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
+    if manager is not None:
+        await manager.close()
     return unloaded

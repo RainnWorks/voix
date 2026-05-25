@@ -2,20 +2,20 @@
   "config": {
     "step": {
       "user": {
-        "title": "Add a voix Realtime bridge",
-        "description": "Bridges a Home Assistant Voice PE satellite to OpenAI Realtime when the trigger wake word fires.",
+        "title": "Set up voix",
+        "description": "Adds two HA voice features: a dictation conversation agent (writes the transcript to a helper, no spoken reply) and an OpenAI Realtime bridge (STT + TTS engines that bridge any HA Assist pipeline to OpenAI Realtime, with multi-turn). Both are hardware-agnostic — point any HA Assist satellite at them.",
         "data": {
-          "satellite_host": "Satellite hostname or IP",
-          "satellite_port": "ESPHome API port (usually 6053)",
-          "noise_psk": "ESPHome encryption key (noise PSK)",
-          "openai_api_key": "OpenAI API key",
-          "trigger_wake_word": "Wake word phrase that starts a Realtime session",
-          "realtime_model": "OpenAI Realtime model name"
+          "dictation_helper": "Helper entity to write dictation transcripts to (input_text.*)",
+          "led_ring_entity": "Satellite LED ring entity to flash on dictation capture (light.*)",
+          "openai_api_key": "OpenAI API key (leave blank to disable Mode B / Realtime)",
+          "realtime_model": "OpenAI Realtime model",
+          "realtime_voice": "Realtime voice (e.g. alloy, verse, sage, marin)",
+          "realtime_instructions": "System instructions for the Realtime assistant"
         }
       }
     },
     "abort": {
-      "already_configured": "This satellite is already configured."
+      "already_configured": "voix is already configured."
     }
   }
 }

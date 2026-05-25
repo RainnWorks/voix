@@ -48,8 +48,8 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Register the dictation conversation entity for this config entry."""
-    async_add_entities([VoixDictationAgent(entry)])
+    """Register the dictation + realtime conversation entities."""
+    async_add_entities([VoixDictationAgent(entry), VoixRealtimeAgent(entry)])
 
 
 class VoixDictationAgent(ConversationEntity):
@@ -136,3 +136,41 @@ class VoixDictationAgent(ConversationEntity):
             )
         except Exception:  # noqa: BLE001
             _LOGGER.exception("voix: LED flash failed for %s", led_id)
+
+
+class VoixRealtimeAgent(ConversationEntity):
+    """Conversation agent for the Realtime pipeline.
+
+    The Realtime response audio is already produced by our STT engine
+    and held on the RealtimeSession for our TTS engine to play. The agent
+    runs in between — it has nothing useful to do with the text other
+    than tell the pipeline to keep the conversation alive so the
+    satellite re-listens for the next turn without needing a fresh wake
+    word.
+    """
+
+    _attr_has_entity_name = True
+    _attr_name = "Realtime"
+    _attr_should_poll = False
+
+    def __init__(self, entry: ConfigEntry) -> None:
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}-realtime-conv"
+
+    @property
+    def supported_languages(self) -> list[str]:
+        return ["en", "en-US"]
+
+    async def async_process(self, user_input: ConversationInput) -> ConversationResult:
+        # HA's pipeline SKIPS the TTS stage if speech is empty. We need TTS to
+        # run so our tts.realtime engine plays back the audio Realtime already
+        # produced. Pass the transcript through as "speech" — tts.realtime
+        # ignores this text and returns the cached audio bytes.
+        text = (user_input.text or "").strip() or "."
+        response = intent.IntentResponse(language=user_input.language)
+        response.async_set_speech(text)
+        return ConversationResult(
+            response=response,
+            conversation_id=user_input.conversation_id,
+            continue_conversation=True,
+        )

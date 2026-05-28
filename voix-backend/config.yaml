@@ -61,7 +61,7 @@ options:
   openai_api_key: ""
   openrouter_api_key: ""
   ws_token: ""
-  ha_url: "http://supervisor/core"
+  ha_url: "http://homeassistant:8123"
   ha_token: ""
   log_level: info
   dev_mode: false

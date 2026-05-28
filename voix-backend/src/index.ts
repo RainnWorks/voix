@@ -57,16 +57,22 @@ const app = new Elysia()
 
 log.info(`listening on :${config.port} (log_level=${config.logLevel})`);
 
-// Surface unexpected errors loud — the Add-on supervisor restarts us
-// on non-zero exit, and silently swallowing a crash is worse than a
-// reboot loop the user can see in the HA logs.
+// Surface unexpected errors loudly but DON'T tear the process down —
+// an isolated promise rejection on (say) a transcript file write is
+// not worth killing an active puck session over. The HA Add-on
+// supervisor will still see logs in `ha addons logs` either way.
+//
+// uncaughtException is still fatal: by definition the JS engine
+// reached a state where it can't continue safely. unhandledRejection
+// is recoverable in practice — most are missing `.catch()`s on
+// fire-and-forget calls, where the only damage is whatever that
+// specific call was trying to do.
 process.on("uncaughtException", (err) => {
-  log.error("uncaughtException:", err);
+  log.error("uncaughtException — exiting:", err);
   process.exit(1);
 });
 process.on("unhandledRejection", (reason) => {
-  log.error("unhandledRejection:", reason);
-  process.exit(1);
+  log.error("unhandledRejection (kept alive):", reason);
 });
 
 export type App = typeof app;

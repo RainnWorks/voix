@@ -365,7 +365,11 @@ export class PuckSession {
     rt.on("conversation.item.input_audio_transcription.completed", (event) => {
       const text = event.transcript ?? "";
       this.recorder.pushTranscript("user", text);
-      void this.handleUserTranscriptComplete(text);
+      // .catch — a disk hiccup writing transcripts must NOT escalate
+      // to an unhandledRejection that kills the daemon mid-session.
+      this.handleUserTranscriptComplete(text).catch((err) => {
+        log.warn(`session: handleUserTranscriptComplete failed:`, err);
+      });
     });
 
     rt.on("response.output_audio_transcript.done", (event) => {
@@ -392,7 +396,9 @@ export class PuckSession {
     });
 
     rt.on("response.function_call_arguments.done", (event) => {
-      void this.handleFunctionCall(event.call_id, event.name, event.arguments);
+      this.handleFunctionCall(event.call_id, event.name, event.arguments).catch((err) => {
+        log.warn(`session: handleFunctionCall failed:`, err);
+      });
     });
 
     rt.on("error", (err) => {
@@ -572,7 +578,9 @@ export class PuckSession {
     // Best-effort flush of mic + speaker captures to disk. Fire and
     // forget — the close path returns before the WAVs are written so
     // the session's puck WS gets torn down promptly.
-    void this.recorder.finalize();
+    this.recorder.finalize().catch((err) => {
+      log.warn(`session: recorder.finalize failed:`, err);
+    });
     const duration = (Date.now() - this.startedAt) / 1000;
     log.info(
       `session: closed device=${this.deps.hello.device_id} ` +

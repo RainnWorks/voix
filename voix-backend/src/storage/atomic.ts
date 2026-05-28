@@ -11,12 +11,19 @@
  * HA's executor model.
  */
 
+import { randomBytes } from "node:crypto";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 export async function atomicWrite(path: string, contents: string | Uint8Array): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
-  const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
+  // Random suffix is mandatory: two concurrent atomicWrite calls within
+  // the same millisecond otherwise generate the same tmp name and
+  // race. ENOENT on rename in production was call B's writeFile
+  // overwriting call A's tmp, then A's rename succeeding, then B's
+  // rename firing on a path that no longer exists. Bun resolves
+  // multiple writePartialTranscript() calls within a single ms easily.
+  const tmp = `${path}.${process.pid}.${Date.now()}.${randomBytes(4).toString("hex")}.tmp`;
   await writeFile(tmp, contents);
   await rename(tmp, path);
 }

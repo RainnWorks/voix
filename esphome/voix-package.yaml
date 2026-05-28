@@ -1,0 +1,284 @@
+# voix Voice PE package.
+#
+# Add this to your device YAML alongside the upstream Voice PE package
+# and you get the full voix experience — mode dispatch, custom wake-word
+# intercept, OpenAI Realtime bridge, refresh API, LED phasing — without
+# pasting a couple of hundred lines into every consumer YAML.
+#
+# **Adoption model**: HA's standard ESPHome adoption flow is the only
+# adoption you go through. After the device is adopted (mDNS discovery
+# → click "Adopt" in HA), the voix integration pushes the WS URL +
+# shared token + mode/wake-word state to the device via three API
+# actions defined below (`voix_set_server`, `voix_set_state`). None of
+# this is configured in YAML.
+#
+# Minimal consumer YAML (everything else comes from the upstream voice_pe
+# package + dashboard adoption):
+#
+#     packages:
+#       voice_pe:
+#         url: https://github.com/esphome/home-assistant-voice-pe
+#         files: [home-assistant-voice.8mb.yaml]
+#         ref: 26.5.0
+#       voix:
+#         url: https://github.com/thenairn/voix
+#         files: [esphome/voix-package.yaml]
+#         ref: main
+#
+#     esphome:
+#       name: home-assistant-voice-095e4e
+#       name_add_mac_suffix: false
+#
+# `api:` and `wifi:` are supplied by the upstream voice_pe package; the
+# API encryption key is auto-generated and injected by HA's ESPHome
+# dashboard during adoption.
+
+# ─── voix-realtime-client component ──────────────────────────────────────────
+# Local path during development — components live at ./components/ next
+# to this package YAML. Once the voix repo is published, switch to the
+# git source so consumer devices can pull the component without cloning:
+#
+#   external_components:
+#     - source:
+#         type: git
+#         url: https://github.com/thenairn/voix
+#         ref: main
+#         path: esphome/components
+#       components: [voix_realtime_client]
+#       refresh: 0s
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [voix_realtime_client]
+
+# ─── XMOS voice_kit pipeline override ────────────────────────────────────────
+# The upstream voice_pe package configures XMOS with channel_0_stage=AGC.
+# That gives mic input AFTER all four pipeline stages — AEC → IC → NS → AGC.
+# Sounds great in theory, but the AGC stage re-amplifies whatever residual
+# the AEC didn't fully cancel, so any echo at the mic gets boosted right
+# back up to user-speech level. With voix's full-duplex OpenAI Realtime
+# sessions (mic stays hot while the model speaks), that residual triggers
+# semantic_vad and we get the model talking to itself.
+#
+# Reading channel 0 from the NS stage instead gives us AEC + IC + NS but
+# NOT the AGC re-amplification. OpenAI's input audio buffer doesn't need
+# AGC anyway (the API normalises levels internally), and the cleaner
+# signal means semantic_vad sees residual echo as silence rather than
+# speech.
+#
+# Validated against the livekit-on-vpe project's sine-wave test:
+#   AEC stage:  RMS=4      (echo cancelled)
+#   NONE stage: RMS=123    (raw mic with echo)
+#   AGC stage:  RMS=1868   (AEC cancelled, then AGC inflated noise floor)
+# (https://github.com/breakds/livekit-on-vpe — WORKING_LOG.md)
+#
+# Same XMOS firmware (v1.3.1), same I2C command. The only difference is
+# the byte we write to register 0x30 — 0x03 (NS) instead of 0x04 (AGC).
+voice_kit:
+  id: voice_kit_component
+  channel_0_stage: NS
+  channel_1_stage: NS
+
+# ─── API actions ─────────────────────────────────────────────────────────────
+# Manual start/stop kept for testing without the wake word. Plus the
+# refresh action HA calls to re-render LEDs after a mode/colour change.
+api:
+  actions:
+    - action: voix_realtime_start
+      then:
+        - voix_realtime_client.start:
+            id: voix_rt
+    - action: voix_realtime_stop
+      then:
+        - voix_realtime_client.stop:
+            id: voix_rt
+    - action: voix_realtime_interrupt
+      then:
+        - voix_realtime_client.interrupt:
+            id: voix_rt
+    # Called by the HA-side button handler to immediately cancel the
+    # voice_assistant session that upstream's button binding kicks off.
+    # The button is for mode-cycling; we don't want the chime + listen.
+    - action: voix_va_stop
+      then:
+        - voice_assistant.stop:
+        - speaker.stop:
+            id: announcement_resampling_speaker
+    # Re-render LEDs from current HA state. The voix HA integration
+    # calls this after pushing colour/mode updates so the puck doesn't
+    # show the previous mode's colour for a beat. control_leds reads
+    # from the outer-ring light entity which HA has just updated, so
+    # this picks up the new colour without needing a state-change
+    # watcher inside the firmware.
+    - action: voix_refresh
+      then:
+        - lambda: 'id(voice_assistant_phase) = 1;'
+        - script.execute: control_leds
+    # Adoption push: HA tells the device where the voix WS bridge lives
+    # and which shared secret to authenticate with. Called by the voix
+    # HA integration after standard ESPHome adoption completes. The
+    # firmware persists both to NVS so the device reconnects after a
+    # reboot without needing HA to re-push.
+    - action: voix_set_server
+      variables:
+        url: string
+        token: string
+      then:
+        - lambda: |-
+            id(voix_rt).set_server_url(url);
+            id(voix_rt).set_ws_token(token);
+    # State push: HA tells the device which behaviour type is currently
+    # active (assist/dictation/realtime) and which wake word should
+    # trigger the voix bridge. Replaces the text_sensor subscriptions
+    # that previously required the user to provide a `voix_slug`
+    # substitution.
+    - action: voix_set_state
+      variables:
+        mode_type: string
+        wake_word: string
+      then:
+        - lambda: |-
+            // Diff-check before assigning: globals have restore_value=true,
+            // so every assignment triggers an NVS preferences write.
+            // Tom's mode-cycle UI sends rapid voix_set_state calls; without
+            // this guard we'd burn flash + heap on every same-value push.
+            bool changed = false;
+            if (id(voix_mode_type) != mode_type) {
+              id(voix_mode_type) = mode_type;
+              changed = true;
+            }
+            if (id(voix_wake_word) != wake_word) {
+              id(voix_wake_word) = wake_word;
+              changed = true;
+            }
+            if (changed) {
+              ESP_LOGI("voix", "state synced from HA: mode=%s wake_word=%s",
+                       mode_type.c_str(), wake_word.c_str());
+            }
+
+# ─── Button override ─────────────────────────────────────────────────────────
+# Upstream defines `binary_sensor.center_button` on GPIO0 with handlers
+# that play the chime, run factory-reset, and start voice_assistant. We
+# can't remove those handlers, but we CAN move upstream's binary_sensor
+# off GPIO0 onto an unused pin where the button can never actually
+# trigger it — and put our own binary_sensor on the real GPIO0 with our
+# handlers.
+binary_sensor:
+  - id: !extend center_button
+    pin:
+      number: GPIO48
+      inverted: true
+      mode:
+        input: true
+        pullup: true
+
+  - platform: gpio
+    id: voix_button
+    name: voix button
+    internal: true
+    pin:
+      number: GPIO0
+      inverted: true
+      mode:
+        input: true
+        pullup: true
+    on_press:
+      then:
+        - logger.log: "voix_button pressed → cycle mode"
+        # No local LED reset — the integration's `_on_mode_change`
+        # handler pushes the new mode's colour AND calls voix_refresh
+        # so control_leds re-renders with the now-correct state.
+        # Resetting locally would render the PREVIOUS mode's colour
+        # for a beat (the cached state) before the push lands.
+        - homeassistant.service:
+            service: voix.cycle_mode
+
+# ─── voix custom firmware component ──────────────────────────────────────────
+# Pure transport: opens a WS to the HA integration. The integration owns
+# everything user-visible (mode, colours, animations, dictation transcript).
+voix_realtime_client:
+  id: voix_rt
+  # server_url + ws_token come from the voix HA integration's
+  # `voix_set_server` API action, pushed once after HA's standard
+  # ESPHome adoption completes. Both are persisted to NVS by the
+  # component, so reboots don't need HA to re-push.
+  microphone: i2s_mics
+  speaker: announcement_resampling_speaker
+
+  # Inner-ring animations re-use upstream's voice_assistant_phase /
+  # control_leds script. Outer-ring colour is driven by the HA
+  # integration when mode changes — not by firmware. So we just animate
+  # the inner ring per session phase.
+  on_connected:
+    - logger.log: "voix_rt: connected"
+    - lambda: 'id(voice_assistant_phase) = 2;'
+    - script.execute: control_leds
+
+  on_user_speech_start:
+    - lambda: 'id(voice_assistant_phase) = 3;'
+    - script.execute: control_leds
+
+  on_user_speech_end:
+    - lambda: 'id(voice_assistant_phase) = 4;'
+    - script.execute: control_leds
+
+  on_audio_out_start:
+    - lambda: 'id(voice_assistant_phase) = 5;'
+    - script.execute: control_leds
+
+  on_audio_out_end:
+    - lambda: 'id(voice_assistant_phase) = 2;'
+    - script.execute: control_leds
+
+  on_disconnected:
+    - lambda: 'id(voice_assistant_phase) = 1;'
+    - script.execute: control_leds
+
+  on_error:
+    - logger.log:
+        format: "voix_rt: error"
+        level: WARN
+    - lambda: 'id(voice_assistant_phase) = 11;'
+    - script.execute: control_leds
+
+# ─── Wake-word dispatch (split model) ────────────────────────────────────────
+# Mode + wake-word are fed by the `voix_set_state` API action that the
+# integration calls on adoption and on every HA-side change. No
+# text_sensor subscriptions = no `voix_slug` substitution needed.
+micro_wake_word:
+  on_wake_word_detected:
+    - if:
+        condition:
+          lambda: |-
+            return wake_word == id(voix_wake_word);
+        then:
+          - logger.log:
+              format: "voix: %s wake word (mode=%s) → handing off to voix bridge"
+              args: ['wake_word.c_str()', 'id(voix_mode_type).c_str()']
+          - voice_assistant.stop:
+          # Kill the wake-word ack chime BEFORE we start. Upstream's mWW
+          # handler kicks off `play_chime` ~immediately on detection —
+          # the chime plays through the same `announcement_resampling_speaker`
+          # chain we need for OpenAI audio. If we don't stop it, the
+          # chime reconfigures the resampler to 48 kHz ~20 ms after we
+          # set ours to 24 kHz, and our first ~2 s of model audio plays
+          # at 2× speed.
+          - speaker.stop:
+              id: announcement_resampling_speaker
+          - voix_realtime_client.start:
+              id: voix_rt
+
+# ─── Globals ─────────────────────────────────────────────────────────────────
+# Fed by the `voix_set_state` API action. The integration pushes both on
+# adoption and on every subsequent change. restore_value=true so a reboot
+# remembers the last-known state until HA re-pushes.
+globals:
+  - id: voix_mode_type
+    type: std::string
+    restore_value: true
+    initial_value: '""'
+  - id: voix_wake_word
+    type: std::string
+    restore_value: true
+    initial_value: '""'

@@ -62,3 +62,19 @@ export const modesApi = {
       body: JSON.stringify(patch),
     }),
 };
+
+export type Device = {
+  deviceId: string;
+  friendlyName?: string;
+  modeId: string;
+  lastSeenMs: number;
+};
+
+export const devicesApi = {
+  list: () => api<Device[]>("/api/devices"),
+  setMode: (deviceId: string, modeId: string) =>
+    api<Device>(`/api/devices/${encodeURIComponent(deviceId)}/mode`, {
+      method: "PUT",
+      body: JSON.stringify({ modeId }),
+    }),
+};

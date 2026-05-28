@@ -13,6 +13,7 @@
 import { Elysia } from "elysia";
 import { getMode, listModes, updateMode, upsertMode } from "../modes/store.ts";
 import type { ModeUpdate } from "../modes/types.ts";
+import { haSync } from "./ha_sync.ts";
 
 export function modesRoute() {
   return (
@@ -38,6 +39,9 @@ export function modesRoute() {
         }
         try {
           const next = await updateMode(params.id, body as ModeUpdate);
+          // Fire-and-forget HA sync. If HA isn't configured this is a
+          // no-op; if it fails the daemon record stays authoritative.
+          haSync.updateMode(params.id, body as Record<string, unknown>);
           return next;
         } catch (err) {
           set.status = 400;

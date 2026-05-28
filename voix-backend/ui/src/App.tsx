@@ -1,42 +1,69 @@
 import { useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { AppShell, type Section } from "./components/AppShell";
 import { ModeEditor } from "./modes/ModeEditor";
 import { ModeList } from "./modes/ModeList";
+import { colors, fontFamily, spacing } from "./lib/theme";
 
 export function App() {
+  const [section, setSection] = useState<Section>("modes");
   const [editingModeId, setEditingModeId] = useState<string | null>(null);
 
+  let title: string;
+  let toolbarRight: React.ReactNode = null;
+  let content: React.ReactNode;
+
+  if (section === "modes") {
+    if (editingModeId === null) {
+      title = "Modes";
+      content = <ModeList onPickMode={setEditingModeId} />;
+    } else {
+      title = "Edit mode";
+      content = <ModeEditor modeId={editingModeId} onClose={() => setEditingModeId(null)} />;
+    }
+  } else if (section === "conversations") {
+    title = "Conversations";
+    content = <Placeholder text="Conversation history view coming soon." />;
+  } else {
+    title = "Devices & settings";
+    content = <Placeholder text="Device + settings view coming soon." />;
+  }
+
   return (
-    <View style={styles.root}>
-      <View style={styles.header}>
-        <Text style={styles.title}>voix</Text>
-        <Text style={styles.subtitle}>
-          {editingModeId ? "edit mode" : "modes"}
-        </Text>
-      </View>
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-        {editingModeId === null ? (
-          <ModeList onPickMode={setEditingModeId} />
-        ) : (
-          <ModeEditor modeId={editingModeId} onClose={() => setEditingModeId(null)} />
-        )}
-      </ScrollView>
-    </View>
+    <AppShell
+      section={section}
+      onPickSection={(s) => {
+        setSection(s);
+        setEditingModeId(null);
+      }}
+      title={title}
+      toolbarRight={toolbarRight}
+    >
+      {content}
+    </AppShell>
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#fafafa" },
-  header: {
-    paddingHorizontal: 20,
-    paddingTop: 24,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
-    backgroundColor: "#fff",
-  },
-  title: { fontSize: 22, fontWeight: "600", color: "#111" },
-  subtitle: { fontSize: 13, color: "#666", marginTop: 2 },
-  scroll: { flex: 1 },
-  scrollContent: { padding: 16, maxWidth: 880, width: "100%", alignSelf: "center" },
-});
+function Placeholder({ text }: { text: string }) {
+  return (
+    <View
+      style={{
+        flex: 1,
+        alignItems: "center",
+        justifyContent: "center",
+        padding: spacing.xl,
+      }}
+    >
+      <Text
+        style={{
+          fontFamily: fontFamily.ui,
+          fontSize: 13,
+          color: colors.textMuted,
+          fontStyle: "italic",
+        }}
+      >
+        {text}
+      </Text>
+    </View>
+  );
+}

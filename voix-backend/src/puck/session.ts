@@ -35,6 +35,7 @@ import { createResampler, resampleChunk } from "../audio/resample.ts";
 import { callTool, gatherAll, listAllTools } from "../context/registry.ts";
 import { voixSource } from "../context/sources/voix.ts";
 import type { ContextEntry, ToolSpec } from "../context/types.ts";
+import { recordSeen } from "../devices/store.ts";
 import { config } from "../env.ts";
 import { appendHistory } from "../history/store.ts";
 import { log } from "../log.ts";
@@ -173,6 +174,13 @@ export class PuckSession {
   }
 
   async start(): Promise<void> {
+    // Record this device's hello so the UI can surface it under
+    // /api/devices. Best-effort — a write failure here is logged but
+    // doesn't gate the session.
+    void recordSeen(this.deps.hello.device_id, {
+      modeId: this.deps.hello.mode_id,
+    }).catch((err) => log.debug("session: recordSeen failed:", err));
+
     // Kick off context gather + tool enumeration BEFORE awaiting the
     // OpenAI WS connect. Both finish in parallel with the realtime
     // handshake (~100ms each), so by the time session.update lands we

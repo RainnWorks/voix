@@ -1,347 +1,329 @@
-# voix — current state & next steps
+# voix · Current State (2026-05-28)
 
-Living document. Updated at the end of each working session. Mirrors what's
-actually deployed on the user's HA + Voice PE (095e4e), not just what's in
-the repo.
+A self-contained snapshot meant to survive context compaction. Read top
+to bottom and you should be able to pick up the work without prior
+context. See `docs/architecture.md` for the deeper rationale and
+roadmap; this doc is "where exactly are we right now".
 
-Last updated: 2026-05-25, end of session 2.
+## Hosts and access
 
-## tl;dr
+- **HA host (HAOS)**: `root@192.168.96.15`. SSH already authorised; no password.
+- **Voice PE puck**: `home-assistant-voice-095e4e` at `192.168.120.218` (DHCP).
+  Different subnet from Mac (`.99.x`) but reachable from HA (`.96.x`).
+- **Mac**: `192.168.99.86`. Tom's dev machine.
+- **Add-on slug**: `b29b9c61_voix-backend`. Supervisor URL inside add-on:
+  `http://supervisor`. Service token in env as `SUPERVISOR_TOKEN`.
+- **GitHub repo**: https://github.com/RainnWorks/voix. Branch: `main`.
+  HA Add-on Store repository URL: `https://github.com/RainnWorks/voix`.
+- **`.env` on Mac** (`/Users/tom/Projects/voix/.env`): has `HA_TOKEN` for HA REST API.
 
-| Mode | Wake word | Status |
-|---|---|---|
-| A — HA Assist | Okay Nabu (slot pending) | Works via stock pipeline. Not the active focus. |
-| C — Dictation | Hey Jarvis (slot 1) | **Working.** Pipeline-based: `conversation.dictation` writes the helper + flashes the LED + returns empty speech. No fake TTS. |
-| B — Realtime | Hey Mycroft (slot 2, **not yet routed** to firmware path) | **WS bridge connects, audio flows device→server, OpenAI never responds.** Active debugging target. |
+## Repo layout (top of tree)
 
-## What's deployed RIGHT NOW
-
-### Firmware on satellite `home-assistant-voice-095e4e` (Voice PE)
-
-Built and OTA'd from `esphome/home-assistant-voice-095e4e.yaml` via
-`scripts/build-local.sh upload`. Compile time ~20-30 s warm. Recent
-flash sizes: ~3.24 MB used / 3.93 MB partition (82.5 %), RAM ~22.9 %.
-
-Components added on top of the stock Voice PE chain:
-
-- `globals: voix_mode` + `voix_last_wake_word` — captured in
-  `micro_wake_word.on_wake_word_detected` from the wake-word phrase.
-- `voice_assistant.on_listening` — mode-discriminated outer ring
-  color wash (1=blue assist, 2=amber dictation, 3=magenta realtime).
-- `voice_assistant.on_end` — outer ring fade off.
-- `voice_assistant.on_error` — outer ring red flash.
-- `external_components: local components/voix_realtime_client` —
-  our custom C++ component.
-- `voix_realtime_client:` — bound to `i2s_mics` + `announcement_resampling_speaker`,
-  server `ws://192.168.96.15:8123/api/voix/realtime`. `on_connected`
-  → magenta outer ring; `on_disconnected` → off.
-- `api.actions: voix_realtime_{start,stop,interrupt}` — exposed as HA
-  services `esphome.home_assistant_voice_095e4e_voix_realtime_*`. Manual
-  test handles before mWW routing.
-
-### Custom component `esphome/components/voix_realtime_client/`
-
-Three files: `__init__.py` (ESPHome schema + automation registrations),
-`voix_realtime_client.h`, `voix_realtime_client.cpp`.
-
-What it does today:
-
-- Subscribes to the configured microphone's `add_data_callback`
-  unconditionally at setup. Mic data arrives whenever any other
-  consumer (mWW, voice_assistant) has the mic running — we piggyback.
-- **De-interleaves stereo → mono** in `on_mic_data_` (keeps even-indexed
-  PCM16 samples = channel 0 = the voice_kit AEC-processed signal).
-- Queues mono chunks in `outbound_` (mutex-protected deque, capped at
-  32 chunks, drops oldest on overflow).
-- Main `loop()` drains the outbound queue → `esp_websocket_client_send_bin`
-  (non-blocking; drops on full).
-- WS binary frames received → queued in `inbound_` (same cap pattern)
-  → main loop drains → `speaker->play()` with re-queue-on-partial-accept.
-- WS event handler thread defers state changes via atomic flags
-  drained on the main loop. Triggers fire main-loop-safe.
-- Periodic stats log every 2 s while running: chunk counts + byte
-  counters for both directions.
-
-What it does NOT do yet:
-
-- Accept `mode` or `wake_word` arguments to `.start()`. (The unified
-  dictation-+-realtime protocol design needs this; see Next Steps.)
-- Real JSON parsing on incoming text frames; it does lazy substring
-  sniffs for "audio_start"/"audio_end".
-- Disconnect/clean state when WS server goes away. (`on_disconnected`
-  trigger fires, but the firmware doesn't auto-reconnect, and may
-  not unblock if the server-side socket half-closes.)
-
-### HA integration `ha-integration/custom_components/voix/`
-
-Installed at `/config/custom_components/voix/` on the HA host.
-Restarted HA picks it up. Single config entry, `unique_id=voix`,
-data has `openai_api_key` (extracted server-side from the user's
-existing `openai_conversation` entry) + dictation/LED defaults.
-
-Platforms:
-
-- `conversation.dictation` — Mode C agent. Writes the input_text
-  helper, flashes the LED via service call, fires
-  `voix_dictation_captured` event, returns empty speech.
-- `conversation.realtime` — pipeline-mode B agent (legacy path).
-  Returns `continue_conversation=true` + transcript-as-speech so HA
-  doesn't skip the TTS stage. Currently NOT used by the WS-bridge
-  Mode B path.
-- `stt.realtime` / `tts.realtime` — pipeline-mode B engines. Bridges
-  STT audio to OpenAI Realtime in a turn-based way. Worked for one
-  turn, but UX is turn-based with no interruption — the reason we
-  built the WS-bridge path.
-- `text.dictation` — surfaces the latest dictation transcript as a
-  HA-owned TEXT entity (replaces the user-created `input_text.*`
-  helper). Per-device entity creation is a TODO (see Next Steps).
-
-WebSocket endpoint:
-
-- `ws_view.py` registers `/api/voix/realtime`. `requires_auth=False`
-  for now (LAN-only assumption). Per device connection:
-  - Holds the device WS, waits for first binary chunk before opening
-    OpenAI Realtime (lazy — zero cost if device never speaks).
-  - OpenAI connect: `wss://api.openai.com/v1/realtime?model=<model>`,
-    `Authorization: Bearer <key>`, 10 s connect timeout. Session.update
-    uses the new "GA" shape (`session.type=realtime`, audio nested
-    under `audio.input`/`audio.output`).
-  - Pump device→openai: upsamples 16 → 24 kHz with `audioop.ratecv`,
-    base64-encodes, sends `input_audio_buffer.append`.
-  - Pump openai→device: forwards 24 kHz PCM straight from `audio.delta`
-    events. (Device's `announcement_resampling_speaker` does 24→48 kHz.)
-  - Watchdog task: closes the bridge on `IDLE_TIMEOUT_S = 30` (no
-    audio in for 30 s) or `SESSION_HARD_MAX_S = 120` ceiling.
-  - Logs session duration + total bytes both directions at WARNING
-    on close (so it surfaces in `system_log/list`).
-
-### HA config (live state on user's HA)
-
-- `internal_url` set to `http://192.168.96.15:8123` (direct to HA Core
-  — bypasses reverse proxy, reachable from the satellite's VLAN).
-- Voice PE `095e4e`:
-  - wake_word slot 1 = "Hey Jarvis" → `select.…assistant` = voix-dictation
-  - wake_word slot 2 = "Hey Mycroft" → `select.…assistant_2` = voix-realtime
-    (the **pipeline-based** Mode B; firmware-WS-bridge Mode B isn't
-    routed from mWW yet, only callable via `voix_realtime_start` service)
-  - wake_word_sensitivity = Very sensitive
-  - mute = off
-- Pipelines: Home Assistant (default), V1 (legacy, broken Wyoming), voix-assist,
-  voix-dictation, voix-realtime
-- OpenAI Conversation integration STT/TTS use `en-US` (NOT `en` — that
-  bit us hard; HA's STT resolver does exact language tag match)
-
-## What we proved this session
-
-1. **Local build pipeline works** (`scripts/build-local.sh`). Cold compile
-   ~3 min, warm compile ~20-30 s. ~5× faster iteration than the HA
-   dashboard. Toolchain cached at `esphome/.esphome/`.
-2. **Custom firmware component compiles + runs.** `voix_realtime_client`
-   adds ~6 KB Flash, ~300 B RAM.
-3. **End-to-end WS bridge works at the connection level**: device opens
-   WS to `/api/voix/realtime`, HA's aiohttp view accepts, `on_connected`
-   trigger fires, LED turns magenta.
-4. **Mic audio reaches the server.** A 70-s session sent 8.67 MB —
-   confirmed audio is flowing. (Subsequently identified as stereo
-   interleaved — fixed by de-interleaving channel 0 in firmware.)
-5. **Cost safeguards in place** in `ws_view.py`: lazy OpenAI open,
-   30 s idle timeout, 120 s hard max, byte counters logged on close.
-
-## Session 3 update (end of context):
-
-**Bridge confirmed alive end-to-end.** OpenAI received our session,
-responded with a default greeting ("Hi there! How can I help you today?"),
-and the audio reached the satellite speaker (crackled — output format
-is also off). Two specific bugs identified, both audio-format related:
-
-1. **Input bytes not being recognized as audio.** Error from OpenAI when
-   we force-committed: `input_audio_buffer_commit_empty - "buffer too
-   small. Expected at least 100ms of audio, but buffer only has
-   0.00ms of audio."` — despite 808 KB sent over 31 s. **OpenAI is
-   silently treating every `input_audio_buffer.append` as having 0 ms
-   of valid audio.** Possible causes:
-   - Audio format declaration disagrees with actual byte format
-     (`audio.input.format` shape might be wrong — try
-     `"format": "pcm16"` string instead of `{type, rate}` dict)
-   - `audioop.ratecv` 16→24 kHz upsample producing degenerate samples
-     (verify by dumping a chunk and inspecting)
-   - Wrong byte order, bit depth, or sample width
-   - Device is sending 32-bit samples not 16-bit
-     (byte math doesn't quite match either: 25.7 KB/s actual vs
-     32 KB/s expected for mono PCM16 16 kHz — the de-interleave may
-     be cutting wrong stride)
-
-2. **Output playback crackles.** Server sends raw 24 kHz PCM16 mono;
-   device routes to `announcement_resampling_speaker`. Crackling
-   suggests the speaker either expects a different bit depth or a
-   different rate. Verify the resampler's declared input rate; may
-   need an intermediate explicit-rate speaker.
-
-3. **`session.update` may still not be applying.** Even with `type:
-   realtime` included, `session.created` shows the DEFAULT
-   instructions, not ours. OpenAI may emit `session.updated` somewhere
-   we're missing. Need to scan all logged event types and verify.
-   (But this is secondary — we got an audio response anyway.)
-
-## Session 2 status:
-
-**OpenAI doesn't respond.** After 70 s of mic audio (both stereo and
-mono variants), server logged 0 bytes out. Suspects in priority order:
-
-1. **`session.update` shape may be silently rejected.** Production
-   Realtime API has changed. The current `audio.input.format` /
-   `audio.output.format` nested-dict shape may still be wrong. The
-   beta header is gone but session config could be off. **Action: log
-   ALL OpenAI WS frames at WARNING for one test cycle to see what
-   OpenAI is sending us (errors, session.created, etc.).**
-2. **No explicit `input_audio_buffer.commit`.** With default `turn_detection`
-   (server_vad), commit is auto. But if turn_detection got set wrong
-   or rejected, server_vad might not fire. **Action: try both
-   `turn_detection: null` with explicit commits AND default server_vad.**
-3. **API key scope.** The key works for `openai_conversation` (HTTPS API)
-   but may not have Realtime entitlement on the account. **Action:
-   curl the model list with the key, confirm Realtime models present.**
-4. **Audio format mismatch.** Even after the mono fix, sample-rate
-   conversion math could be off. **Action: dump a sample of the
-   pcm24k we're sending and verify it's playable.**
-
-Also broken / annoying:
-
-- After a Mode B session, the device's LED **stays magenta** until
-  watchdog closes the server side (≤120 s) — the firmware's
-  `on_disconnected` doesn't appear to fire reliably. Likely the device
-  doesn't see the server-side close (TCP half-open). **Action: have
-  firmware send a `{"type": "stop"}` and wait briefly before teardown,
-  or rely on a server-initiated WS close frame the device reacts to.**
-
-## Architecture state
-
-- Mode A: stock HA pipeline. Untouched.
-- Mode C: HA pipeline + our conversation agent. Untouched in this session.
-- Mode B: TWO architectures coexist —
-  - **Pipeline-based** (single-turn, turn-based, no interrupt): `stt.realtime`
-    + `conversation.realtime` + `tts.realtime`. Bound to voix-realtime
-    pipeline, bound to slot 2 wake word "Hey Mycroft". This is what
-    fires today when the user says "Hey Mycroft" via the standard
-    Assist pipeline.
-  - **Firmware WS bridge** (full duplex, multi-turn, interruptible):
-    `voix_realtime_client` + `ws_view.py`. Only fires when the
-    `voix_realtime_start` service is called. mWW does NOT route to it yet.
-
-Plan is to retire the pipeline-based Mode B once the firmware WS path
-is solid AND we can route dictation through the same bridge.
-
-## Next steps (priority order)
-
-1. **Get OpenAI responding.** Verify session.update shape + dump OpenAI
-   frames at WARN level. This unblocks every other Mode B work item.
-2. **Fix the LED-stays-magenta-after-stop bug.** Two-step shutdown in
-   firmware: send `{"type":"stop"}`, sleep 200 ms, then close socket.
-   Server reacts to the close and the round-trip happens cleanly.
-3. **Pass `mode` + `wake_word` to `.start()`.** Update the action
-   schema (Python) + C++ action class to accept templated parameters;
-   forward in the WS hello message:
-   ```json
-   {"type":"hello","mode":"realtime","wake_word":"Hey Mycroft","device":"<name>"}
-   ```
-4. **Server-side dispatch on `mode`** in `ws_view.py`. realtime branch
-   = current logic; dictation branch = buffer audio until device sends
-   `audio_end`, then POST OpenAI Whisper, write `text.voix_dictation`,
-   send `transcript` text frame back, close.
-5. **Route Hey Mycroft → `voix_realtime_client.start: { mode: realtime }`**
-   in `mWW.on_wake_word_detected`. Route Hey Jarvis → same start with
-   `mode: dictation`. Retire `voix-dictation` pipeline + the
-   `stt.realtime`/`tts.realtime` engines once verified.
-6. **Per-device entities.** WS view dispatches a "device discovered"
-   signal on first hello message; `text.py` listens and calls
-   `async_add_entities` per device. Devices registered in HA's
-   device registry by MAC.
-7. **Token-based auth on the WS endpoint.** Generate a per-device
-   token at integration setup; store in the device's secrets.yaml;
-   firmware sends it in a header or query param; `ws_view.py` validates.
-8. **Test on the second Voice PE** (`096013`, currently offline,
-   firmware 25.1.0 — needs an upgrade). Confirms hardware-portability
-   of the build.
-
-## Gotchas / lessons (for future-me)
-
-- **HA pipeline requires non-empty speech to run TTS.** Returning
-  empty speech from the conversation agent makes the pipeline skip
-  TTS entirely — that's why our Mode B-pipeline first attempt didn't
-  play the audio our STT had stashed. Fixed by returning the
-  transcript (or any non-empty string) as the "speech".
-- **OpenAI STT/TTS language is BCP-47 (en-US), not `en`.** HA's
-  resolver does exact match.
-- **Upstream Voice PE 26.4.0 silently pulls `esphome@ff8ce89…` for
-  http_request**, which conflicts with newer ESPHome's `micro_wake_word`
-  registration and silently breaks wake-word detection. Fixed in 26.5.0
-  which removed the pin. We require ESPHome dashboard ≥ 2026.5.0.
-  Issue: <https://github.com/esphome/home-assistant-voice-pe/issues/582>.
-- **Upstream Voice PE 8 MB build chains 3 YAMLs**: `home-assistant-voice.8mb.yaml`
-  → `home-assistant-voice.factory.yaml` → `home-assistant-voice.yaml`.
-  Including only the bottom one gives you wrong partition table +
-  no BLE-wait wrapper on `on_client_connected`, which silently breaks
-  micro_wake_word startup.
-- **HA's `internal_url` MUST be reachable from the satellite's VLAN.**
-  When set to the external hostname, the satellite can't fetch TTS
-  audio and pipelines stay degraded (sometimes silently blocking
-  mWW startup). Set it to `http://<ha-ip>:8123` directly.
-- **ESPHome restricts `homeassistant.event:` names to `esphome.*` prefix.**
-  Our `voix.realtime_requested` was rejected; we ended up going the
-  custom-firmware-component path which sidesteps this entirely.
-- **`voice_assistant.stop:` only stops satellite-side audio capture.**
-  HA's pipeline runs server-side and ignores it. To prevent HA from
-  speaking after dictation, the conversation agent has to return empty
-  speech OR we have to short-circuit at the server.
-- **i2s_mics on Voice PE is stereo interleaved PCM16** (2 channels
-  per frame). To get mono for OpenAI, de-interleave keeping even-
-  indexed bytes (channel 0 = AEC-processed). Upstream's mWW config
-  uses `channels: 1` for this — we did it in C++.
-- **Don't open OpenAI Realtime until you have user audio.** Charges
-  start the moment the WS is open. `ws_view.py` does this lazily.
-- **`add_data_callback` on the mic fires continuously** while ANY
-  consumer has the mic running (mWW always does, once `mww.start`
-  has fired in `on_client_connected`). Our component gates inside
-  the callback on `state_ == RUNNING` so we only forward during a
-  session.
-
-## Useful one-liners
-
-```bash
-# fast iteration cycle
-./scripts/build-local.sh compile          # ~20 s warm
-./scripts/build-local.sh upload           # compile + OTA
-./scripts/build-local.sh logs             # stream device logs (often flaky)
-
-# deploy HA integration
-scp -rq ha-integration/custom_components/voix root@192.168.96.15:/config/custom_components/
-ssh root@192.168.96.15 'ha core restart'
-
-# manual Mode B test (WS-bridge path)
-curl -X POST -H "Authorization: Bearer $HA_TOKEN" \
-  https://home.thenairn.com/api/services/esphome/home_assistant_voice_095e4e_voix_realtime_start \
-  -d '{}'
-# ...speak...
-curl -X POST -H "Authorization: Bearer $HA_TOKEN" \
-  https://home.thenairn.com/api/services/esphome/home_assistant_voice_095e4e_voix_realtime_stop \
-  -d '{}'
-
-# pull voix-related HA logs
-python3 scripts/ha-ws.py '{"type":"system_log/list"}' | jq '.result[] | select(.source[0]|contains("voix"))'
-
-# force-close any leaked WS sessions (cost safety)
-curl -X POST -H "Authorization: Bearer $HA_TOKEN" -H "Content-Type: application/json" \
-  https://home.thenairn.com/api/services/homeassistant/reload_config_entry \
-  -d "{\"entry_id\":\"<voix_entry_id>\"}"
+```
+voix/
+├── voix-backend/                ← The daemon (Bun + Elysia + TS)
+│   ├── src/
+│   │   ├── index.ts             ← Entrypoint
+│   │   ├── api/                 ← HTTP routes for the UI
+│   │   │   ├── modes.ts         GET/PATCH /api/modes/*
+│   │   │   ├── devices.ts       GET/PUT /api/devices/*
+│   │   │   └── ha_sync.ts       ← Calls HA REST when haUrl+haToken set
+│   │   ├── audio/               ← Resample + (vestigial) echo gate
+│   │   ├── context/             ← MCP-based context sources
+│   │   │   ├── registry.ts      ← Source registry + tool routing
+│   │   │   ├── sources/ha.ts    ← HA MCP via /api/mcp Streamable HTTP
+│   │   │   └── sources/voix.ts  ← Builtin (voix.end_session tool)
+│   │   ├── devices/store.ts     ← Per-device active mode (devices.json)
+│   │   ├── history/             ← Per-session history (jsonl)
+│   │   ├── modes/               ← Mode catalog, built-ins, store
+│   │   ├── post_process/        ← OpenAI+OpenRouter chat completions
+│   │   ├── puck/                ← Puck WS endpoint + session lifecycle
+│   │   ├── realtime/openai.ts   ← OpenAI Realtime client (official SDK)
+│   │   ├── recordings/          ← Per-session WAV capture + /recordings/
+│   │   ├── storage/             ← atomic writes + path resolution
+│   │   ├── transcripts/         ← Plain-text transcript files
+│   │   └── ui/route.ts          ← Serves ui/dist
+│   ├── ui/                      ← React + react-native-web UI
+│   │   ├── package.json
+│   │   ├── vite.config.ts       ← Aliases react-native → react-native-web
+│   │   ├── src/
+│   │   │   ├── App.tsx          ← AppShell + section routing
+│   │   │   ├── lib/
+│   │   │   │   ├── api.ts       ← Daemon fetch wrappers
+│   │   │   │   └── theme.ts     ← Tokens + 12-colour mode palette
+│   │   │   ├── components/
+│   │   │   │   ├── Puck.tsx     ← Brand glyph (ink squircle + circle)
+│   │   │   │   ├── Wordmark.tsx ← Voix /vwa/ wordmark
+│   │   │   │   └── AppShell.tsx ← Titlebar + sidebar + main pattern
+│   │   │   └── modes/
+│   │   │       ├── ModeList.tsx ← Card grid + active pill + activate btn
+│   │   │       └── ModeEditor.tsx ← Inline name, 12-swatch picker, autosave
+│   │   └── dist/                ← Built bundle (gitignored)
+│   ├── config.yaml              ← HA Add-on manifest (ingress: true)
+│   ├── Dockerfile               ← Bun Alpine, builds UI at image-build
+│   ├── run.sh                   ← Entrypoint; dev_mode git-pull + UI rebuild
+│   └── .env                     ← Local dev: OPENAI_API_KEY + VOIX_WS_TOKEN
+├── esphome/
+│   ├── components/voix_realtime_client/   ← Puck firmware
+│   ├── voix-package.yaml        ← Imported by device YAML
+│   └── home-assistant-voice-095e4e.yaml   ← Per-device YAML
+├── ha-integration/custom_components/voix/ ← HA discovery + adoption push
+├── docs/                        ← architecture.md, STATE.md (this), adr/
+├── voix-brand-guide.html        ← Marketing brand (paper, Instrument Serif)
+└── voix-desktop-guide.html      ← Desktop app brand (system fonts, sober)
 ```
 
-## Open files of interest
+## Status table
 
-- `esphome/components/voix_realtime_client/{__init__.py,voix_realtime_client.h,voix_realtime_client.cpp}`
-  — custom firmware component
-- `esphome/home-assistant-voice-095e4e.yaml` — Tom's specific consumer YAML
-- `ha-integration/custom_components/voix/ws_view.py` — server-side WS bridge
-- `ha-integration/custom_components/voix/realtime.py` — pipeline-mode B session manager (legacy path; will retire)
-- `ha-integration/custom_components/voix/{stt,tts,conversation,text}.py` — pipeline platforms + dictation conv agent + text entity
-- `scripts/build-local.sh` — local compile/upload/logs wrapper
-- `scripts/ha-ws.py` — HA WebSocket helper for pipeline-debug + service calls
+| System | State | Notes |
+|---|---|---|
+| Daemon scaffold (Bun/Elysia) | ✓ | HA Add-on at port 8765 with ingress |
+| Puck WS protocol | ✓ | `hello` + binary mic + `audio_start`/`audio_end` + `ready_for_input` |
+| OpenAI Realtime via SDK | ✓ | `openai/realtime/ws`, GA schema |
+| Mode catalog | ✓ | 6 built-ins: Realtime/Dictation/Message/Email/Note/Code |
+| Post-processing (dictation) | ✓ | OpenAI + OpenRouter; raw on error |
+| History (JSONL) | ✓ | Per-turn raw + processed + context snapshot |
+| Per-session recordings | ✓ | `/recordings/` browser with mic+speaker WAVs |
+| HA MCP context source | ✓ | Streamable HTTP at `/api/mcp` via supervisor proxy |
+| `voix.end_session` builtin tool | ✓ | Model invokes it when conversation wraps |
+| Echo: puck-side half-duplex | ✓ | `speaker_->is_running()` gates mic at source |
+| `ready_for_input` ping | ✓ | Edge-detect speaker drain; resets daemon idle timer |
+| AGC channel | ✓ | Reverted from NS after measuring (NS was too quiet) |
+| Watchdog (idle close) | ✓ | Tracks both userSpeaking + assistantSpeaking |
+| atomicWrite collision fix | ✓ | crypto.randomBytes suffix prevents same-ms collision |
+| Daemon survives ENOENT/etc | ✓ | unhandledRejection logged, NOT exit(1) |
+| HA Add-on `dev_mode` pull | ✓ | Polls main every 30s; auto-rebuild UI on commits |
+| `/api/modes/*` REST | ✓ | UI consumes via fetch |
+| `/api/devices/*` REST | ✓ | List + PUT mode (auto-syncs to HA when haUrl+haToken) |
+| `ha_sync` module | ✓ | Calls HA REST for `voix.update_mode` + `voix.set_mode` |
+| React UI scaffold (RN-Web) | ✓ | Mode list + mode editor + 12-swatch picker + autosave |
+| HA Add-on ingress | ✓ | `ingress: true, ingress_port: 8765` — UI in HA's chrome |
+| HA integration trim | ✗ | Still has ~3000 LOC of old bridge code, harmless dead weight |
+| Mac native shell (SwiftUI/Tauri) | ✗ | Not started. Roadmap A in architecture.md. |
+| Mac mic as input source | ✗ | Not started; same WS protocol |
+| iOS keyboard | ✗ | Future. Same React Native components, native shell |
+| Auto-routing (dictation modes) | ✗ | Routing hint field exists, no router |
+| Cost tracking | ✗ | per-model costPerMinute + aggregation |
+| Multi-puck `end_session` routing | ✗ | Closes ALL bound sessions currently |
+| Conversation history UI | ✗ | Placeholder screen |
+| Devices & settings UI | ✗ | Placeholder screen |
+| Mode creation/deletion UI | ✗ | Daemon POST exists; no UI button yet |
+
+## The just-landed redesign
+
+**Why**: the first UI I shipped was generic Material-ish, white background, no
+puck iconography, no brand. Tom called it: "really need to redesign that. Like.
+Really bad". The brand assets are:
+
+- `voix-brand-guide.html` — **marketing** brand: cream paper (#FAF8F3),
+  Instrument Serif display, Hanken Grotesk body, HA blue (#03A9F4) as rare
+  accent. NEVER Inter/Geist/Manrope/Söhne. NEVER em dashes. NEVER nested cards.
+- `voix-desktop-guide.html` — **desktop app** brand: *deliberately sober*.
+  System fonts only (SF Pro Text on Mac, Segoe UI Variable on Windows).
+  JetBrains Mono for technical labels only. System accent (#007AFF) for
+  sidebar selection, focus rings, links. HA blue ONLY for "Voix moments"
+  (puck centre, status pills, VOIX speaker tag, active-mode pill).
+  **Never put HA blue in chrome.**
+
+The 12-colour mode palette is the desktop brand's exception to "three colours
+full stop": 6 saturated (HA blue, Amber, Violet, Green, Coral, Magenta), 6 soft
+(Sky, Lemon, Lavender, Mint, Peach, Slate). Defined in
+`voix-backend/ui/src/lib/theme.ts` as `modePalette` + `paletteOrder`. Existing
+modes with arbitrary RGB get snapped to the nearest swatch via
+`nearestSwatch()`.
+
+**Puck iconography** is the brand's recurring element. `<Puck size={N} />`
+component in `ui/src/components/Puck.tsx`. Ink-coloured rounded square (22%
+border radius of the side), HA-blue (or mode-coloured) circle at 35% of the
+side, centered. Used in:
+
+- Wordmark (size 14)
+- Sidebar Modes flat item (size 11)
+- Mode list cards (size 44)
+- Mode editor identity row (size 56)
+
+**`outlineStyle: "none"` was used twice and got pulled both times** — Tom
+hates type-system escape hatches. Browser focus rings respect the system
+accent and the brand guide explicitly says to keep them. Selected-swatch
+indication is now a wrapper `<View>` with a coloured border, NOT `boxShadow`.
+
+## HA sync contract
+
+**Rule**: whenever the daemon mutates state, if `haUrl` + `haToken` are
+configured, fire a matching call into HA so entities mirror the change.
+Source of truth stays on the daemon; HA is a mirror.
+
+Wired today via `src/api/ha_sync.ts`:
+
+| Daemon mutation | HA call | Effect |
+|---|---|---|
+| `PATCH /api/modes/:id` | `voix.update_mode` (snake_case fields) | HA catalog stays in sync |
+| `PUT /api/devices/:id/mode` | `voix.set_mode` | HA pushes new mode_id to puck NVS |
+
+Token resolution per `src/env.ts`:
+1. Add-on option `ha_token` (rare, user override)
+2. Env var `HA_TOKEN` (dev mode)
+3. `SUPERVISOR_TOKEN` injected when `homeassistant_api: true` (production default)
+
+`haUrl` default is `http://supervisor/core` (HA-core proxy). MCP client targets
+`/api/mcp` (Streamable HTTP) since `/mcp_server/sse` is outside the proxy mount
+and 404s.
+
+**Not yet synced** (TODOs):
+- Mode creation (`POST /api/modes`) doesn't yet call `voix.create_mode`
+- Mode deletion isn't exposed via daemon yet
+- Recording metadata / transcripts don't push to HA entities
+
+## How dev iteration works
+
+**Daemon source change**:
+```
+edit voix-backend/src/...
+git add + commit + push
+# wait ~30s — run.sh poller pulls + bun --watch reloads
+```
+
+**UI source change**:
+```
+edit voix-backend/ui/src/...
+git add + commit + push
+# same 30s — run.sh poller does `bun run build` after reset
+```
+
+**Firmware change**:
+```
+edit esphome/components/voix_realtime_client/*
+pkill -f "esphome logs esphome/home-assistant-voice-095e4e"
+scripts/build-local.sh upload 192.168.120.218
+# ~45s compile + 12s OTA
+nohup esphome logs ... > /tmp/voix-device.log &
+```
+
+**Add-on config change** (`config.yaml`, `Dockerfile`, `run.sh`):
+```
+push to main → does NOT auto-pick-up. Need rebuild:
+ssh root@192.168.96.15 bash <<'EOF'
+TOKEN=$SUPERVISOR_TOKEN
+curl -s -X POST -H "Authorization: Bearer $TOKEN" http://supervisor/store/reload
+curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+  http://supervisor/addons/b29b9c61_voix-backend/rebuild
+EOF
+# ~1-2 min for image build
+```
+
+**Add-on options change** (`openai_api_key`, `ha_token`, `dev_mode`, etc.):
+```
+ssh root@192.168.96.15 bash <<'EOF'
+TOKEN=$SUPERVISOR_TOKEN
+curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"options": {... ALL options here, partial not allowed ...}}' \
+  http://supervisor/addons/b29b9c61_voix-backend/options
+curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+  http://supervisor/addons/b29b9c61_voix-backend/restart
+EOF
+```
+
+## Lessons learned (DO NOT REPEAT)
+
+- **AGC channel is right for the XMOS pipeline**, NS is too quiet. Tried both;
+  measured. NS output produced mic_rms 55-99 and STT word-confusion ("I'm
+  shouting at you" → "ChatGPT, I will show at you"). AGC mic_rms 1000s, clean
+  STT. Echo gating happens at the PUCK now, not the daemon, so AGC's
+  amplification doesn't cause loops.
+- **The puck must gate mic on `speaker_->is_running()`** at the firmware
+  level. Daemon-side energy thresholds calibrated to volume, never worked
+  across users. Half-duplex on the chip is what HA's stock voice assistant
+  does for the same hardware reason.
+- **`ready_for_input` ping from puck → daemon** resets idle timer correctly.
+  Without it, the watchdog ticks during speaker drain and closes the session
+  before the user has a chance to respond.
+- **Watchdog must respect both `userSpeaking` and `assistantSpeaking`**. Either
+  alone leaves the other side open to premature close.
+- **`atomicWrite` MUST use crypto random in the tmp name**. `Date.now()`
+  granularity is not enough — concurrent calls within 1ms generate the same
+  path and race.
+- **`unhandledRejection` MUST NOT `process.exit(1)`** in a long-running daemon.
+  Log and continue. `uncaughtException` stays fatal (engine state is gone).
+- **HA's MCP proxy is at `/api/mcp` (Streamable HTTP), not `/mcp_server/sse`**.
+  The Supervisor's `/core/*` proxy only forwards `/api/*`.
+- **SUPERVISOR_TOKEN works for HA's `mcp_server` integration via `/api/mcp`**.
+  We thought it didn't (got 403 on /mcp_server/sse) but that was the URL,
+  not the auth.
+- **Do not scrape `.storage/auth` for HA tokens** — classifier-blocked + bad
+  practice. Use a long-lived access token via Profile → Security.
+- **`as never` / `outlineStyle: "none"`-style escape hatches are not OK in
+  this codebase**. Tom hates them; he's caught it twice. Fix types properly
+  or use a different visual pattern (e.g. wrapper View instead of `boxShadow`).
+- **Marketing brand and desktop brand are different**. The website is loud
+  (Instrument Serif, cream paper); the app is sober (system fonts, neutral
+  surfaces). The puck is the only place character lives in the app.
+
+## What's left
+
+**Short-term** (next session likely):
+1. **Conversation history UI** — list past sessions, click to view transcript +
+   play mic/speaker WAVs inline. Hooks already exist (`/recordings/` and
+   `history.jsonl`); just needs a React screen.
+2. **Devices & settings UI** — show connected puck(s), firmware version, mode
+   options, daemon config. `/api/devices` exists.
+3. **Mode creation flow** — currently no `+ New mode` button. Daemon's
+   `POST /api/modes` exists; needs UI + `voix.create_mode` HA sync.
+4. **Mode deletion** — daemon needs DELETE endpoint + HA sync to
+   `voix.delete_mode`.
+5. **Better activate-mode signal** — clicking Activate works but if the puck
+   is offline the change only lands on next adoption. Could show a "will apply
+   next wake" hint when puck is idle.
+
+**Medium-term**:
+- Trim the HA integration to ~300 LOC. Currently ~3000 LOC of dead bridge
+  code. Plan: delete `ws_view.py`, `post_process.py`, the mode catalog code,
+  most of `__init__.py`. Keep ESPHome discovery, adoption push, mode select
+  entity, LED color push.
+- Mac native shell. SwiftUI menu bar app + hotkey + mic capture + paste.
+  Embeds the React Native components for the settings sheets. Connects to
+  daemon over WS using the same `device_id`-based protocol pucks use.
+- Auto-routing for dictation modes. Each mode already has `routingHint`. Need
+  a small/cheap LLM call: given context (focused app, file extension, window
+  title), pick the best mode. Cache `bundleId → mode_id`.
+
+**Longer-term**:
+- iOS keyboard replacement. Same React Native components, wrapped in a Swift
+  keyboard extension. Connects to a daemon (Mac or hosted).
+- Cost tracking. Per-model `costPerMinute` metadata, aggregated per mode,
+  surfaced in the UI.
+- Stage-tuning revisit. `channel_0_stage=AEC` + `gain_factor` boost in the
+  ESPHome microphone source. The livekit-on-vpe project measured AEC=4 on
+  sine wave; if we can stay loud enough for STT, we'd get cleaner echo
+  cancellation than half-duplex.
+
+## Test plan for the very next iteration
+
+After this push lands and the dev pull picks it up:
+
+1. **UI loads in HA's Add-on tab**. Settings → Add-ons → voix backend → Open
+   Web UI. Should see the new brand: sidebar with wordmark, "Modes" selected,
+   grid of 6 cards each with a puck icon, ACTIVE pill on the current mode.
+2. **Mode editor opens on card click**. Big puck preview top-left, inline name
+   + description inputs, 12-swatch picker that visibly highlights the current
+   color. Click a different swatch → puck updates, "Saved" appears in toolbar.
+3. **Activate button**. Click a non-active card's Activate button → ACTIVE pill
+   moves there. Check HA's mode select entity for the puck — should reflect
+   the change (the `haSync.setDeviceMode` call should have fired).
+4. **Sanity-check the puck path is still healthy**. Wake-word: should still
+   work. Check `/recordings/` browser shows the new session's WAVs. Check the
+   model didn't loop (puck-side half-duplex still active).
+
+If any of those break, the recent changes to look at are:
+- `ui/src/components/AppShell.tsx` (layout)
+- `ui/src/modes/ModeList.tsx` (grid + activate)
+- `ui/src/modes/ModeEditor.tsx` (12-swatch picker, autosave)
+- `src/api/devices.ts` + `src/devices/store.ts` (active mode state)
+- `src/api/ha_sync.ts` (HA mirror)
+
+## See also
+
+- `docs/architecture.md` — long-form why and roadmap
+- `CLAUDE.md` — operational guide for AI agents (log streams, deployment
+  patterns, HA gotchas)
+- `voix-brand-guide.html` / `voix-desktop-guide.html` — the visual system

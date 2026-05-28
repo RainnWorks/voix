@@ -10,10 +10,12 @@
  */
 
 import { Elysia } from "elysia";
+import { devicesRoute } from "./api/devices.ts";
 import { modesRoute } from "./api/modes.ts";
 import { registerSource } from "./context/registry.ts";
 import { HAContextSource } from "./context/sources/ha.ts";
 import { voixSource } from "./context/sources/voix.ts";
+import { loadDevices } from "./devices/store.ts";
 import { config } from "./env.ts";
 import { loadHistory } from "./history/store.ts";
 import { log } from "./log.ts";
@@ -28,6 +30,7 @@ import { uiRoute } from "./ui/route.ts";
 // on next clean save.
 await loadModes().catch((e) => log.warn("boot: loadModes failed", e));
 await loadHistory().catch((e) => log.warn("boot: loadHistory failed", e));
+await loadDevices().catch((e) => log.warn("boot: loadDevices failed", e));
 
 // voix-builtin source — always registered. Exposes `end_session` so
 // the model can close conversations cleanly when they wrap (the
@@ -55,6 +58,7 @@ const app = new Elysia()
   .get("/healthz", () => ({ ok: true, version: "0.1.0" }))
   .use(puckRoute())
   .use(modesRoute())
+  .use(devicesRoute())
   .use(recordingsRoute())
   .use(uiRoute())
   .listen(config.port);

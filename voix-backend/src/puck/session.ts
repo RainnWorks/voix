@@ -30,6 +30,7 @@
  */
 
 import { randomBytes } from "node:crypto";
+import { EchoGate } from "../audio/echo_gate.ts";
 import { createResampler, resampleChunk } from "../audio/resample.ts";
 import { callTool, gatherAll, listAllTools } from "../context/registry.ts";
 import type { ContextEntry, ToolSpec } from "../context/types.ts";
@@ -107,11 +108,17 @@ export type SessionDeps = {
 export class PuckSession {
   private openai: OpenAIRealtimeClient | null = null;
   private upsample = createResampler(PUCK_INPUT_RATE, OPENAI_RATE);
+  /** Echo gate — drops mic chunks that look like the model's own
+   *  speech bleeding back through the puck's mic. Only used for
+   *  realtime mode (dictation has no model output, no echo to gate). */
+  private echoGate = new EchoGate();
   private startedAt = Date.now();
   private lastSpeechActivity = Date.now();
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
   private userSpeaking = false;
   private closed = false;
+  /** Periodic gate-stats logger counter. */
+  private echoLogCounter = 0;
 
   private readonly sessionId = randomBytes(8).toString("hex");
   private mode: Mode;
@@ -234,12 +241,32 @@ export class PuckSession {
 
   /**
    * Called by the WS server when a binary frame lands. Pucks send raw
-   * PCM16 @ 16 kHz; we upsample to 24 kHz and forward to OpenAI.
+   * PCM16 @ 16 kHz; we upsample to 24 kHz and forward to OpenAI —
+   * except realtime sessions go through the echo gate first to drop
+   * chunks that look like the model's own voice bleeding back through
+   * the mic (without this, sessions loop forever on the model's own
+   * "Sounds good" → semantic_vad → reply → repeat).
    */
   handlePuckAudio(pcm16k: Buffer): void {
     if (this.closed || !this.openai) return;
     if (pcm16k.length === 0) return;
     this.lastSpeechActivity = Date.now();
+
+    if (this.mode.type === "realtime") {
+      const { forward, micRms, peakRefRms } = this.echoGate.shouldForward(pcm16k);
+      // Log every ~50 chunks (~3s of 16 kHz mic) so we can see how the
+      // gate is performing without flooding logs.
+      this.echoLogCounter++;
+      if (this.echoLogCounter % 50 === 0) {
+        log.debug(
+          `session: mic gate ${forward ? "forward" : "drop"} ` +
+            `mic_rms=${Math.round(micRms)} ref=${Math.round(peakRefRms)} ` +
+            `(${this.echoGate.stats()})`,
+        );
+      }
+      if (!forward) return;
+    }
+
     const pcm24k = resampleChunk(pcm16k, this.upsample);
     this.openai.sendAudio(pcm24k);
   }
@@ -284,7 +311,9 @@ export class PuckSession {
       case "audio.delta":
         // Forward OpenAI's 24 kHz speaker audio straight to the puck —
         // the firmware plays at 24 kHz natively, no further resampling
-        // needed.
+        // needed. Also record it with the echo gate so subsequent mic
+        // chunks know how much echo to expect.
+        this.echoGate.observeSpeaker(event.pcm24kBytes);
         this.sendBinaryToPuck(event.pcm24kBytes);
         break;
 

@@ -273,6 +273,15 @@ export class OpenAIRealtimeClient {
 
   private sendJSON(payload: unknown): void {
     if (!this.ws || this.closed) return;
+    // Bun's WebSocket throws InvalidStateError when send is called
+    // while readyState is CONNECTING or CLOSING. The connect() promise
+    // resolves on the "open" event but a fast caller can still race
+    // it; check explicitly so we don't spam noisy DOMException stack
+    // traces into the logs.
+    if (this.ws.readyState !== WebSocket.OPEN) {
+      log.debug(`realtime: skipping send — ws not OPEN (state=${this.ws.readyState})`);
+      return;
+    }
     try {
       this.ws.send(JSON.stringify(payload));
     } catch (e) {

@@ -1,0 +1,15 @@
+# Home Assistant Add-on repository descriptor.
+#
+# Presence of this file tells the HA Supervisor that the GitHub repo
+# (when added via Settings → Add-ons → Add-on Store → ⋮ → Repositories)
+# contains one or more add-ons. The Supervisor scans subdirectories
+# looking for `config.yaml` and lists each found add-on in the store.
+#
+# Today there's one: `voix-backend/` — the daemon that runs the WS
+# bridge, post-processing, and MCP context gathering. Future add-ons
+# (e.g. a standalone Mac MCP server packaged for non-Mac users) can
+# live as siblings.
+
+name: voix
+url: https://github.com/RainnWorks/voix
+maintainer: Tom Nairn <thomas@rowm.co>

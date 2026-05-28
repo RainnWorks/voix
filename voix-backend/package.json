@@ -1,0 +1,23 @@
+{
+  "name": "voix-backend",
+  "version": "0.1.0",
+  "description": "voix daemon — WS bridge between Voice PE pucks (or Mac mic) and OpenAI Realtime, with pluggable MCP context gatherers.",
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "biome check src",
+    "format": "biome format --write src"
+  },
+  "dependencies": {
+    "@elysiajs/eden": "^1.4.5",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "elysia": "^1.4.10"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.0",
+    "@types/bun": "latest",
+    "typescript": "^5.9.3"
+  }
+}

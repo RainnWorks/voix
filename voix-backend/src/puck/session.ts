@@ -140,6 +140,13 @@ export class PuckSession {
    *  for offline playback / diagnosis (e.g. confirming whether XMOS's
    *  output on a given pipeline stage actually contains speech). */
   private recorder: SessionRecorder;
+  /** True while the model is mid-response (between first audio.delta
+   *  and response.done). The idle watchdog skips while this is set —
+   *  same role as `userSpeaking` for the other direction. Without
+   *  this we'd close sessions while the model is still talking, since
+   *  the only thing updating lastSpeechActivity was user speech
+   *  events. */
+  private assistantSpeaking = false;
   /** Accumulated user transcript across delta events. */
   private userPartial = "";
   /** Set to the first error message we hand off to history so the entry
@@ -393,6 +400,15 @@ export class PuckSession {
       this.echoGate.observeSpeaker(pcm24k);
       this.recorder.pushSpeaker(pcm24k);
       this.sendBinaryToPuck(pcm24k);
+      // Mark "model is mid-response" — watchdog respects this exactly
+      // like userSpeaking. Cleared on response.done.
+      this.assistantSpeaking = true;
+      this.lastSpeechActivity = Date.now();
+    });
+
+    rt.on("response.done", () => {
+      this.assistantSpeaking = false;
+      this.lastSpeechActivity = Date.now();
     });
 
     rt.on("response.function_call_arguments.done", (event) => {
@@ -533,7 +549,7 @@ export class PuckSession {
       this.close();
       return;
     }
-    if (!this.userSpeaking && idleS > IDLE_TIMEOUT_S) {
+    if (!this.userSpeaking && !this.assistantSpeaking && idleS > IDLE_TIMEOUT_S) {
       log.info(
         `session: idle ${idleS.toFixed(1)}s > ${IDLE_TIMEOUT_S}s ` +
           `(device=${this.deps.hello.device_id}) — closing`,

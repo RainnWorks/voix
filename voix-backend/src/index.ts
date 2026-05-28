@@ -13,6 +13,7 @@
 import { Elysia } from "elysia";
 import { registerSource } from "./context/registry.ts";
 import { HAContextSource } from "./context/sources/ha.ts";
+import { voixSource } from "./context/sources/voix.ts";
 import { config } from "./env.ts";
 import { loadHistory } from "./history/store.ts";
 import { log } from "./log.ts";
@@ -25,6 +26,12 @@ import { puckRoute } from "./puck/route.ts";
 // on next clean save.
 await loadModes().catch((e) => log.warn("boot: loadModes failed", e));
 await loadHistory().catch((e) => log.warn("boot: loadHistory failed", e));
+
+// voix-builtin source — always registered. Exposes `end_session` so
+// the model can close conversations cleanly when they wrap (the
+// realtime system prompt instructs it to call this).
+registerSource(voixSource);
+void voixSource.connect();
 
 // Register context sources. Each `connect()` is independent — a slow
 // or unreachable source must NOT block the daemon from accepting pucks.

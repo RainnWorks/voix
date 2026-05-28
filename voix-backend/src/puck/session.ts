@@ -33,6 +33,7 @@ import { randomBytes } from "node:crypto";
 import { EchoGate } from "../audio/echo_gate.ts";
 import { createResampler, resampleChunk } from "../audio/resample.ts";
 import { callTool, gatherAll, listAllTools } from "../context/registry.ts";
+import { voixSource } from "../context/sources/voix.ts";
 import type { ContextEntry, ToolSpec } from "../context/types.ts";
 import { config } from "../env.ts";
 import { appendHistory } from "../history/store.ts";
@@ -189,6 +190,16 @@ export class PuckSession {
       );
     }
 
+    // Let the voix builtin source close us when the model invokes
+    // voix__end_session. Bound late so the tool call routes only after
+    // the session is fully spun up.
+    if (mode.type === "realtime") {
+      voixSource.bindSession(this.deps.hello.device_id, (reason) => {
+        log.info(`session: ${this.deps.hello.device_id} voix.end_session — ${reason}`);
+        this.close();
+      });
+    }
+
     this.sendToPuck({ type: "ready", mode: mode.type });
     log.info(
       `session: started device=${this.deps.hello.device_id} mode=${mode.type} ` +
@@ -303,9 +314,17 @@ export class PuckSession {
       case "transcript.completed":
         if (event.role === "user") {
           await this.handleUserTranscriptComplete(event.text);
+        } else if (event.text.trim()) {
+          // Assistant transcripts (realtime sessions): log + emit to
+          // the puck for the Mac app's live caption view. No post-
+          // processing — the model already shaped the text the way
+          // the user heard it.
+          const t = event.text.trim();
+          log.info(
+            `session: ${this.deps.hello.device_id} assistant said ` +
+              `(${t.length} chars): ${t.slice(0, 100)}${t.length > 100 ? "…" : ""}`,
+          );
         }
-        // Assistant transcripts (realtime sessions) — pass through
-        // for the Mac app's live caption view, but no post-proc work.
         break;
 
       case "audio.delta":
@@ -498,6 +517,7 @@ export class PuckSession {
     } catch (e) {
       log.debug("session: ws.close threw", e);
     }
+    voixSource.unbindSession(this.deps.hello.device_id);
     forgetTranscript(this.deps.hello.device_id, this.sessionId);
     const duration = (Date.now() - this.startedAt) / 1000;
     log.info(

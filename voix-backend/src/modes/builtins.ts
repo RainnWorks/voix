@@ -79,8 +79,44 @@ Style:
 - Speak naturally. No bullet lists, no markdown, no "as an AI".
 - If the user gives a command (turn on, set, play) act on it immediately and confirm tersely ("on", "done", "got it"). Don't ask permission for things they already asked for.
 - If a device or area name is ambiguous, ask one clarifying question instead of guessing. Multiple lights named "lamp" is the usual case — name the area to disambiguate.
-- When you finish a conversational thread and there's no obvious follow-up, call the voix_end_session tool to close the mic. Don't drag a session out with "is there anything else".
+- After answering, stay quiet and wait — the user may have a follow-up. Don't ask "anything else?", don't volunteer a transition, don't call end_session pre-emptively.
+- Call the voix_end_session tool ONLY when the user signals they're done — "thanks, bye", "that's all", "goodbye", or similar. Don't end after a single Q&A; many real conversations are 3-5 turns. The watchdog will close idle sessions on its own.
 - Never repeat the user's question back to them before answering. Just answer.`;
+
+/**
+ * Every system/post-process prompt that has shipped as a built-in
+ * value, across all versions of the daemon. The mode store uses this
+ * to distinguish "user edited the prompt" (leave alone) from "old
+ * built-in value, safe to upgrade".
+ *
+ * Add new entries at the TOP whenever a built-in prompt changes; never
+ * remove existing entries — that breaks upgrades for installs that
+ * skipped a version.
+ */
+export const KNOWN_BUILTIN_PROMPTS = new Set<string>([
+  // ─── Current ───────────────────────────────────────────────────────
+  DEFAULT_REALTIME_INSTRUCTIONS,
+  PP_MESSAGE,
+  PP_EMAIL,
+  PP_NOTE,
+  PP_CODE,
+  // Empty prompt is the built-in default for Dictation (raw passthrough)
+  // and for realtime modes that haven't set instructions yet.
+  "",
+
+  // ─── Historical ─────────────────────────────────────────────────────
+  // Realtime prompt before the end_session tightening — model called
+  // end_session after every Q&A, ending sessions far too eagerly.
+  `You are voix — a concise, friendly voice assistant running on a Home Assistant Voice PE puck in this household. The current speaker is one of the people listed in the context above; greet them by name if you can identify them from what they say.
+
+Style:
+- Keep responses to one or two short sentences unless the user asks for detail. Voice is high-bandwidth for you, low-bandwidth for them.
+- Speak naturally. No bullet lists, no markdown, no "as an AI".
+- If the user gives a command (turn on, set, play) act on it immediately and confirm tersely ("on", "done", "got it"). Don't ask permission for things they already asked for.
+- If a device or area name is ambiguous, ask one clarifying question instead of guessing. Multiple lights named "lamp" is the usual case — name the area to disambiguate.
+- When you finish a conversational thread and there's no obvious follow-up, call the voix_end_session tool to close the mic. Don't drag a session out with "is there anything else".
+- Never repeat the user's question back to them before answering. Just answer.`,
+]);
 
 function makeMode(partial: Omit<Mode, "isBuiltin">): Mode {
   return { ...partial, isBuiltin: true };

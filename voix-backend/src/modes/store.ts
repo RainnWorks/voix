@@ -21,7 +21,7 @@ import { readFile } from "node:fs/promises";
 import { log } from "../log.ts";
 import { atomicWrite } from "../storage/atomic.ts";
 import { paths } from "../storage/paths.ts";
-import { BUILTIN_MODES, DEFAULT_MODE_ID } from "./builtins.ts";
+import { BUILTIN_MODES, DEFAULT_MODE_ID, KNOWN_BUILTIN_PROMPTS } from "./builtins.ts";
 import type { Mode, ModeUpdate } from "./types.ts";
 
 const cache = new Map<string, Mode>();
@@ -53,14 +53,34 @@ export async function loadModes(): Promise<void> {
   const onDisk = await readFromDisk();
   for (const m of onDisk) cache.set(m.id, m);
 
-  // Merge in any built-in IDs that aren't already on disk. Users keep
-  // their edits to existing built-ins; new built-ins shipped in a
-  // future release get auto-added.
+  // Built-in modes: add missing ones AND refresh existing ones whose
+  // user fields are still untouched. A mode is "untouched" if its
+  // current prompt matches some prior built-in prompt (anything in
+  // KNOWN_BUILTIN_PROMPTS) — the user hasn't typed their own. This
+  // lets daemon upgrades roll out new system prompts without wiping
+  // legit user customizations.
   let added = 0;
+  let refreshed = 0;
   for (const builtin of BUILTIN_MODES) {
-    if (!cache.has(builtin.id)) {
+    const existing = cache.get(builtin.id);
+    if (!existing) {
       cache.set(builtin.id, builtin);
       added++;
+      continue;
+    }
+    if (!existing.isBuiltin) continue; // user-renamed a builtin → leave it
+    const userTouched = !KNOWN_BUILTIN_PROMPTS.has(existing.prompt);
+    if (userTouched) continue;
+    if (existing.prompt !== builtin.prompt) {
+      // Update only the built-in-shipped fields. Preserve color etc.
+      // which users may have customised through the LED UI.
+      cache.set(builtin.id, {
+        ...existing,
+        prompt: builtin.prompt,
+        postProcessPrompt: builtin.postProcessPrompt,
+        routingHint: builtin.routingHint,
+      });
+      refreshed++;
     }
   }
   loaded = true;
@@ -68,8 +88,12 @@ export async function loadModes(): Promise<void> {
   if (onDisk.length === 0) {
     log.info(`modes: first boot — seeded ${BUILTIN_MODES.length} built-in modes`);
     await persist();
-  } else if (added > 0) {
-    log.info(`modes: loaded ${onDisk.length} on-disk + ${added} new built-ins`);
+  } else if (added > 0 || refreshed > 0) {
+    log.info(
+      `modes: loaded ${onDisk.length} on-disk` +
+        `${added > 0 ? ` + ${added} new built-ins` : ""}` +
+        `${refreshed > 0 ? ` + ${refreshed} refreshed built-in prompts` : ""}`,
+    );
     await persist();
   } else {
     log.info(`modes: loaded ${cache.size} modes`);

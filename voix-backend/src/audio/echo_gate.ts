@@ -33,8 +33,15 @@ const ECHO_PATH_GAIN = 0.15;
 /** Real-speech threshold: mic RMS must exceed predicted echo by this
  *  factor to forward. 4× ≈ 12 dB headroom. */
 const INTERRUPT_THRESHOLD = 4.0;
-/** How far back to look in our sent-speaker history (seconds). */
-const WINDOW_S = 3.0;
+/** Refs are timestamped at PLAYBACK time (future, when the puck
+ *  actually emits the audio). Lookup looks BACK from "now" to find
+ *  refs whose playback is recent. Window covers worst-case puck
+ *  speaker queue + DMA latency (~700ms per CLAUDE.md) with margin.
+ *  Bigger than the HA-side equivalent (3s) because we no longer rely
+ *  on a paced sender to spread the timestamps. */
+const WINDOW_S = 1.5;
+/** Sample rate of speaker audio from OpenAI. PCM16 mono at 24 kHz. */
+const SAMPLE_RATE_HZ = 24000;
 
 type Ref = { sentAtMs: number; rms: number };
 
@@ -65,12 +72,37 @@ export class EchoGate {
   /**
    * Tell the gate about a chunk we just sent to the puck's speaker so
    * it can predict the resulting echo on incoming mic data.
+   *
+   * For large bursts (OpenAI sometimes streams a whole sentence —
+   * hundreds of KB — in a single `response.output_audio.delta`), we
+   * split into ~50ms segments and timestamp each at its expected
+   * playback time. Without this, a 4-second burst gets one ref logged
+   * at receive-time, the puck plays it over 4 seconds, and by the
+   * time the second-half echo arrives at the mic our 3-second
+   * lookback window has already expired against the single ref — so
+   * the gate forwards the echo as user speech. That's exactly the
+   * "model hears itself, generates a reply to its own voice" loop we
+   * spent two debugging sessions on.
    */
   observeSpeaker(pcm16: Buffer): void {
     if (pcm16.length === 0) return;
-    const rms = EchoGate.rms(pcm16);
     const now = Date.now();
-    this.refs.push({ sentAtMs: now, rms });
+    // 24 kHz mono PCM16 = 48 KB/s. 50 ms ≈ 2400 bytes per segment.
+    const SEGMENT_MS = 50;
+    const segmentBytes = (SAMPLE_RATE_HZ * 2 * SEGMENT_MS) / 1000;
+    let offset = 0;
+    let segmentIdx = 0;
+    while (offset < pcm16.length) {
+      const end = Math.min(offset + segmentBytes, pcm16.length);
+      const segment = pcm16.subarray(offset, end);
+      // Timestamp = when this segment will PLAY at the puck, not
+      // when we received it. Real time of receive plus the offset
+      // into the burst. Echo arrives shortly after each segment plays.
+      const playAtMs = now + segmentIdx * SEGMENT_MS;
+      this.refs.push({ sentAtMs: playAtMs, rms: EchoGate.rms(segment) });
+      offset = end;
+      segmentIdx++;
+    }
     this.gc(now);
   }
 

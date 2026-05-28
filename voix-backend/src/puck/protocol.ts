@@ -44,5 +44,9 @@ export type DaemonToPuck =
   | { type: "user_speech_end" }
   | { type: "transcript_delta"; text: string }
   | { type: "transcript"; text: string }
-  | { type: "assistant_speech_start" }
-  | { type: "assistant_speech_end" };
+  /** Marker that the model started a turn. The puck doesn't *need*
+   *  this for echo gating — it inspects its own speaker state for
+   *  that — but kept as a signal for LED phasing on the firmware
+   *  side. */
+  | { type: "audio_start" }
+  | { type: "audio_end" };

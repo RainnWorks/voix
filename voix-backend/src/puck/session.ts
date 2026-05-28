@@ -88,6 +88,20 @@ function renderContextBlock(entries: readonly ContextEntry[]): string {
   return lines.join("\n");
 }
 
+/** RMS of a mono PCM16 little-endian buffer. Quick diagnostic for
+ *  "what audio is the puck actually delivering us". A normal mic
+ *  picking up speech sits in the low thousands; silence is near zero. */
+function computeRms(pcm16: Buffer): number {
+  if (pcm16.length < 2) return 0;
+  const n = Math.floor(pcm16.length / 2);
+  let sumSq = 0;
+  for (let i = 0; i < n; i++) {
+    const s = pcm16.readInt16LE(i * 2);
+    sumSq += s * s;
+  }
+  return Math.sqrt(sumSq / n);
+}
+
 /** Drop the `__source` field before sending tool specs to OpenAI —
  *  that field is internal routing metadata, OpenAI rejects unknown
  *  keys in the tools array. */
@@ -116,6 +130,8 @@ export class PuckSession {
   private closed = false;
   /** Periodic gate-stats logger counter. */
   private echoLogCounter = 0;
+  /** Periodic mic-RMS logger counter (XMOS-stage diagnostic). */
+  private micRmsLogCounter = 0;
 
   private readonly sessionId = randomBytes(8).toString("hex");
   private mode: Mode;
@@ -268,6 +284,20 @@ export class PuckSession {
     // never replies). Speech-start/stop events from OpenAI's VAD are
     // the right signal; they update lastSpeechActivity in the SDK
     // event handlers above.
+
+    // Diagnostic: log RMS of mic chunks periodically so we can see
+    // whether the puck is delivering recognisable audio. Useful while
+    // experimenting with XMOS pipeline stages (NS / AEC / AGC); a
+    // stage that filters too aggressively shows up as near-zero RMS.
+    // Remove once we've settled on a stage that works.
+    this.micRmsLogCounter++;
+    if (this.micRmsLogCounter % 50 === 0) {
+      const rms = computeRms(pcm16k);
+      log.info(
+        `session: ${this.deps.hello.device_id} mic_rms=${Math.round(rms)} ` +
+          `(chunks_seen=${this.micRmsLogCounter})`,
+      );
+    }
 
     if (this.mode.type === "realtime") {
       const { forward } = this.echoGate.shouldForward(pcm16k);

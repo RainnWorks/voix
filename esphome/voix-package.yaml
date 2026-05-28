@@ -52,32 +52,29 @@ external_components:
       path: components
     components: [voix_realtime_client]
 
-# ─── XMOS voice_kit pipeline ─────────────────────────────────────────────────
-# Sticking with the upstream voice_pe default of channel_0_stage=AGC
-# after a tested-and-reverted experiment with NS.
+# ─── XMOS voice_kit pipeline override ────────────────────────────────────────
+# Reading channel 0 from NS stage (AEC + IC + NS, no AGC). Upstream
+# default is AGC, which re-amplifies AEC residual right back to user-
+# speech level — the source of every echo loop we've hit.
 #
-# Theory was: AGC re-amplifies AEC residual, so reading from NS instead
-# would give us cleaner mic input (AEC + IC + NS, no AGC re-amp). The
-# livekit-on-vpe project's sine-wave test backed the theory up:
+# First test of NS-stage produced no transcripts in a 180s session. To
+# distinguish "NS outputs nothing OpenAI can use" from "NS outputs
+# something but voix isn't forwarding it right", the daemon now logs
+# RMS of every mic chunk it receives from the puck. If RMS values are
+# zero / near-zero we'll know NS is filtering too aggressively; if
+# they're sane but OpenAI still can't transcribe, the issue is
+# elsewhere (sample rate? bit depth? something we're doing wrong on
+# the daemon resampling side?).
+#
+# Validated by livekit-on-vpe:
 #   AEC stage:  RMS=4      (echo cancelled)
 #   NONE stage: RMS=123    (raw mic with echo)
 #   AGC stage:  RMS=1868   (AEC residual amplified)
 # (https://github.com/breakds/livekit-on-vpe — WORKING_LOG.md)
-#
-# In practice the NS-stage output is unrecognisable as speech to OpenAI's
-# semantic_vad — XMOS's noise suppression at default settings appears to
-# strip enough of the speech band that no transcripts come back. AGC's
-# "wide it up to a normal volume" pass turns out to be load-bearing for
-# how OpenAI hears us.
-#
-# The daemon-side half-duplex echo gate (voix-backend/src/audio/echo_gate.ts)
-# is doing the echo-defence job instead. Keep AGC here so HA's stock
-# voice assistant path (Okay Nabu wake word → Assist) also still works,
-# since it expects AGC-normalised mic too.
-#
-# Future experiment: try channel_0_stage=AEC (raw post-AEC, no NS, no
-# AGC). Echoes should be cancelled but speech is also un-normalised —
-# may or may not be recognisable.
+voice_kit:
+  id: voice_kit_component
+  channel_0_stage: NS
+  channel_1_stage: NS
 
 # ─── API actions ─────────────────────────────────────────────────────────────
 # Manual start/stop kept for testing without the wake word. Plus the

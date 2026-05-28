@@ -94,6 +94,15 @@ export function puckRoute() {
       }
 
       const env = parsed as { type?: string };
+
+      // Post-hello control messages from the puck. Today: ready_for_input
+      // (puck speaker just drained — user can speak again). Routed to
+      // the session so its idle watchdog can reset.
+      if (env.type === "ready_for_input") {
+        state.session?.handlePuckReadyForInput();
+        return;
+      }
+
       if (env.type !== "hello") {
         log.warn(`puck: unexpected text frame type=${env.type ?? "?"}`);
         return;

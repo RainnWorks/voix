@@ -292,6 +292,19 @@ export class PuckSession {
    * the mic (without this, sessions loop forever on the model's own
    * "Sounds good" → semantic_vad → reply → repeat).
    */
+  /**
+   * Puck told us its speaker just drained. The mic is back live on
+   * the puck side; the user can actually speak now. Reset the idle
+   * timer so they get the full IDLE_TIMEOUT_S of thinking-then-
+   * speaking time from THIS moment, instead of from when OpenAI
+   * stopped streaming bytes a couple of seconds ago.
+   */
+  handlePuckReadyForInput(): void {
+    if (this.closed) return;
+    this.lastSpeechActivity = Date.now();
+    log.debug(`session: ${this.deps.hello.device_id} ready_for_input — idle timer reset`);
+  }
+
   handlePuckAudio(pcm16k: Buffer): void {
     if (this.closed || !this.openai) return;
     if (pcm16k.length === 0) return;

@@ -379,6 +379,23 @@ void VoixRealtimeClient::loop() {
     this->disconnected_trigger_.trigger();
   }
 
+  // Speaker-drained edge detect. When the speaker transitions from
+  // "running" → "not running", the mic source has just come back live
+  // (the on_mic_data_ gate respects speaker_->is_running()). Tell the
+  // daemon so its idle-timeout watchdog starts counting from THIS
+  // moment — i.e. from when the user can actually speak — instead of
+  // from when OpenAI stopped streaming bytes a couple of seconds ago.
+  if (this->state_ == State::RUNNING) {
+    bool now_speaker_running = this->speaker_ != nullptr && this->speaker_->is_running();
+    if (this->was_speaker_running_ && !now_speaker_running) {
+      this->send_text_(R"({"type":"ready_for_input"})");
+    }
+    this->was_speaker_running_ = now_speaker_running;
+  } else if (this->was_speaker_running_) {
+    // Reset when leaving RUNNING so the next session starts clean.
+    this->was_speaker_running_ = false;
+  }
+
   // Audio pumps. Cheap when queues are empty.
   this->pump_outbound_();
   this->pump_inbound_();

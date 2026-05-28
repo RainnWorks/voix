@@ -1,136 +1,374 @@
-# Architecture
+# voix Architecture
 
-## Goals
+This is the post-pivot architecture (May 2026). The earlier "everything
+inside a HA custom integration" design is gone; see `docs/adr/` for that
+history.
 
-- Hands-free dictation that lands directly on the Mac clipboard.
-- Stock HA Assist for everyday voice control (lights, scenes, intents).
-- Back-and-forth conversations with an LLM agent via OpenAI Realtime, audio in and out through the Voice PE speaker.
-- Minimum custom code. Lean on stock HA, stock ESPHome firmware, and the official OpenAI Conversation integration wherever possible.
+## TL;DR
 
-## High-level flow
+voix is a **multi-input voice assistant whose brain is a standalone
+Bun daemon**. The daemon owns the OpenAI Realtime session, mode
+catalog, post-processing, history, and tool-call relay to an MCP
+context layer. Inputs (Voice PE puck today, Mac mic tomorrow, iOS
+keyboard later) all speak the same WS protocol to the daemon. Outputs
+(puck speaker, paste-to-active-app, HA service calls) are pluggable.
+
+The Home Assistant custom integration is now a thin discovery +
+onboarding layer. It finds Voice PE pucks via ESPHome's mDNS, pushes
+the daemon's URL + auth token to the firmware, and otherwise stays
+out of the audio path.
+
+## Why we moved off Home Assistant
+
+The original design ran the WS bridge, STT pipeline, mode dispatch,
+and OpenAI Realtime session inside a HA custom component. Every
+significant friction we hit traced back to that decision:
+
+| Symptom                                            | Root cause                                                                  |
+|----------------------------------------------------|-----------------------------------------------------------------------------|
+| Hand-rolled WS client; couldn't use GA Realtime SDK | HA Core pins `openai==2.21.0` (via `openai_conversation`), pre-GA           |
+| `_LOGGER.info(...)` invisible                      | HA default log level is WARN                                                |
+| Diagnostic context lost                             | `ha core logs` ring buffer is 100 lines                                     |
+| Session died on HA restart                          | Custom integrations re-init when HA does; the WS got torn down              |
+| Service-registry slugification surprises           | `home-assistant-voice-095e4e` → `home_assistant_voice_095e4e` mid-event     |
+| Adoption races                                      | ESPHome service registration order vs voix setup order                      |
+| Service tokens awful                                | HA's auth surface treats add-ons and integrations differently               |
+| Restart cycle 10–30 s                              | Iterating on bridge code meant restarting the whole HA process              |
+
+Most of these were workarounds that bought a few hours each. The
+underlying mismatch — HA is a state-machine orchestrator, not a
+realtime audio service — couldn't be papered over. So the brain moved
+out. Iteration cycle is now `bun --watch` (sub-second) plus an
+auto-pulling `dev_mode` in the HA Add-on (git commit → live in ~5
+seconds).
+
+## System diagram
 
 ```
-                                ┌─────────────────────────────────────┐
-                                │             Home Assistant          │
-                                │                                     │
-   ┌──────────────────┐ WW1 ┌──▶│  Assist pipeline (default)          │  Mode A
-   │   Voice PE       │     │   │  STT + intents + TTS (stock)        │
-   │  (stock firmware)│─────┤   ├─────────────────────────────────────┤
-   │                  │     │   │  Assist pipeline (dictation)        │  Mode C
-   │  - 2 wake words  │ WW2 └──▶│  STT = openai_conversation           │
-   │  - HW button     │         │  (gpt-4o-mini-transcribe)            │
-   │                  │         │  on_stt_end ─▶ input_text helper     │
-   │  - speaker       │ button  ├─────────────────────────────────────┤
-   │  - LED ring      │─────┬──▶│  custom_components/voix              │  Mode B
-   │                  │     │   │  aioesphomeapi takeover              │
-   │                  │     │   │  ↕ OpenAI Realtime WebSocket         │
-   │  ◀─PCM playback──┼─────┘   │  audio back to satellite speaker     │
-   └──────────────────┘         └──────────────────┬──────────────────┘
-                                                   │ state_changed
-                                                   │ (Mode C only)
-                                                   ▼
-                                     ┌──────────────────────────┐
-                                     │   Mac — Tauri menu bar    │
-                                     │   HA WebSocket subscriber │
-                                     │   Copy to NSPasteboard    │
-                                     │   Notification + history  │
-                                     └──────────────────────────┘
+┌─ INPUTS ────────────────────┐    ┌─ DAEMON  voix-backend ────────────┐    ┌─ OUTPUTS ─────┐
+│                             │    │                                   │    │               │
+│ Voice PE puck               │    │ Elysia HTTP/WS  :8765              │    │ Puck speaker  │
+│ - wake word                 │ →  │   /ws       puck audio bridge      │ →  │ HA events     │
+│ - ESPHome firmware          │    │   /recordings/ playback browser    │    │ Paste target  │
+│ - voix_realtime_client      │    │   /healthz                         │    │  (Mac, future) │
+│                             │    │                                   │    │ Notify        │
+│ Mac mic        (planned)    │    │ Per-puck PuckSession               │    │  (Mac, future) │
+│ - global hotkey             │    │   - OpenAI Realtime WS             │    │               │
+│ - same WS protocol          │ →  │   - audio resample 16↔24 kHz       │ ←  │ History       │
+│                             │    │   - echo gate (residual safety)    │    │  (queryable)   │
+│ iOS keyboard   (future)     │    │   - mode-driven session.update     │    └───────────────┘
+│ - replaces system kbd       │ →  │   - tool-call relay → context      │
+│ - dictation hotkey          │    │                                   │
+│                             │    │ Mode catalog        modes.json     │
+└─────────────────────────────┘    │ Post-processing     OpenAI/OpenRouter
+                                   │ History             history.jsonl   │ ← Context sources ───┐
+                                   │ Recordings          /data/voix/...  │                       │
+                                   │                                   │   HA MCP        :/api/mcp
+                                   │ Context registry                  │   Mac context  (planned)
+                                   │   - voix.end_session (built-in)   │   Calendar MCP (future)
+                                   │   - ha context source (Streamable │
+                                   │     HTTP via Supervisor proxy)    │
+                                   └───────────────────────────────────┘
+
+┌─ HA INTEGRATION (thin)──────────────────┐    ┌─ Home Assistant ────────────┐
+│ custom_components/voix                  │    │                             │
+│ • Discovers Voice PE pucks via ESPHome  │ ←→ │  ESPHome integration         │
+│ • Pushes daemon URL + token to firmware │    │  (stock — adopts pucks)      │
+│   via api.actions (voix_set_server)      │    │                             │
+│ • Mode select / LED color entities      │    │  mcp_server integration      │
+│   (state mirror, not orchestration)     │    │  (HA Core 2025.2+)           │
+│ • EVENT_MODE_CHANGED → push to puck     │    │                             │
+└─────────────────────────────────────────┘    └─────────────────────────────┘
+
+┌─ DESKTOP CLIENT (current: Tauri; direction: React app served by daemon) ─┐
+│ Mode editor / history viewer / recordings browser                        │
+│ Future: + Mac mic capture + paste-to-active-app + context relay          │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
-## Mode walkthroughs
+## Component responsibilities
 
-### Mode A — HA Assist (stock)
+### `voix-backend/` — the daemon (Bun + Elysia + TypeScript)
 
-1. User says `Okay Nabu`.
-2. Voice PE detects the wake word via on-device microWakeWord.
-3. Audio streams to HA over the encrypted ESPHome native API.
-4. HA's default Assist pipeline runs: STT → intent recognition → response → TTS.
-5. TTS plays back through the satellite speaker. LEDs reflect pipeline state.
+- WebSocket server (`/ws`) for puck connections
+- Per-session lifecycle (`PuckSession`)
+- OpenAI Realtime WS client (official `openai/realtime/ws` SDK)
+- Audio resampling (16 ↔ 24 kHz, state-threaded)
+- Echo gate (belt-and-braces; the puck does the real half-duplex now)
+- Mode catalog: type, prompt, voice, model, post-process spec, routing hint
+- Post-processing pipeline (OpenAI + OpenRouter chat completions)
+- History store (JSONL)
+- Session recorder (per-session mic.wav + speaker.wav + transcripts)
+- Recordings playback HTTP browser (`/recordings/`)
+- Context source registry:
+  - `voix` source: builtin `end_session` tool
+  - `ha` source: MCP client over Streamable HTTP at HA's `/api/mcp`
+- Tool-call relay (OpenAI function calls → context source → output)
+- HA Add-on packaging with `dev_mode` (git auto-pull on commit)
 
-No custom code. No Mac involvement.
+Persistent state lives under `/data/voix/` inside the add-on:
 
-### Mode B — Realtime conversation
+```
+modes.json              Mode catalog
+history.jsonl           One entry per completed dictation/realtime turn
+transcripts/<slug>/...  Plain-text transcripts (cumulative per session)
+recordings/<sess>/      mic.wav + speaker.wav + meta.json
+voix-dev/               Dev-mode git checkout (when dev_mode=true)
+```
 
-1. User presses the Voice PE's hardware button (briefly to start, again to stop, or hold-to-talk — TBD).
-2. The custom `voix` HA integration claims the `voice_assistant` subscription on the Voice PE via `aioesphomeapi`, displacing the core integration's Assist subscription for the duration.
-3. PCM audio (16 kHz, 16-bit) flows from the satellite to our integration.
-4. The integration opens a WebSocket to `wss://api.openai.com/v1/realtime` (model selected at session-init; confirm the current GA model name at Phase 3 implementation), forwards mic audio (resampled to 24 kHz PCM16 as Realtime expects), and receives audio + transcript events.
-5. Realtime's audio response is sent back to the satellite via `send_voice_assistant_audio`. The Voice PE speaker pipeline plays it.
-6. On session end, the integration releases the subscription; the core integration resumes ownership for Mode A/C.
+### `esphome/components/voix_realtime_client/` — Voice PE firmware
 
-This is the only mode that requires custom Python.
+ESPHome external component that:
+- Connects to the daemon's WS with `device_id` + shared `ws_token`
+- Streams 16 kHz mic PCM in 2 KB batches
+- Plays incoming speaker audio at 24 kHz
+- **Gates the mic at the source when `speaker_->is_running()` is true** —
+  this is the load-bearing fix that prevents the model's own voice
+  echoing back through the mic and triggering OpenAI's VAD as fake user
+  turns. The Voice PE's XMOS hardware AEC residual at conversational
+  volumes is too loud to leave to the daemon's energy gate.
+- Edge-detects speaker drain → sends `{"type":"ready_for_input"}` so
+  the daemon's idle watchdog resets from the moment the user can
+  actually speak again
+- Pre-allocates the WS client at boot to dodge the
+  "memory exhausted at wake-word" failure caused by SRAM fragmentation
+- Persists `server_url` + `ws_token` to NVS so cold boots Just Work
 
-### Mode C — Dictation → clipboard
+### `ha-integration/custom_components/voix/` — HA discovery + adoption
 
-1. User says `Hey Jarvis`.
-2. Voice PE detects the second wake word, routes to a separate HA Assist pipeline (`Dictation`).
-3. The Dictation pipeline uses the OpenAI Conversation integration's STT engine. HA 2026.3+ exposes `gpt-4o-transcribe` and `gpt-4o-mini-transcribe` as model choices (no `whisper-1`). Default and recommended for short dictation: `gpt-4o-mini-transcribe`. STT is non-streaming — HA buffers the whole utterance before calling the API, adding 1–3 s to perceived latency. Intent and TTS stages are disabled in this pipeline — STT only.
-4. ESPHome's `on_stt_end` trigger fires with the transcript as variable `x`. The Voice PE YAML calls `homeassistant.service: input_text.set_value` against `input_text.dictation_buffer` with the transcript.
-5. The Mac Tauri app, subscribed to `state_changed` events on `input_text.dictation_buffer`, receives the update, writes to `NSPasteboard`, posts a macOS notification, and prepends the entry to the in-app history list.
+The shrunk version. Job is:
+- Watch for ESPHome services named `<slug>_voix_set_server` to register
+- When one appears, call it with `daemon_url` + `ws_token`
+- Watch for HA mode-select changes → push to the puck so its LED ring
+  matches
+- Surface the puck under an HA device entry so users see it in the UI
 
-No custom HA integration. ~6 lines of ESPHome YAML on top of the stock Voice PE config.
+Adoption flow: the user adds the Voice PE puck via HA's normal ESPHome
+discovery + Adopt button. voix piggybacks on that — no second
+"connect to voix" step.
 
-## Components & responsibilities
+### `app/` — Tauri desktop client (transitional)
 
-### Voice PE (stock firmware + thin override)
+Mode editor + history viewer + future paste target. **Slated for
+significant reshape** — see Roadmap §A below.
 
-- Wake-word detection (microWakeWord, two models).
-- Hardware button: bound to a custom event consumed by the `voix` HA integration.
-- Audio capture and playback (existing `speaker:` pipeline).
-- One thin override: `on_stt_end` automation calling `input_text.set_value` for Mode C.
+## Half-duplex echo handling (lessons learned)
 
-### Home Assistant
+The Voice PE has XMOS hardware AEC in spec, but residual at real
+conversational speaker volumes is much louder than the published
+~25 dB. Echo at the mic was triggering OpenAI's `semantic_vad` as
+"new user turn" → model cancels its own response mid-sentence.
 
-- Owns the OpenAI API key (in `secrets.yaml`).
-- Runs both Assist pipelines.
-- Hosts the `voix` custom integration (Mode B only).
-- Exposes `input_text.dictation_buffer` for Mode C.
-- Issues a long-lived access token for the Mac.
+What we tried, in order:
 
-### Custom integration (`custom_components/voix/`) — Phase 3
+1. **Daemon-side energy gate** (RMS threshold). Worked for some
+   volumes, broke at others. Volume-calibrated thresholds don't
+   generalise.
+2. **Switch XMOS channel from AGC to NS** to avoid AGC re-amplifying
+   AEC residual. Worked in theory — confirmed via in-daemon mic RMS
+   logging — but NS-stage output is so quiet (mic_rms 55–99 vs
+   AGC's 1000s) that OpenAI's STT made constant word-confusion
+   errors ("I'm shouting at you" → "ChatGPT, I will show at you").
+3. **Daemon-side half-duplex gate** (refs-based time gating). Still
+   leaked enough to trigger VAD occasionally.
+4. **Puck-side half-duplex on `speaker_->is_running()`** ← winner.
+   Mic data is dropped at the firmware's `on_mic_data_` callback
+   for as long as the speaker queue is draining. Zero mic chunks
+   reach the daemon during model speech. No echo can confuse VAD.
 
-- Subscribes to Voice PE's `voice_assistant` channel via `aioesphomeapi`.
-- Bridges audio bidirectionally with OpenAI Realtime.
-- Coordinates handoff with the core ESPHome integration so Modes A/C still work when Mode B is idle.
-- Exposes a `switch.voix_realtime_active` for observability.
+Trade-off: **no barge-in**. Saying "stop" mid-response won't
+interrupt. Same trade-off Alexa, Google Home, and HA's own stock
+voice assistant make on this hardware class. Worth it.
 
-### Mac Tauri app — Phase 2
+## Status of major systems
 
-- Holds a persistent WebSocket connection to HA (`/api/websocket`).
-- Authenticates with a long-lived access token stored in the macOS Keychain.
-- Subscribes to `state_changed` events for `input_text.dictation_buffer`.
-- On update: writes to clipboard, posts a notification, prepends to in-app history.
-- Menu-bar UI: connection status, last ~10 transcripts, click to re-copy.
+| System                          | State        | Notes                                                        |
+|---------------------------------|--------------|--------------------------------------------------------------|
+| Daemon scaffold (Bun/Elysia)    | ✓ done       | Listening on :8765, HA Add-on packaged, dev_mode pull works  |
+| Puck WS protocol                | ✓ done       | hello + binary mic + control + ready_for_input               |
+| OpenAI Realtime via SDK         | ✓ done       | Official `openai/realtime/ws`, GA schema, typed events       |
+| Mode catalog                    | ✓ done       | 6 built-ins (Realtime/Dictation/Message/Email/Note/Code)     |
+| Post-processing (dictation)     | ✓ done       | OpenAI + OpenRouter providers, falls back to raw on error    |
+| History (JSONL)                 | ✓ done       | Append-only, queryable by mode/device                        |
+| Recordings (mic/speaker WAV)    | ✓ done       | Browser at `/recordings/`                                    |
+| HA MCP context source           | ✓ done       | Streamable HTTP at `/api/mcp`, SUPERVISOR_TOKEN auth         |
+| `voix.end_session` builtin tool | ✓ done       | Model can close session cleanly when conversation wraps      |
+| Echo handling (puck half-duplex)| ✓ done       | `speaker_->is_running()` gating in firmware                  |
+| `ready_for_input` ping          | ✓ done       | Resets daemon idle timer when puck speaker drains            |
+| HA Add-on (dev_mode)            | ✓ done       | `https://github.com/RainnWorks/voix` → install via Add-on Store |
+| HA integration trim             | ✗ deferred   | Still has all old bridge code as dead weight (~3000 LOC)     |
+| Mac context source              | ✗ not started| Focused-app + selected text → relayed to daemon              |
+| Mac mic as input source         | ✗ not started| Hotkey + local mic, same WS protocol as puck                 |
+| Desktop UI on backend           | ✗ not started| React app served by daemon, see §A                           |
+| Auto-routing (dictation modes)  | ✗ not started| Context + mode `routing_hint` → small LLM picks mode         |
+| Cost tracking                   | ✗ not started| Per-model `costPerMinute`, aggregated per mode               |
+| Multi-puck tool-call routing    | ✗ TODO       | `voix.end_session` closes ALL bound sessions today           |
 
-## Trust boundaries and secrets
+## Roadmap
 
-| Secret | Lives in | Never leaves |
-|---|---|---|
-| OpenAI API key | HA `secrets.yaml` | HA host |
-| HA long-lived access token (for Mac) | macOS Keychain (via Tauri secure storage) | Mac |
-| ESPHome native-API noise PSK | HA, Voice PE | Local network |
-| Transcripts | HA `input_text` entity → Mac clipboard | Per HA's normal handling; not engineered for privacy |
+### A. Desktop / UI strategy — Tom's main concern
 
-The Mac never has the OpenAI key. The Voice PE never has the HA token. The OpenAI API is the only network destination outside the LAN.
+Today the mode editor and history viewer live in a Tauri app
+(`app/`). That works but means:
 
-## Open risks
+- Two UIs to maintain (Tauri's JS + any future iOS UI)
+- Settings only editable on a Mac
+- UI strongly coupled to Tauri-specific shims
 
-1. **Mode B subscription contention.** Only one HA API client can hold the `voice_assistant` subscription on a given ESPHome device at a time. The core ESPHome integration grabs it on connect. Our integration must coordinate a handoff. Without an upstream toggle, this races on reconnect. Phase 3 work item.
-2. **OpenAI Realtime cost.** Per-minute pricing is non-trivial. We should add soft caps before Mode B sees regular use.
-3. **HA version drift.** Mode C requires two HA features at different version floors:
-    - **HA 2026.3+** for the OpenAI Conversation STT subentry.
-    - **HA 2025.10+** for binding two wake words to two pipelines on a single Assist satellite.
-    The current Voice PE upstream YAML pins `min_version: 2026.5.0`, which transitively requires a recent HA. If we need to support older HA installations, the fallback is `wyoming-openai` as a container (covers both STT and TTS over the Wyoming protocol).
-4. **Non-streaming STT.** HA's OpenAI STT implementation accumulates the full audio buffer before calling OpenAI's transcription API. For multi-sentence dictation this adds a perceptible delay (1–3 s typical, longer for paragraph-length input). If this becomes a UX blocker, switch the STT engine to a streaming alternative; the rest of the architecture is unaffected.
-5. **Audio format conversion.** Voice PE outputs 16 kHz PCM16. OpenAI's STT accepts WAV/OGG at 8–48 kHz — fits. OpenAI Realtime expects 24 kHz PCM16 base64 — Mode B's integration will resample.
-6. **Button-vs-wake-word UX for Realtime.** Decided: button. To revisit if the button proves awkward (e.g. for hands-busy use). ADR-0003.
+**Direction**: move every UI concern into a React app served by the
+daemon at `/ui/` (or `/`). One codebase. Wrap it in shells per
+platform:
 
-## Phasing
+```
+                         ┌──────────────────────────────┐
+                         │  React UI (in voix-backend/) │
+                         │  - Modes editor              │
+                         │  - History browser           │
+                         │  - Recordings playback       │
+                         │  - Per-device controls       │
+                         │  - Cost view                 │
+                         └──────────────┬───────────────┘
+                                        │ same bundle, different wrappers
+        ┌───────────────────────────────┼───────────────────────────────┐
+        ▼                               ▼                               ▼
+┌──────────────────┐         ┌──────────────────┐         ┌──────────────────┐
+│ Plain web        │         │ Tauri / Electron │         │ iOS app          │
+│ http://daemon/ui │         │ + global hotkey  │         │ + keyboard ext.  │
+│ (HA Sidebar      │         │ + Mac mic        │         │ + system mic     │
+│  iframe, browser │         │ + paste-to-app   │         │ + clipboard      │
+│  tab on phone)   │         │ + context (focus │         │   handoff        │
+│                  │         │   window, sel.   │         │                  │
+│                  │         │   text)          │         │                  │
+└──────────────────┘         └──────────────────┘         └──────────────────┘
+```
 
-| Phase | Deliverable | Custom code? |
-|---|---|---|
-| 0 | Repo scaffold, ADRs, ESPHome wrapper | None |
-| 1 | Voice PE + HA Assist working (Mode A) | None |
-| 2 | Dictation → clipboard end-to-end (Mode C): pipeline + helper + ESPHome override + Tauri Mac app | ESPHome ~6 lines, Mac app |
-| 3 | OpenAI Realtime conversation (Mode B): `custom_components/voix` integration | Python (~250 LoC) |
-| 4 | Polish: history search, hotkeys, HACS publication, observability | Light |
+The native shells contribute the things the OS exclusively can: hotkey
+registration, local mic capture, paste, focused-app context. They
+DON'T duplicate any UI.
+
+**Implementation plan**:
+
+1. Create `voix-backend/ui/` with Vite + React + Treaty (Elysia's
+   type-safe RPC) → fully-typed API client without writing OpenAPI
+2. Move mode editor screens from `app/src/settings.js` to React
+   components
+3. Serve the built bundle from Elysia (`Bun.file` or `staticPlugin`)
+4. Wrap in Tauri as a thin window pointing at `http://localhost:8765/ui/`
+5. Add the Tauri-side modules for hotkey, paste, mic capture, context
+6. Decide on the Mac mic source's protocol — most likely the same WS
+   `/ws` endpoint with a different `device_id`, so it's just another
+   input device from the daemon's perspective
+
+### B. Mac as a mic source
+
+Once the React-on-backend split exists, the Mac native shell can host
+a Bun runtime alongside (or `tauri-plugin-bun` etc.) that:
+
+- Registers a global macOS hotkey (Cmd-Space-mod or user-chosen)
+- On hotkey: starts local mic capture, sends to the daemon via the
+  same `/ws` endpoint, gets transcript back, pastes into the active
+  app
+
+This makes the Mac a peer input device alongside the puck. Same mode
+catalog, same post-processing, same history. Users get to dictate
+from anywhere, not just at the puck.
+
+### C. iOS keyboard replacement (longer-term)
+
+The endgame: an iOS app that replaces the system keyboard, with a mic
+button that starts dictation. The Bun daemon either runs:
+- on a Mac the iPhone trusts (paired over Bonjour), or
+- as a hosted instance the user points at
+
+iOS specifics:
+- Keyboard extensions are sandboxed (no network in classic extensions)
+- iOS 17+: `RequestsOpenAccess` keyboards can do network
+- Same React UI in a "settings within keyboard" sheet
+
+This is the most ambitious bit and a long way off. The architectural
+preparation is making sure the daemon's protocol is portable (no
+Mac-specific assumptions on the wire) and the UI is shell-agnostic.
+
+### D. Context relay (Supershout pattern)
+
+Currently the daemon sees no client-side context. Once the Mac shell
+exists, it should send focused-app metadata + selected text + clipboard
+when starting a dictation (per the Supershout `SessionContext` shape).
+Daemon weaves this into the post-processing prompt — same way
+Supershout already does.
+
+### E. Auto-routing for dictation
+
+With context relay in place, a single hotkey can drive multiple modes
+intelligently:
+- Press hotkey from Slack → auto-pick `Message` mode
+- Press hotkey from Cursor → auto-pick `Code` mode
+- Press hotkey from Mail.app → auto-pick `Email` mode
+
+Each mode already has a `routing_hint` field. A small/cheap LLM call
+("here's the focused app + selected text — pick a mode") covers the
+long tail; for known apps we cache `bundleId → mode_id` so it's free.
+
+### F. Trim the HA integration
+
+The HA custom integration still has all the old bridge code (~3000
+LOC). Now that the daemon is the proven path, the integration should
+shrink to just:
+
+- ESPHome puck discovery
+- Daemon URL + token push via `voix_set_server`
+- Mode-changed → push to puck for LED feedback
+- Maybe a sensor mirroring last transcript (optional)
+
+Probably ~300 LOC. Should happen once we've confirmed nothing else
+relies on the old bridge endpoints.
+
+### G. Cost tracking
+
+Per Supershout: each `ModelInfo` carries `costPerMinute` for voice
+models and a token-price estimate for chat models. Aggregate per mode
+in history. Surface a "this month's spend by mode" view in the UI.
+
+### H. Multi-puck routing for `voix.end_session`
+
+Currently `VoixContextSource.callTool("end_session")` closes EVERY
+bound session. Single-puck households (the common case today) are
+fine; multi-puck installs need device-aware dispatch. The OpenAI
+Realtime tool-call event doesn't carry caller device context, so we'll
+have to thread it through the daemon's tool-call relay.
+
+### I. Stage tuning (firmware AEC)
+
+The XMOS pipeline pieces (`AEC → IC → NS → AGC`) are individually
+configurable. We've stuck with AGC channel-0 (upstream default) after
+NS-stage produced too-quiet output. Worth a future test: NS at
+channel 0 + `gain_factor` boost in the ESPHome microphone source. The
+livekit-on-vpe project showed AEC alone produces RMS=4 on a sine-wave
+echo test, so there's real signal there if we can get the gain
+balanced.
+
+## Iteration loop
+
+For day-to-day work:
+
+```
+voix-backend/    edit + push to main             → ~30s to running
+                 (dev_mode polls git every 30s; bun --watch picks up changes)
+
+esphome/         scripts/build-local.sh upload   → ~45s compile + OTA
+                 (mtime-guarded; cached re-uploads are guarded out)
+
+ha-integration/  scp + ha core restart           → ~60s
+                 (HA's `ha core logs` is 100 lines — grep aggressively)
+```
+
+For diagnosing audio issues: `http://192.168.96.15:8765/recordings/`
+gives mic + speaker WAVs + transcripts side-by-side per session. That
+beats reading RMS numbers in logs every time.
+
+## See also
+
+- `docs/STATE.md` — current installation status / what's deployed where
+- `docs/setup-*.md` — per-mode setup guides
+- `docs/adr/` — architecture decisions (pre-pivot history lives here)
+- `CLAUDE.md` — operational notes for AI agents iterating on this code

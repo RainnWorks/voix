@@ -65,23 +65,19 @@ export const config = {
   port: Number(addon?.port ?? env["VOIX_PORT"] ?? 8765),
   // HA MCP connection.
   //
-  // URL: defaults to `http://homeassistant:8123` — the Docker network
-  // hostname for HA core when running as an add-on. We tried the
-  // Supervisor's `/core/*` proxy first, but it only forwards `/api/*`
-  // paths; `/mcp_server/sse` returns 404. Direct-to-HA is the right
-  // path for non-/api/ endpoints.
+  // URL: defaults to `http://supervisor/core` — the HA-core proxy the
+  // Supervisor exposes to every add-on with `homeassistant_api: true`.
+  // The MCP client targets `/api/mcp` (Streamable HTTP), which lives
+  // under `/api/*` and is therefore forwarded by the proxy. HA's
+  // legacy `/mcp_server/sse` endpoint is outside the proxy mount and
+  // 404s; we don't use it.
   //
-  // Token: resolves in order:
-  //   1. Explicit add-on option (`ha_token`) — what users will normally
-  //      set, a long-lived access token from their HA user.
-  //   2. Explicit env var (dev mode).
-  //   3. SUPERVISOR_TOKEN — auto-injected by HA Supervisor when the
-  //      add-on declares `homeassistant_api: true`. Accepted by HA's
-  //      REST `/api/*` endpoints but REJECTED by mcp_server (which
-  //      requires a real-user token). Set anyway as a fallback so the
-  //      daemon can still call `/api/services/...` etc; mcp_server
-  //      will surface a 403 in the logs if no real token is set.
-  haUrl: addon?.ha_url || env["HA_URL"] || "http://homeassistant:8123",
+  // Token: SUPERVISOR_TOKEN is the auto-injected token for the proxy
+  // and Just Works for `/api/*` endpoints. Users only set `ha_token`
+  // if they want a specific HA user's long-lived token (e.g. to
+  // constrain MCP tools to one user's exposed entities). Dev:
+  // HA_URL + HA_TOKEN env vars override.
+  haUrl: addon?.ha_url || env["HA_URL"] || "http://supervisor/core",
   haToken: addon?.ha_token || env["HA_TOKEN"] || env["SUPERVISOR_TOKEN"] || undefined,
   logLevel: (addon?.log_level || env["VOIX_LOG_LEVEL"] || "info") as
     | "trace"

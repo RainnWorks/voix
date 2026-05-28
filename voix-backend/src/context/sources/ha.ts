@@ -16,11 +16,13 @@
  *     start to populate the `[Context]` block with the current state
  *     of exposed entities.
  *
- * Transport: HA exposes BOTH legacy SSE and newer Streamable HTTP.
- * We use SSE — it works against every HA install >= 2025.2 and is
- * what HA's docs still officially document. Streamable HTTP is an
- * optimisation we can swap to later (same MCP SDK surface, different
- * transport class).
+ * Transport: Streamable HTTP at `/api/mcp` — chosen specifically
+ * because it lives under `/api/*`, which is what the HA Supervisor's
+ * HA-core proxy at `http://supervisor/core/api/*` forwards. The
+ * legacy SSE endpoint at `/mcp_server/sse` is OUTSIDE that proxy and
+ * returns 404 when accessed through it. Streamable HTTP also accepts
+ * the auto-injected SUPERVISOR_TOKEN (via `homeassistant_api: true`)
+ * so users get HA tools wired with zero token paperwork.
  *
  * Failure modes:
  *   • No `haToken` configured → `connect()` resolves without
@@ -32,7 +34,7 @@
  */
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { log } from "../../log.ts";
 import type { ContextEntry, ContextSource, GatherArgs, ToolResult, ToolSpec } from "../types.ts";
 
@@ -58,31 +60,21 @@ export class HAContextSource implements ContextSource {
   constructor(private readonly opts: HASourceOptions) {}
 
   async connect(): Promise<void> {
-    // HA's MCP SSE endpoint at `<base>/mcp_server/sse`. We can't use
-    // `new URL("/mcp_server/sse", base)` because that resolves the
-    // leading slash against the HOST, losing path prefixes like
-    // `/core` (the Supervisor's HA-core proxy mount). String concat
-    // is the safe move for both:
-    //   • `http://supervisor/core` → `http://supervisor/core/mcp_server/sse`
-    //   • `http://192.168.1.2:8123` → `http://192.168.1.2:8123/mcp_server/sse`
-    const url = new URL(`${this.opts.baseUrl.replace(/\/$/, "")}/mcp_server/sse`);
+    // HA's Streamable HTTP endpoint at `<base>/api/mcp`. String concat
+    // (not `new URL("/api/mcp", base)`) so path prefixes like `/core`
+    // on the supervisor proxy aren't dropped — both work:
+    //   • `http://supervisor/core` → `http://supervisor/core/api/mcp`
+    //   • `http://192.168.1.2:8123` → `http://192.168.1.2:8123/api/mcp`
+    const url = new URL(`${this.opts.baseUrl.replace(/\/$/, "")}/api/mcp`);
 
-    const transport = new SSEClientTransport(url, {
-      // SSE transport in the MCP SDK supports custom request init for
-      // the initial GET that opens the event stream. We pass the HA
-      // bearer token here.
+    const transport = new StreamableHTTPClientTransport(url, {
+      // Streamable HTTP transport takes a `requestInit` whose headers
+      // get attached to every JSON-RPC POST. The Authorization header
+      // is HA's standard bearer auth — SUPERVISOR_TOKEN works here
+      // because /api/* goes through the proxy that injects supervisor
+      // identity for HA core.
       requestInit: {
         headers: { Authorization: `Bearer ${this.opts.token}` },
-      },
-      eventSourceInit: {
-        // Use fetch under the hood so we can attach the bearer token.
-        // EventSource as bundled in Bun doesn't support custom headers,
-        // hence the explicit fetch override.
-        fetch: (input, init) =>
-          fetch(input, {
-            ...init,
-            headers: { ...init?.headers, Authorization: `Bearer ${this.opts.token}` },
-          }),
       },
     });
 

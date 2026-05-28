@@ -42,6 +42,7 @@ import { getMode } from "../modes/store.ts";
 import type { Mode } from "../modes/types.ts";
 import { postProcess } from "../post_process/index.ts";
 import { OpenAIRealtimeClient, type RealtimeSessionConfig } from "../realtime/openai.ts";
+import { SessionRecorder } from "../recordings/store.ts";
 import {
   forget as forgetTranscript,
   writeComplete as writeCompleteTranscript,
@@ -135,6 +136,10 @@ export class PuckSession {
 
   private readonly sessionId = randomBytes(8).toString("hex");
   private mode: Mode;
+  /** Captures mic + speaker PCM per session. Written to disk on close
+   *  for offline playback / diagnosis (e.g. confirming whether XMOS's
+   *  output on a given pipeline stage actually contains speech). */
+  private recorder: SessionRecorder;
   /** Accumulated user transcript across delta events. */
   private userPartial = "";
   /** Set to the first error message we hand off to history so the entry
@@ -152,6 +157,12 @@ export class PuckSession {
     // Resolve once at construction. The mode catalog is a stable
     // in-memory map — no async I/O here.
     this.mode = getMode(this.deps.hello.mode_id);
+    this.recorder = new SessionRecorder({
+      deviceId: this.deps.hello.device_id,
+      sessionId: this.sessionId,
+      modeId: this.mode.id,
+      modeName: this.mode.name,
+    });
   }
 
   async start(): Promise<void> {
@@ -285,6 +296,11 @@ export class PuckSession {
     // the right signal; they update lastSpeechActivity in the SDK
     // event handlers above.
 
+    // Capture raw mic BEFORE resample + echo gate — recordings show
+    // what the puck actually delivered, not what we forwarded. Lets us
+    // listen to what XMOS produced on the configured pipeline stage.
+    this.recorder.pushMic(pcm16k);
+
     // Diagnostic: log RMS of mic chunks periodically so we can see
     // whether the puck is delivering recognisable audio. Useful while
     // experimenting with XMOS pipeline stages (NS / AEC / AGC); a
@@ -347,7 +363,9 @@ export class PuckSession {
     });
 
     rt.on("conversation.item.input_audio_transcription.completed", (event) => {
-      void this.handleUserTranscriptComplete(event.transcript ?? "");
+      const text = event.transcript ?? "";
+      this.recorder.pushTranscript("user", text);
+      void this.handleUserTranscriptComplete(text);
     });
 
     rt.on("response.output_audio_transcript.done", (event) => {
@@ -355,6 +373,7 @@ export class PuckSession {
       if (!t) return;
       // Assistant transcripts: log only. No post-processing — the
       // model already shaped the text the way the user heard it.
+      this.recorder.pushTranscript("assistant", t);
       log.info(
         `session: ${this.deps.hello.device_id} assistant said ` +
           `(${t.length} chars): ${t.slice(0, 100)}${t.length > 100 ? "…" : ""}`,
@@ -368,6 +387,7 @@ export class PuckSession {
       if (!event.delta) return;
       const pcm24k = Buffer.from(event.delta, "base64");
       this.echoGate.observeSpeaker(pcm24k);
+      this.recorder.pushSpeaker(pcm24k);
       this.sendBinaryToPuck(pcm24k);
     });
 
@@ -549,6 +569,10 @@ export class PuckSession {
     }
     voixSource.unbindSession(this.deps.hello.device_id);
     forgetTranscript(this.deps.hello.device_id, this.sessionId);
+    // Best-effort flush of mic + speaker captures to disk. Fire and
+    // forget — the close path returns before the WAVs are written so
+    // the session's puck WS gets torn down promptly.
+    void this.recorder.finalize();
     const duration = (Date.now() - this.startedAt) / 1000;
     log.info(
       `session: closed device=${this.deps.hello.device_id} ` +

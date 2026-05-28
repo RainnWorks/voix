@@ -19,6 +19,7 @@ import { loadHistory } from "./history/store.ts";
 import { log } from "./log.ts";
 import { loadModes } from "./modes/store.ts";
 import { puckRoute } from "./puck/route.ts";
+import { recordingsRoute } from "./recordings/route.ts";
 
 // Async boot: load disk state before the WS endpoint accepts pucks.
 // If either fails we don't want to refuse pucks silently — log and
@@ -51,6 +52,7 @@ if (config.haUrl && config.haToken) {
 const app = new Elysia()
   .get("/healthz", () => ({ ok: true, version: "0.1.0" }))
   .use(puckRoute())
+  .use(recordingsRoute())
   .listen(config.port);
 
 log.info(`listening on :${config.port} (log_level=${config.logLevel})`);

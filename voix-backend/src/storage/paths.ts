@@ -60,4 +60,6 @@ export const paths = {
     dataPath("transcripts", deviceSlug, `${sessionId}-${role}.txt`),
   transcriptRawFile: (deviceSlug: string, sessionId: string, role: "user" | "assistant"): string =>
     dataPath("transcripts", deviceSlug, `${sessionId}-${role}.raw.txt`),
+  recordingsDir: dataPath("recordings"),
+  recordingDir: (sessionId: string): string => dataPath("recordings", sessionId),
 };

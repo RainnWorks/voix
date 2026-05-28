@@ -58,11 +58,14 @@ export class HAContextSource implements ContextSource {
   constructor(private readonly opts: HASourceOptions) {}
 
   async connect(): Promise<void> {
-    // HA's MCP SSE endpoint. Some installs mount it under `/mcp_server/
-    // sse`, others (newer add-on packaging) under `/api/mcp`. Default
-    // to `/mcp_server/sse` since that's what HA's docs reference; the
-    // user can override with the trailing path on `ha_url` if needed.
-    const url = new URL("/mcp_server/sse", this.opts.baseUrl);
+    // HA's MCP SSE endpoint at `<base>/mcp_server/sse`. We can't use
+    // `new URL("/mcp_server/sse", base)` because that resolves the
+    // leading slash against the HOST, losing path prefixes like
+    // `/core` (the Supervisor's HA-core proxy mount). String concat
+    // is the safe move for both:
+    //   • `http://supervisor/core` → `http://supervisor/core/mcp_server/sse`
+    //   • `http://192.168.1.2:8123` → `http://192.168.1.2:8123/mcp_server/sse`
+    const url = new URL(`${this.opts.baseUrl.replace(/\/$/, "")}/mcp_server/sse`);
 
     const transport = new SSEClientTransport(url, {
       // SSE transport in the MCP SDK supports custom request init for

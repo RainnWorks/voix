@@ -46,6 +46,14 @@ ports_description:
 # isolation.
 host_network: false
 
+# Grant the add-on access to HA core's API. The Supervisor injects
+# SUPERVISOR_TOKEN into the container env, valid as a bearer token for
+# HA core — so the daemon can hit /mcp_server/sse and call services
+# without the user creating a long-lived token by hand. The default
+# ha_url ("http://supervisor/core") is the Supervisor's internal proxy
+# to HA core, reachable only from inside add-on containers.
+homeassistant_api: true
+
 # Add-on options exposed in the HA UI. The user sets these in
 # Settings → Add-ons → voix backend → Configuration; HA writes the
 # values into /data/options.json which env.ts reads at boot.
@@ -91,15 +99,16 @@ options_description:
     if left blank — copy the generated value from the add-on logs into
     your ESPHome puck config (`voix_ws_token` in secrets.yaml).
   ha_url: >-
-    Base URL the daemon uses to reach HA's MCP server. Default
-    `http://supervisor/core` works when running as an add-on. Override
-    if you have an unusual setup.
+    Base URL the daemon uses to reach HA's MCP server. Leave blank to
+    use the Supervisor's HA-core proxy (the default — it just works).
+    Override only if you want the daemon to talk to a different HA
+    install than the one hosting this add-on.
   ha_token: >-
-    HA long-lived access token, used by the daemon's MCP client to
-    fetch areas/persons/exposed-entity state and call HA tools
-    (HassTurnOn, HassLightSet, etc.) on the model's behalf. Create one
-    under your HA user profile → Long-lived access tokens. Leave blank
-    to run without HA tools — pucks still work for dictation.
+    HA bearer token for the MCP client. Leave blank and the add-on
+    uses the Supervisor's auto-injected token (works out of the box,
+    scoped to HA core). Set only if you want a specific HA user's
+    long-lived token instead — e.g. to constrain which entities the
+    realtime model can see via per-user Assist exposure.
   log_level: >-
     `info` is the default. Use `debug` for protocol-level visibility
     when something's misbehaving.

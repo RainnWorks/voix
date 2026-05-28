@@ -159,9 +159,17 @@ export class OpenAIRealtimeClient {
   }
 
   /**
-   * Send the result of a tool call back to OpenAI and nudge it to
-   * continue. Two SDK sends — the convenience here is purely "don't
-   * forget to issue `response.create` after `function_call_output`".
+   * Send the result of a tool call back to OpenAI.
+   *
+   * Just the `function_call_output` — NO `response.create` follow-up.
+   * `gpt-realtime-2` GA does async tool calls natively: the model is
+   * already running its response when it issued the tool call, the
+   * result lands and is incorporated into the in-flight response.
+   * Sending `response.create` after every tool result causes
+   * "Conversation already has an active response in progress" errors
+   * when the model parallel-calls multiple tools — the first call's
+   * `response.create` starts the response, then the second tool result
+   * tries to start ANOTHER response while the first is still streaming.
    */
   sendToolResult(callId: string, output: string): void {
     if (!this.rt || this.closed) return;
@@ -173,7 +181,6 @@ export class OpenAIRealtimeClient {
         output,
       },
     });
-    this.safeSend({ type: "response.create" });
   }
 
   /**

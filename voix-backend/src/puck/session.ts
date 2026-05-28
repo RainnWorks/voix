@@ -265,15 +265,21 @@ export class PuckSession {
 
     if (this.mode.type === "realtime") {
       const { forward, micRms, peakRefRms } = this.echoGate.shouldForward(pcm16k);
-      // Log every ~50 chunks (~3s of 16 kHz mic) so we can see how the
-      // gate is performing without flooding logs.
       this.echoLogCounter++;
-      if (this.echoLogCounter % 50 === 0) {
-        log.debug(
-          `session: mic gate ${forward ? "forward" : "drop"} ` +
-            `mic_rms=${Math.round(micRms)} ref=${Math.round(peakRefRms)} ` +
-            `(${this.echoGate.stats()})`,
+      // Log every chunk that the gate FORWARDS while a model reference
+      // is active — these are the candidate "fake user turn" inputs.
+      // We need to see their mic_rms vs predicted echo to know
+      // whether to tighten further. Drops are summarised once every
+      // 50 chunks via stats() so the log isn't a flood.
+      if (forward && peakRefRms > 0) {
+        log.warn(
+          `session: gate FORWARD during echo — mic_rms=${Math.round(micRms)} ` +
+            `peak_ref=${Math.round(peakRefRms)} ` +
+            `predicted=${Math.round(peakRefRms * 0.32)} ratio=${(micRms / Math.max(peakRefRms, 1)).toFixed(2)}`,
         );
+      }
+      if (this.echoLogCounter % 50 === 0) {
+        log.info(`session: ${this.deps.hello.device_id} ${this.echoGate.stats()}`);
       }
       if (!forward) return;
     }

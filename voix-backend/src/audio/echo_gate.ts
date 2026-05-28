@@ -28,11 +28,16 @@
  * sessions we'll tighten ECHO_PATH_GAIN per device.
  */
 
-/** Post-AEC residual gain. -16 dB starting point. */
-const ECHO_PATH_GAIN = 0.15;
+/** Post-AEC residual gain. Field tuning: Voice PE's XMOS at the
+ *  speaker volumes used in practice leaves a residual closer to
+ *  -10 dB than the spec'd -25 dB. Bumping ECHO_PATH_GAIN means we
+ *  predict a louder echo and gate more aggressively. */
+const ECHO_PATH_GAIN = 0.32;
 /** Real-speech threshold: mic RMS must exceed predicted echo by this
- *  factor to forward. 4× ≈ 12 dB headroom. */
-const INTERRUPT_THRESHOLD = 4.0;
+ *  factor to forward. Dropped from 4× → 2× because the previous
+ *  setting still let mid-volume echo through, producing fake user
+ *  turns ("아하", "Metallica Club") that confused the model. */
+const INTERRUPT_THRESHOLD = 2.0;
 /** Refs are timestamped at PLAYBACK time (future, when the puck
  *  actually emits the audio). Lookup looks BACK from "now" to find
  *  refs whose playback is recent. Window covers worst-case puck

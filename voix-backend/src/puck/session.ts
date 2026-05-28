@@ -41,11 +41,7 @@ import { log } from "../log.ts";
 import { getMode } from "../modes/store.ts";
 import type { Mode } from "../modes/types.ts";
 import { postProcess } from "../post_process/index.ts";
-import {
-  OpenAIRealtimeClient,
-  type RealtimeEvent,
-  type RealtimeSessionConfig,
-} from "../realtime/openai.ts";
+import { OpenAIRealtimeClient, type RealtimeSessionConfig } from "../realtime/openai.ts";
 import {
   forget as forgetTranscript,
   writeComplete as writeCompleteTranscript,
@@ -157,7 +153,6 @@ export class PuckSession {
     const cfg = this.buildRealtimeConfig(mode);
 
     this.openai = new OpenAIRealtimeClient(this.deps.openaiApiKey, cfg);
-    this.openai.on((event) => void this.handleOpenAIEvent(event));
 
     try {
       await this.openai.connect();
@@ -167,6 +162,11 @@ export class PuckSession {
       this.close();
       return;
     }
+
+    // Subscribe to typed SDK events directly — each handler gets the
+    // SDK's exact event shape, no translation layer. The `rt` is
+    // guaranteed non-null after connect() resolved.
+    this.wireRealtimeEvents();
 
     // Wait for context + tools (or their per-source timeouts). For
     // dictation modes we skip the tool registration — text-only
@@ -282,80 +282,80 @@ export class PuckSession {
     this.openai.sendAudio(pcm24k);
   }
 
-  private async handleOpenAIEvent(event: RealtimeEvent): Promise<void> {
-    switch (event.type) {
-      case "speech.started":
-        this.userSpeaking = true;
-        this.lastSpeechActivity = Date.now();
-        this.sendToPuck({ type: "user_speech_start" });
-        break;
+  /** Subscribe to typed SDK events. Each `rt.on(...)` here gets the
+   *  matching `RealtimeServerEvent` subtype — no translation layer,
+   *  no manual JSON parsing. */
+  private wireRealtimeEvents(): void {
+    const rt = this.openai?.rt;
+    if (!rt) return;
 
-      case "speech.stopped":
-        this.userSpeaking = false;
-        this.lastSpeechActivity = Date.now();
-        this.sendToPuck({ type: "user_speech_end" });
-        break;
+    rt.on("input_audio_buffer.speech_started", () => {
+      this.userSpeaking = true;
+      this.lastSpeechActivity = Date.now();
+      this.sendToPuck({ type: "user_speech_start" });
+    });
 
-      case "transcript.delta":
-        if (event.role === "user") {
-          this.userPartial += event.delta;
-          this.sendToPuck({ type: "transcript_delta", text: event.delta });
-          // Best-effort partial write so the Mac app can read live
-          // progress without holding state itself.
-          await writePartialTranscript(
-            this.deps.hello.device_id,
-            this.sessionId,
-            "user",
-            this.userPartial,
-          ).catch((e) => log.debug("session: partial write failed", e));
-        }
-        break;
+    rt.on("input_audio_buffer.speech_stopped", () => {
+      this.userSpeaking = false;
+      this.lastSpeechActivity = Date.now();
+      this.sendToPuck({ type: "user_speech_end" });
+    });
 
-      case "transcript.completed":
-        if (event.role === "user") {
-          await this.handleUserTranscriptComplete(event.text);
-        } else if (event.text.trim()) {
-          // Assistant transcripts (realtime sessions): log + emit to
-          // the puck for the Mac app's live caption view. No post-
-          // processing — the model already shaped the text the way
-          // the user heard it.
-          const t = event.text.trim();
-          log.info(
-            `session: ${this.deps.hello.device_id} assistant said ` +
-              `(${t.length} chars): ${t.slice(0, 100)}${t.length > 100 ? "…" : ""}`,
-          );
-        }
-        break;
+    rt.on("conversation.item.input_audio_transcription.delta", (event) => {
+      const delta = event.delta ?? "";
+      if (!delta) return;
+      this.userPartial += delta;
+      this.sendToPuck({ type: "transcript_delta", text: delta });
+      // Best-effort partial write so the Mac app can read live
+      // progress without holding state itself.
+      void writePartialTranscript(
+        this.deps.hello.device_id,
+        this.sessionId,
+        "user",
+        this.userPartial,
+      ).catch((e) => log.debug("session: partial write failed", e));
+    });
 
-      case "audio.delta":
-        // Forward OpenAI's 24 kHz speaker audio straight to the puck —
-        // the firmware plays at 24 kHz natively, no further resampling
-        // needed. Also record it with the echo gate so subsequent mic
-        // chunks know how much echo to expect.
-        this.echoGate.observeSpeaker(event.pcm24kBytes);
-        this.sendBinaryToPuck(event.pcm24kBytes);
-        break;
+    rt.on("conversation.item.input_audio_transcription.completed", (event) => {
+      void this.handleUserTranscriptComplete(event.transcript ?? "");
+    });
 
-      case "function_call.requested":
-        await this.handleFunctionCall(event.callId, event.name, event.argumentsJson);
-        break;
+    rt.on("response.output_audio_transcript.done", (event) => {
+      const t = (event.transcript ?? "").trim();
+      if (!t) return;
+      // Assistant transcripts: log only. No post-processing — the
+      // model already shaped the text the way the user heard it.
+      log.info(
+        `session: ${this.deps.hello.device_id} assistant said ` +
+          `(${t.length} chars): ${t.slice(0, 100)}${t.length > 100 ? "…" : ""}`,
+      );
+    });
 
-      case "error":
-        log.warn("session: openai error", event.message);
-        this.lastError = event.message;
-        this.sendToPuck({ type: "error", message: event.message });
-        break;
+    rt.on("response.output_audio.delta", (event) => {
+      // SDK delivers the audio as base64; decode once and (a) tell
+      // the echo gate so subsequent mic chunks can compare RMS, and
+      // (b) forward straight to the puck at 24 kHz native.
+      if (!event.delta) return;
+      const pcm24k = Buffer.from(event.delta, "base64");
+      this.echoGate.observeSpeaker(pcm24k);
+      this.sendBinaryToPuck(pcm24k);
+    });
 
-      case "closed":
-        log.info(`session: openai closed code=${event.code} reason=${event.reason}`);
-        this.close();
-        break;
+    rt.on("response.function_call_arguments.done", (event) => {
+      void this.handleFunctionCall(event.call_id, event.name, event.arguments);
+    });
 
-      default:
-        // session.created / session.updated / response.completed —
-        // currently no puck-side action.
-        break;
-    }
+    rt.on("error", (err) => {
+      const msg = err.error?.message ?? err.message ?? String(err);
+      log.warn("session: openai error", msg);
+      this.lastError = msg;
+      this.sendToPuck({ type: "error", message: msg });
+    });
+
+    rt.socket.addEventListener("close", (ev) => {
+      log.info(`session: openai closed code=${ev.code} reason=${ev.reason ?? ""}`);
+      this.close();
+    });
   }
 
   /**

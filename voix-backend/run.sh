@@ -88,10 +88,14 @@ bun install --silent
     fi
     new_sha=$(git rev-parse "origin/${DEV_BRANCH}" 2>/dev/null || echo "")
     if [ -n "${new_sha}" ] && [ "${old_sha}" != "${new_sha}" ]; then
-      log "new commit ${new_sha} (was ${old_sha}) — reset + reinstall"
+      log "new commit ${new_sha} (was ${old_sha}) — reinstall + reset"
+      # Bring in just the new package.json + lockfile FIRST. This
+      # doesn't touch any src/ files, so bun --watch won't reload yet.
+      git checkout "origin/${DEV_BRANCH}" -- voix-backend/package.json voix-backend/bun.lock
+      ( cd "${DEV_DIR}/voix-backend" && bun install --silent )
+      # NOW reset everything. bun --watch sees the src changes and
+      # reloads — with the new deps already in node_modules.
       git reset --hard "origin/${DEV_BRANCH}"
-      cd "${DEV_DIR}/voix-backend"
-      bun install --silent
     fi
   done
 ) &

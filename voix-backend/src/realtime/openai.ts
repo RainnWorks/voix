@@ -1,23 +1,27 @@
 /**
- * OpenAI Realtime client — thin adapter over the official SDK.
+ * OpenAI Realtime client — thin lifecycle wrapper over the official SDK.
  *
- * Was hand-rolled when the daemon first landed because HA Core pinned
- * an old `openai` Python that lacked GA Realtime. The daemon has no
- * such pin, so we use `openai/realtime/ws` directly. The SDK gives us
- * typed server events for every message type, automatic auth, and
- * URL building — we just translate its events into the internal
- * `RealtimeEvent` union the rest of the daemon already consumes.
+ * Owns:
+ *   • Session config building (GA `type: "realtime"` shape).
+ *   • Connect handshake (await `session.created` before returning).
+ *   • A few compound actions that map to >1 SDK send (e.g.
+ *     `sendToolResult` = `conversation.item.create` + `response.create`).
  *
- * GA schema (post May 2026):
+ * Does NOT translate the SDK's events into our own union — that was
+ * dead weight. Subscribers reach the typed emitter via `client.rt.on(
+ * "response.output_audio.delta", e => …)` and get the SDK's exact
+ * event type back. Adding a layer here would just duplicate the SDK's
+ * type surface.
+ *
+ * GA session schema (post May 2026):
  *   { type: "realtime", output_modalities: ["audio"|"text"],
- *     audio: { input: { format, transcription, turn_detection,
- *                       noise_reduction },
- *              output: { format, voice } },
+ *     audio: { input: {format, transcription, turn_detection,
+ *                      noise_reduction },
+ *              output: {format, voice} },
  *     instructions, tools }
  *
- * (The deprecated beta shape — flat `modalities` / `input_audio_format`
- * keys at the top level — is rejected with `beta_api_shape_disabled`.
- * The SDK's typed `session.update` accepts both shapes; we send GA.)
+ * The deprecated beta shape (flat `modalities` / `input_audio_format`)
+ * is rejected with `beta_api_shape_disabled`.
  */
 
 import { OpenAI } from "openai";
@@ -28,8 +32,6 @@ import type {
   RealtimeSessionCreateRequest,
 } from "openai/resources/realtime/realtime";
 import { log } from "../log.ts";
-
-export type RealtimeMode = "realtime" | "transcription";
 
 export type RealtimeSessionConfig = {
   /** Model ID. e.g. `gpt-realtime-2` for full bidir, `gpt-4o-mini-transcribe`
@@ -51,46 +53,15 @@ export type RealtimeSessionConfig = {
    *  patient for ramble-y inputs. */
   vadEagerness?: "low" | "medium" | "high";
   /** Tool specs to register up front. Empty array = no tools. Populated
-   *  by the context registry once MCP sources are wired. The shape is
-   *  the SDK's `RealtimeFunctionTool`; MCP tools belong in a separate
-   *  array which we don't expose here yet. */
+   *  by the context registry once MCP sources are wired. */
   tools?: RealtimeFunctionTool[];
 };
 
-export type RealtimeEvent =
-  | { type: "session.created"; raw: unknown }
-  | { type: "session.updated"; raw: unknown }
-  | { type: "speech.started"; raw: unknown }
-  | { type: "speech.stopped"; raw: unknown }
-  | { type: "audio.delta"; pcm24kBytes: Buffer }
-  | {
-      type: "transcript.delta";
-      role: "user" | "assistant";
-      delta: string;
-    }
-  | {
-      type: "transcript.completed";
-      role: "user" | "assistant";
-      text: string;
-    }
-  | {
-      /** The model wants to call a tool. The relay (PuckSession's
-       *  tool-call handler) routes to the right context source via
-       *  the registry, then replies with `sendToolResult(callId, …)`. */
-      type: "function_call.requested";
-      callId: string;
-      name: string;
-      argumentsJson: string;
-    }
-  | { type: "response.completed"; raw: unknown }
-  | { type: "error"; message: string; raw?: unknown }
-  | { type: "closed"; code: number; reason: string };
-
-type Listener = (e: RealtimeEvent) => void;
-
 export class OpenAIRealtimeClient {
-  private rt: OpenAIRealtimeWS | null = null;
-  private listeners = new Set<Listener>();
+  /** The SDK instance. Public so callers can subscribe to typed events
+   *  directly (`client.rt.on("response.output_audio.delta", e => …)`).
+   *  Null until `connect()` resolves. */
+  rt: OpenAIRealtimeWS | null = null;
   private closed = false;
 
   constructor(
@@ -98,37 +69,19 @@ export class OpenAIRealtimeClient {
     private readonly cfg: RealtimeSessionConfig,
   ) {}
 
-  on(listener: Listener): () => void {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
-  }
-
-  private emit(event: RealtimeEvent): void {
-    for (const l of this.listeners) {
-      try {
-        l(event);
-      } catch (err) {
-        log.warn("realtime listener threw:", err);
-      }
-    }
-  }
-
+  /**
+   * Open the WS, wait for `session.created`, then send the initial
+   * `session.update` with our mode config. Caller can subscribe to
+   * `this.rt.on(...)` either before or after this resolves — the SDK
+   * buffers handlers across the handshake.
+   */
   async connect(): Promise<void> {
     const client = new OpenAI({ apiKey: this.apiKey });
     const rt = new OpenAIRealtimeWS({ model: this.cfg.model }, client);
     this.rt = rt;
 
-    // Wire SDK events to our internal RealtimeEvent stream BEFORE
-    // waiting for the socket to open — buffered events fire as soon as
-    // the open handshake completes, and we don't want to miss
-    // session.created.
-    this.wireEvents(rt);
-
-    // The SDK's emitter resolves "session.created" when the server
-    // accepts us. Wait for that (or an early error/close) before
-    // returning so callers can issue session.update straight away.
     await new Promise<void>((resolve, reject) => {
-      const off = () => {
+      const off = (): void => {
         rt.off("session.created", onCreated);
         rt.off("error", onError);
         rt.socket.removeEventListener("close", onClose);
@@ -150,77 +103,7 @@ export class OpenAIRealtimeClient {
       rt.socket.addEventListener("close", onClose);
     });
 
-    // Initial session.update — sets instructions/voice/tools/VAD per
-    // the mode. The caller may follow with a second updateSession()
-    // once context gathering completes (see PuckSession.start).
     rt.send({ type: "session.update", session: this.buildSessionBody() });
-  }
-
-  private wireEvents(rt: OpenAIRealtimeWS): void {
-    rt.on("session.created", (event) => this.emit({ type: "session.created", raw: event }));
-    rt.on("session.updated", (event) => this.emit({ type: "session.updated", raw: event }));
-
-    rt.on("input_audio_buffer.speech_started", (event) =>
-      this.emit({ type: "speech.started", raw: event }),
-    );
-    rt.on("input_audio_buffer.speech_stopped", (event) =>
-      this.emit({ type: "speech.stopped", raw: event }),
-    );
-
-    rt.on("response.output_audio.delta", (event) => {
-      // SDK gives us the base64 string in `delta`; we want bytes.
-      if (typeof event.delta === "string" && event.delta.length > 0) {
-        this.emit({
-          type: "audio.delta",
-          pcm24kBytes: Buffer.from(event.delta, "base64"),
-        });
-      }
-    });
-
-    rt.on("conversation.item.input_audio_transcription.delta", (event) => {
-      const delta = typeof event.delta === "string" ? event.delta : "";
-      if (delta) this.emit({ type: "transcript.delta", role: "user", delta });
-    });
-    rt.on("conversation.item.input_audio_transcription.completed", (event) => {
-      const text = typeof event.transcript === "string" ? event.transcript : "";
-      this.emit({ type: "transcript.completed", role: "user", text });
-    });
-
-    rt.on("response.output_audio_transcript.delta", (event) => {
-      const delta = typeof event.delta === "string" ? event.delta : "";
-      if (delta) this.emit({ type: "transcript.delta", role: "assistant", delta });
-    });
-    rt.on("response.output_audio_transcript.done", (event) => {
-      const text = typeof event.transcript === "string" ? event.transcript : "";
-      this.emit({ type: "transcript.completed", role: "assistant", text });
-    });
-
-    rt.on("response.function_call_arguments.done", (event) => {
-      // SDK types call_id, name, arguments as strings on this event.
-      const callId = typeof event.call_id === "string" ? event.call_id : "";
-      const name = typeof event.name === "string" ? event.name : "";
-      const argumentsJson = typeof event.arguments === "string" ? event.arguments : "{}";
-      if (!callId || !name) {
-        log.warn("realtime: malformed function_call_arguments.done", event);
-        return;
-      }
-      this.emit({ type: "function_call.requested", callId, name, argumentsJson });
-    });
-
-    rt.on("response.done", (event) => this.emit({ type: "response.completed", raw: event }));
-
-    rt.on("error", (err) => {
-      this.emit({
-        type: "error",
-        message: err.message ?? String(err),
-        raw: err,
-      });
-    });
-
-    rt.socket.addEventListener("close", (ev) => {
-      this.closed = true;
-      this.emit({ type: "closed", code: ev.code, reason: ev.reason ?? "" });
-    });
   }
 
   private buildSessionBody(): RealtimeSessionCreateRequest {
@@ -253,12 +136,11 @@ export class OpenAIRealtimeClient {
   }
 
   /**
-   * Send a chunk of 24 kHz PCM16 audio to OpenAI. Caller is responsible
-   * for upsampling from the device's native 16 kHz before calling.
+   * Send a chunk of 24 kHz PCM16 audio. Caller is responsible for
+   * upsampling from the device's native 16 kHz before calling.
    */
   sendAudio(pcm24kBytes: Buffer): void {
-    if (!this.rt || this.closed) return;
-    if (pcm24kBytes.length === 0) return;
+    if (!this.rt || this.closed || pcm24kBytes.length === 0) return;
     this.safeSend({
       type: "input_audio_buffer.append",
       audio: pcm24kBytes.toString("base64"),
@@ -268,8 +150,7 @@ export class OpenAIRealtimeClient {
   /**
    * Tell OpenAI to commit the current input audio buffer and produce
    * a response. Most useful for explicit end-of-turn signalling when
-   * semantic VAD isn't doing the right thing — for normal sessions
-   * we leave VAD to handle it.
+   * semantic VAD isn't doing the right thing.
    */
   commitAndRespond(): void {
     if (!this.rt || this.closed) return;
@@ -278,9 +159,9 @@ export class OpenAIRealtimeClient {
   }
 
   /**
-   * Send the result of a tool call back to OpenAI. The model paused
-   * its response while waiting for this; once it lands the model
-   * resumes and incorporates the result into its reply.
+   * Send the result of a tool call back to OpenAI and nudge it to
+   * continue. Two SDK sends — the convenience here is purely "don't
+   * forget to issue `response.create` after `function_call_output`".
    */
   sendToolResult(callId: string, output: string): void {
     if (!this.rt || this.closed) return;
@@ -321,9 +202,13 @@ export class OpenAIRealtimeClient {
     }
   }
 
-  /** Wrap `rt.send` so any underlying WS-state hiccup is logged and
-   *  swallowed. `ws` package validates readyState internally; in
-   *  practice this is belt-and-braces for the close race. */
+  isClosed(): boolean {
+    return this.closed;
+  }
+
+  /** Belt-and-braces around `rt.send` — swallow + log any throw from
+   *  the underlying socket race. `ws` validates readyState internally;
+   *  this is here for the close-race edge cases. */
   private safeSend(event: Parameters<OpenAIRealtimeWS["send"]>[0]): void {
     if (!this.rt || this.closed) return;
     try {

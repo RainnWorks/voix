@@ -52,29 +52,16 @@ external_components:
       path: components
     components: [voix_realtime_client]
 
-# ─── XMOS voice_kit pipeline override ────────────────────────────────────────
-# Reading channel 0 from NS stage (AEC + IC + NS, no AGC). Upstream
-# default is AGC, which re-amplifies AEC residual right back to user-
-# speech level — the source of every echo loop we've hit.
+# ─── XMOS voice_kit pipeline ─────────────────────────────────────────────────
+# Default upstream config: channel_0_stage=AGC. That's what we want.
 #
-# First test of NS-stage produced no transcripts in a 180s session. To
-# distinguish "NS outputs nothing OpenAI can use" from "NS outputs
-# something but voix isn't forwarding it right", the daemon now logs
-# RMS of every mic chunk it receives from the puck. If RMS values are
-# zero / near-zero we'll know NS is filtering too aggressively; if
-# they're sane but OpenAI still can't transcribe, the issue is
-# elsewhere (sample rate? bit depth? something we're doing wrong on
-# the daemon resampling side?).
-#
-# Validated by livekit-on-vpe:
-#   AEC stage:  RMS=4      (echo cancelled)
-#   NONE stage: RMS=123    (raw mic with echo)
-#   AGC stage:  RMS=1868   (AEC residual amplified)
-# (https://github.com/breakds/livekit-on-vpe — WORKING_LOG.md)
-voice_kit:
-  id: voice_kit_component
-  channel_0_stage: NS
-  channel_1_stage: NS
+# Earlier experiment with NS produced too-quiet output (mic_rms 55-99,
+# transcribable but lots of word-confusion — "I'm shouting" → "ChatGPT,
+# I will show"). Switched back to AGC now that the puck-side mic mute
+# (gating on speaker_->is_running()) prevents AEC residual from being
+# re-amplified by AGC into the mic stream we forward to OpenAI. With
+# the mic muted during speaker playback, AGC's level normalisation is
+# strictly upside — louder speech, better STT accuracy, no echo concern.
 
 # ─── API actions ─────────────────────────────────────────────────────────────
 # Manual start/stop kept for testing without the wake word. Plus the

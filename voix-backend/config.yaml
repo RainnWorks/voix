@@ -54,6 +54,17 @@ host_network: false
 # to HA core, reachable only from inside add-on containers.
 homeassistant_api: true
 
+# Ingress: render the daemon's React UI inside HA's own chrome. Users
+# go Settings → Add-ons → voix backend → Open Web UI and the mode
+# editor / history / recordings pages appear inside HA. No separate
+# URL to bookmark, no auth setup — HA's session covers it. The same
+# port still answers external WS connections for the puck; ingress
+# is just an additional path the Supervisor proxies into.
+ingress: true
+ingress_port: 8765
+panel_icon: mdi:microphone-message
+panel_title: voix
+
 # Add-on options exposed in the HA UI. The user sets these in
 # Settings → Add-ons → voix backend → Configuration; HA writes the
 # values into /data/options.json which env.ts reads at boot.

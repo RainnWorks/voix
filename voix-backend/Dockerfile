@@ -4,25 +4,35 @@
 # built in. We add `git` so dev mode can pull straight from the repo
 # at runtime (see run.sh).
 #
-# Two-stage build with the prod app baked into /app: in production
-# mode that's what `bun src/index.ts` runs. In dev mode the entrypoint
-# script clones the live repo into /data and runs from there instead,
-# making /app effectively unused. The wasted layer is ~5 MB — acceptable
-# trade for having a single image that switches modes via env var.
+# Two-stage logical layout (still single Docker stage to keep the
+# image small):
+#   1. Daemon deps + sources baked at /app (production default)
+#   2. UI bundle built at image time, lives at /app/ui/dist
+# In dev mode the entrypoint clones the live repo into /data and runs
+# from there instead — including rebuilding the UI when commits land.
 
 FROM oven/bun:1-alpine
 
 # Git is required for dev mode. ca-certificates so HTTPS clones work.
+# jq is used by run.sh to parse /data/options.json from the Supervisor.
 RUN apk add --no-cache git ca-certificates jq
 
 WORKDIR /app
 
-# Dependency layer first — source changes don't bust the dep cache.
+# Daemon dependency layer first — source changes don't bust the dep
+# cache.
 COPY package.json bun.lock* ./
 RUN bun install --frozen-lockfile --production
 
 COPY src ./src
 COPY tsconfig.json ./tsconfig.json
+
+# UI: install + build inside the image so /app/ui/dist ships ready to
+# serve. Adds ~250 KB of static assets to the final image.
+COPY ui/package.json ui/bun.lock* ui/tsconfig.json ui/vite.config.ts ui/index.html ./ui/
+COPY ui/src ./ui/src
+RUN cd ui && bun install --frozen-lockfile && bun run build && rm -rf node_modules
+
 COPY run.sh /run.sh
 RUN chmod +x /run.sh
 

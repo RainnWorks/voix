@@ -2,15 +2,15 @@
  * voix-backend entrypoint.
  *
  * Boots a single Elysia app that hosts:
- *   • /ws         — puck WebSocket endpoint (mic in, audio + transcripts out)
- *   • /healthz    — liveness probe for HA Add-on supervisor
- *
- * The HTTP surface stays minimal on purpose: the daemon is a WS service.
- * Anything else (settings, history, mode editor) belongs in the desktop
- * client, not here.
+ *   • /ws            — puck WebSocket endpoint (mic in, audio + transcripts out)
+ *   • /healthz       — liveness probe for HA Add-on supervisor
+ *   • /api/modes/*   — JSON API the UI (and any other client) drives modes through
+ *   • /recordings/*  — per-session WAV playback browser
+ *   • /              — React+RN-Web UI for mode editing / history / playback
  */
 
 import { Elysia } from "elysia";
+import { modesRoute } from "./api/modes.ts";
 import { registerSource } from "./context/registry.ts";
 import { HAContextSource } from "./context/sources/ha.ts";
 import { voixSource } from "./context/sources/voix.ts";
@@ -20,6 +20,7 @@ import { log } from "./log.ts";
 import { loadModes } from "./modes/store.ts";
 import { puckRoute } from "./puck/route.ts";
 import { recordingsRoute } from "./recordings/route.ts";
+import { uiRoute } from "./ui/route.ts";
 
 // Async boot: load disk state before the WS endpoint accepts pucks.
 // If either fails we don't want to refuse pucks silently — log and
@@ -49,10 +50,13 @@ if (config.haUrl && config.haToken) {
   );
 }
 
+// Order matters — Elysia matches first, fall-through SPA route is last.
 const app = new Elysia()
   .get("/healthz", () => ({ ok: true, version: "0.1.0" }))
   .use(puckRoute())
+  .use(modesRoute())
   .use(recordingsRoute())
+  .use(uiRoute())
   .listen(config.port);
 
 log.info(`listening on :${config.port} (log_level=${config.logLevel})`);

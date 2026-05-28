@@ -74,6 +74,13 @@ cd "${DEV_DIR}/voix-backend"
 log "running bun install"
 bun install --silent
 
+# Build the UI bundle into voix-backend/ui/dist so the daemon's
+# /api/ui route has something to serve. Cheap (~600 ms) on top of the
+# rest of boot.
+log "building UI"
+( cd ui && bun install --silent && bun run build >/dev/null 2>&1 ) || \
+  log "UI build failed — daemon will start but / will 404 until next pull"
+
 # Background poller — every DEV_POLL_S, check for new commits and
 # reset the tree. `bun --watch` notices the file changes and restarts
 # automatically.
@@ -91,11 +98,16 @@ bun install --silent
       log "new commit ${new_sha} (was ${old_sha}) — reinstall + reset"
       # Bring in just the new package.json + lockfile FIRST. This
       # doesn't touch any src/ files, so bun --watch won't reload yet.
-      git checkout "origin/${DEV_BRANCH}" -- voix-backend/package.json voix-backend/bun.lock
+      git checkout "origin/${DEV_BRANCH}" -- voix-backend/package.json voix-backend/bun.lock voix-backend/ui/package.json voix-backend/ui/bun.lock || true
       ( cd "${DEV_DIR}/voix-backend" && bun install --silent )
+      ( cd "${DEV_DIR}/voix-backend/ui" && bun install --silent ) || true
       # NOW reset everything. bun --watch sees the src changes and
       # reloads — with the new deps already in node_modules.
       git reset --hard "origin/${DEV_BRANCH}"
+      # Rebuild the UI bundle. The daemon's static route serves the
+      # built dist/, so without this step UI changes don't surface.
+      ( cd "${DEV_DIR}/voix-backend/ui" && bun run build >/dev/null 2>&1 ) || \
+        log "UI rebuild failed — keeping previous bundle"
     fi
   done
 ) &

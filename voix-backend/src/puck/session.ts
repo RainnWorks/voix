@@ -261,7 +261,13 @@ export class PuckSession {
   handlePuckAudio(pcm16k: Buffer): void {
     if (this.closed || !this.openai) return;
     if (pcm16k.length === 0) return;
-    this.lastSpeechActivity = Date.now();
+    // Note: do NOT update lastSpeechActivity here. The puck streams mic
+    // bytes continuously while connected — using receipt as activity
+    // means the idle watchdog never fires when OpenAI can't transcribe
+    // the audio (e.g. mic source returns unrecognisable signal, model
+    // never replies). Speech-start/stop events from OpenAI's VAD are
+    // the right signal; they update lastSpeechActivity in the SDK
+    // event handlers above.
 
     if (this.mode.type === "realtime") {
       const { forward } = this.echoGate.shouldForward(pcm16k);

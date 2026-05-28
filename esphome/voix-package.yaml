@@ -52,33 +52,32 @@ external_components:
       path: components
     components: [voix_realtime_client]
 
-# ─── XMOS voice_kit pipeline override ────────────────────────────────────────
-# The upstream voice_pe package configures XMOS with channel_0_stage=AGC.
-# That gives mic input AFTER all four pipeline stages — AEC → IC → NS → AGC.
-# Sounds great in theory, but the AGC stage re-amplifies whatever residual
-# the AEC didn't fully cancel, so any echo at the mic gets boosted right
-# back up to user-speech level. With voix's full-duplex OpenAI Realtime
-# sessions (mic stays hot while the model speaks), that residual triggers
-# semantic_vad and we get the model talking to itself.
+# ─── XMOS voice_kit pipeline ─────────────────────────────────────────────────
+# Sticking with the upstream voice_pe default of channel_0_stage=AGC
+# after a tested-and-reverted experiment with NS.
 #
-# Reading channel 0 from the NS stage instead gives us AEC + IC + NS but
-# NOT the AGC re-amplification. OpenAI's input audio buffer doesn't need
-# AGC anyway (the API normalises levels internally), and the cleaner
-# signal means semantic_vad sees residual echo as silence rather than
-# speech.
-#
-# Validated against the livekit-on-vpe project's sine-wave test:
+# Theory was: AGC re-amplifies AEC residual, so reading from NS instead
+# would give us cleaner mic input (AEC + IC + NS, no AGC re-amp). The
+# livekit-on-vpe project's sine-wave test backed the theory up:
 #   AEC stage:  RMS=4      (echo cancelled)
 #   NONE stage: RMS=123    (raw mic with echo)
-#   AGC stage:  RMS=1868   (AEC cancelled, then AGC inflated noise floor)
+#   AGC stage:  RMS=1868   (AEC residual amplified)
 # (https://github.com/breakds/livekit-on-vpe — WORKING_LOG.md)
 #
-# Same XMOS firmware (v1.3.1), same I2C command. The only difference is
-# the byte we write to register 0x30 — 0x03 (NS) instead of 0x04 (AGC).
-voice_kit:
-  id: voice_kit_component
-  channel_0_stage: NS
-  channel_1_stage: NS
+# In practice the NS-stage output is unrecognisable as speech to OpenAI's
+# semantic_vad — XMOS's noise suppression at default settings appears to
+# strip enough of the speech band that no transcripts come back. AGC's
+# "wide it up to a normal volume" pass turns out to be load-bearing for
+# how OpenAI hears us.
+#
+# The daemon-side half-duplex echo gate (voix-backend/src/audio/echo_gate.ts)
+# is doing the echo-defence job instead. Keep AGC here so HA's stock
+# voice assistant path (Okay Nabu wake word → Assist) also still works,
+# since it expects AGC-normalised mic too.
+#
+# Future experiment: try channel_0_stage=AEC (raw post-AEC, no NS, no
+# AGC). Echoes should be cancelled but speech is also un-normalised —
+# may or may not be recognisable.
 
 # ─── API actions ─────────────────────────────────────────────────────────────
 # Manual start/stop kept for testing without the wake word. Plus the

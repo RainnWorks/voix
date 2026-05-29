@@ -12,6 +12,16 @@ import { defineConfig } from "vite";
 // source, native widgets on native. Web feel where we ship the daemon's
 // HTML, native feel where we ship a platform shell.
 export default defineConfig({
+  // HA Add-on ingress mounts us at a long token-based path
+  // (`/api/hassio_ingress/<token>/`), not the site root. Vite's default
+  // `base: "/"` makes the built index.html reference `/assets/…`
+  // (absolute), which the browser resolves against the domain root and
+  // bypasses the ingress prefix → 404 on every asset. `./` makes the
+  // references relative to the index.html's loaded path, so they
+  // resolve under the ingress prefix correctly. Same trick works for
+  // local `bun start` (served at /) and a Tauri webview (served at
+  // tauri://).
+  base: "./",
   plugins: [react()],
   resolve: {
     alias: {

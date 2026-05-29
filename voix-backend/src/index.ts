@@ -2,7 +2,7 @@
  * voix-backend entrypoint.
  *
  * Boots a single Elysia app that hosts:
- *   • /ws            — puck WebSocket endpoint (mic in, audio + transcripts out)
+ *   • /ws            — Audio I/O WS endpoint (mic in, audio + transcripts out)
  *   • /healthz       — liveness probe for HA Add-on supervisor
  *   • /api/modes/*   — JSON API the UI (and any other client) drives modes through
  *   • /recordings/*  — per-session WAV playback browser
@@ -12,6 +12,7 @@
 import { Elysia } from "elysia";
 import { devicesRoute } from "./api/devices.ts";
 import { voicesRoute } from "./api/voices.ts";
+import { audioIoRoute } from "./audio_io/route.ts";
 import { registerSource } from "./context/registry.ts";
 import { HAContextSource } from "./context/sources/ha.ts";
 import { voixSource } from "./context/sources/voix.ts";
@@ -19,7 +20,6 @@ import { loadDevices } from "./devices/store.ts";
 import { config } from "./env.ts";
 import { loadHistory } from "./history/store.ts";
 import { log } from "./log.ts";
-import { puckRoute } from "./puck/route.ts";
 import { recordingsRoute } from "./recordings/route.ts";
 import { uiRoute } from "./ui/route.ts";
 import { loadVoices } from "./voices/store.ts";
@@ -56,7 +56,7 @@ if (config.haUrl && config.haToken) {
 // Order matters — Elysia matches first, fall-through SPA route is last.
 const app = new Elysia()
   .get("/healthz", () => ({ ok: true, version: "0.1.0" }))
-  .use(puckRoute())
+  .use(audioIoRoute())
   .use(voicesRoute())
   .use(devicesRoute())
   .use(recordingsRoute())

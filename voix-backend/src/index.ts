@@ -11,7 +11,7 @@
 
 import { Elysia } from "elysia";
 import { devicesRoute } from "./api/devices.ts";
-import { modesRoute } from "./api/modes.ts";
+import { voicesRoute } from "./api/voices.ts";
 import { registerSource } from "./context/registry.ts";
 import { HAContextSource } from "./context/sources/ha.ts";
 import { voixSource } from "./context/sources/voix.ts";
@@ -19,16 +19,16 @@ import { loadDevices } from "./devices/store.ts";
 import { config } from "./env.ts";
 import { loadHistory } from "./history/store.ts";
 import { log } from "./log.ts";
-import { loadModes } from "./modes/store.ts";
 import { puckRoute } from "./puck/route.ts";
 import { recordingsRoute } from "./recordings/route.ts";
 import { uiRoute } from "./ui/route.ts";
+import { loadVoices } from "./voices/store.ts";
 
 // Async boot: load disk state before the WS endpoint accepts pucks.
 // If either fails we don't want to refuse pucks silently — log and
 // continue with empty in-memory state. Built-in modes will be re-seeded
 // on next clean save.
-await loadModes().catch((e) => log.warn("boot: loadModes failed", e));
+await loadVoices().catch((e) => log.warn("boot: loadVoices failed", e));
 await loadHistory().catch((e) => log.warn("boot: loadHistory failed", e));
 await loadDevices().catch((e) => log.warn("boot: loadDevices failed", e));
 
@@ -57,7 +57,7 @@ if (config.haUrl && config.haToken) {
 const app = new Elysia()
   .get("/healthz", () => ({ ok: true, version: "0.1.0" }))
   .use(puckRoute())
-  .use(modesRoute())
+  .use(voicesRoute())
   .use(devicesRoute())
   .use(recordingsRoute())
   .use(uiRoute())

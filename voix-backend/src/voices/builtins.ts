@@ -1,5 +1,5 @@
 /**
- * Built-in mode catalog seeded on first boot.
+ * Built-in voice catalog seeded on first boot.
  *
  * All six modes ported from `ha-integration/custom_components/voix/
  * const.py`. Post-processing prompts come from Supershout — they're
@@ -10,7 +10,7 @@
  * and any auto-routing cache uses them as keys.
  */
 
-import type { Mode } from "./types.ts";
+import type { Voice } from "./types.ts";
 
 const PP_MESSAGE = `You are a speech-to-text post-processor for casual messages (Slack, Discord, iMessage, WhatsApp).
 
@@ -118,12 +118,12 @@ Style:
 - Never repeat the user's question back to them before answering. Just answer.`,
 ]);
 
-function makeMode(partial: Omit<Mode, "isBuiltin">): Mode {
+function makeVoice(partial: Omit<Voice, "isBuiltin">): Voice {
   return { ...partial, isBuiltin: true };
 }
 
-export const BUILTIN_MODES: Mode[] = [
-  makeMode({
+export const BUILTIN_VOICES: Voice[] = [
+  makeVoice({
     id: "default-realtime",
     name: "Realtime",
     type: "realtime",
@@ -143,7 +143,7 @@ export const BUILTIN_MODES: Mode[] = [
     postProcessModel: "gpt-4o-mini",
     routingHint: "",
   }),
-  makeMode({
+  makeVoice({
     id: "default-dictation",
     name: "Dictation",
     type: "dictation",
@@ -163,7 +163,7 @@ export const BUILTIN_MODES: Mode[] = [
     postProcessModel: "gpt-4o-mini",
     routingHint: "Raw transcription with no processing. Use when exact words matter.",
   }),
-  makeMode({
+  makeVoice({
     id: "default-message",
     name: "Message",
     type: "dictation",
@@ -184,7 +184,7 @@ export const BUILTIN_MODES: Mode[] = [
     routingHint:
       "Clean up casual messages. Use for chat apps like Slack, Discord, iMessage, WhatsApp.",
   }),
-  makeMode({
+  makeVoice({
     id: "default-email",
     name: "Email",
     type: "dictation",
@@ -204,7 +204,7 @@ export const BUILTIN_MODES: Mode[] = [
     postProcessModel: "gpt-4o-mini",
     routingHint: "Format as professional email. Use for mail apps and email compose.",
   }),
-  makeMode({
+  makeVoice({
     id: "default-note",
     name: "Note",
     type: "dictation",
@@ -225,7 +225,7 @@ export const BUILTIN_MODES: Mode[] = [
     routingHint:
       "Format as structured notes with markdown. Use for note-taking apps like Notion, Obsidian, Bear.",
   }),
-  makeMode({
+  makeVoice({
     id: "default-code",
     name: "Code",
     type: "dictation",
@@ -248,4 +248,4 @@ export const BUILTIN_MODES: Mode[] = [
   }),
 ];
 
-export const DEFAULT_MODE_ID = "default-realtime";
+export const DEFAULT_VOICE_ID = "default-realtime";

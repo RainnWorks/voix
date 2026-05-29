@@ -1,68 +1,68 @@
 /**
- * HTTP API: /api/modes/*
+ * HTTP API: /api/voices/*
  *
  * Thin JSON wrapper over the in-process mode store. Lets the UI (and
  * any other client — Mac app, iOS later) drive the same source of
  * truth the daemon's own session bridge uses.
  *
- * Returns the canonical Mode shape from modes/types — no UI-shaped
+ * Returns the canonical Voice shape from modes/types — no UI-shaped
  * DTOs, no field renames. If we later add Treaty for end-to-end
  * typing, this is the surface it auto-derives from.
  */
 
 import { Elysia } from "elysia";
-import { getMode, listModes, updateMode, upsertMode } from "../modes/store.ts";
-import type { ModeUpdate } from "../modes/types.ts";
+import { getVoice, listVoices, updateVoice, upsertVoice } from "../voices/store.ts";
+import type { VoiceUpdate } from "../voices/types.ts";
 import { haSync } from "./ha_sync.ts";
 
-export function modesRoute() {
+export function voicesRoute() {
   return (
     new Elysia({ name: "voix.api.modes" })
-      .get("/api/modes", () => listModes())
-      .get("/api/modes/:id", ({ params, set }) => {
-        // listModes returns the in-memory cache; getMode never throws
+      .get("/api/voices", () => listVoices())
+      .get("/api/voices/:id", ({ params, set }) => {
+        // listVoices returns the in-memory cache; getVoice never throws
         // but returns the default fallback when the id is unknown. We
         // want "404 if you ask for a specific id that doesn't exist",
-        // so check against the list rather than calling getMode().
-        const m = listModes().find((x) => x.id === params.id);
+        // so check against the list rather than calling getVoice().
+        const m = listVoices().find((x) => x.id === params.id);
         if (!m) {
           set.status = 404;
           return { error: `unknown mode: ${params.id}` };
         }
         return m;
       })
-      .patch("/api/modes/:id", async ({ params, body, set }) => {
-        const m = listModes().find((x) => x.id === params.id);
+      .patch("/api/voices/:id", async ({ params, body, set }) => {
+        const m = listVoices().find((x) => x.id === params.id);
         if (!m) {
           set.status = 404;
           return { error: `unknown mode: ${params.id}` };
         }
         try {
-          const next = await updateMode(params.id, body as ModeUpdate);
+          const next = await updateVoice(params.id, body as VoiceUpdate);
           // Fire-and-forget HA sync. If HA isn't configured this is a
           // no-op; if it fails the daemon record stays authoritative.
-          haSync.updateMode(params.id, body as Record<string, unknown>);
+          haSync.updateVoice(params.id, body as Record<string, unknown>);
           return next;
         } catch (err) {
           set.status = 400;
           return { error: err instanceof Error ? err.message : String(err) };
         }
       })
-      .post("/api/modes", async ({ body, set }) => {
-        const mode = body as Parameters<typeof upsertMode>[0];
+      .post("/api/voices", async ({ body, set }) => {
+        const mode = body as Parameters<typeof upsertVoice>[0];
         if (!mode?.id) {
           set.status = 400;
           return { error: "mode.id is required" };
         }
-        const next = await upsertMode(mode);
+        const next = await upsertVoice(mode);
         return next;
       })
       // Diagnostic helper — quick way to verify the daemon's seen modes
       // catalog from the UI without parsing the full list.
-      .get("/api/modes_count", () => ({ count: listModes().length }))
+      .get("/api/voices_count", () => ({ count: listVoices().length }))
       // Echo route for the dev panel: tells the UI which mode_id the
       // default would resolve to. Saves a separate "fetch the entry's
       // CONF_DEFAULT_MODE" call.
-      .get("/api/modes/default/resolved", () => getMode(null))
+      .get("/api/voices/default/resolved", () => getVoice(null))
   );
 }

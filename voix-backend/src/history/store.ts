@@ -71,12 +71,12 @@ export async function appendHistory(partial: NewHistoryEntry): Promise<HistoryEn
 }
 
 export function listHistory(opts?: {
-  modeId?: string;
+  voiceId?: string;
   deviceId?: string;
   limit?: number;
 }): HistoryEntry[] {
   let out = entries;
-  if (opts?.modeId) out = out.filter((e) => e.modeId === opts.modeId);
+  if (opts?.voiceId) out = out.filter((e) => e.voiceId === opts.voiceId);
   if (opts?.deviceId) out = out.filter((e) => e.deviceId === opts.deviceId);
   // Newest first, matching what every history UI in the world
   // expects.

@@ -39,8 +39,6 @@ import { recordSeen } from "../devices/store.ts";
 import { config } from "../env.ts";
 import { appendHistory } from "../history/store.ts";
 import { log } from "../log.ts";
-import { getMode } from "../modes/store.ts";
-import type { Mode } from "../modes/types.ts";
 import { postProcess } from "../post_process/index.ts";
 import { OpenAIRealtimeClient, type RealtimeSessionConfig } from "../realtime/openai.ts";
 import { SessionRecorder } from "../recordings/store.ts";
@@ -50,6 +48,8 @@ import {
   writePartial as writePartialTranscript,
   writeRawSidecar,
 } from "../transcripts/store.ts";
+import { getVoice } from "../voices/store.ts";
+import type { Voice } from "../voices/types.ts";
 import type { DaemonToPuck, PuckHello } from "./protocol.ts";
 
 /**
@@ -136,7 +136,7 @@ export class PuckSession {
   private micRmsLogCounter = 0;
 
   private readonly sessionId = randomBytes(8).toString("hex");
-  private mode: Mode;
+  private voice: Voice;
   /** Captures mic + speaker PCM per session. Written to disk on close
    *  for offline playback / diagnosis (e.g. confirming whether XMOS's
    *  output on a given pipeline stage actually contains speech). */
@@ -164,12 +164,12 @@ export class PuckSession {
   ) {
     // Resolve once at construction. The mode catalog is a stable
     // in-memory map — no async I/O here.
-    this.mode = getMode(this.deps.hello.mode_id);
+    this.voice = getVoice(this.deps.hello.mode_id);
     this.recorder = new SessionRecorder({
       deviceId: this.deps.hello.device_id,
       sessionId: this.sessionId,
-      modeId: this.mode.id,
-      modeName: this.mode.name,
+      voiceId: this.voice.id,
+      voiceName: this.voice.name,
     });
   }
 
@@ -178,7 +178,7 @@ export class PuckSession {
     // /api/devices. Best-effort — a write failure here is logged but
     // doesn't gate the session.
     void recordSeen(this.deps.hello.device_id, {
-      modeId: this.deps.hello.mode_id,
+      voiceId: this.deps.hello.mode_id,
     }).catch((err) => log.debug("session: recordSeen failed:", err));
 
     // Kick off context gather + tool enumeration BEFORE awaiting the
@@ -191,8 +191,8 @@ export class PuckSession {
     const gatherPromise = gatherAll({ deviceId: this.deps.hello.device_id });
     const toolsPromise = listAllTools();
 
-    const mode = this.mode;
-    const cfg = this.buildRealtimeConfig(mode);
+    const voice = this.voice;
+    const cfg = this.buildRealtimeConfig(voice);
 
     this.openai = new OpenAIRealtimeClient(this.deps.openaiApiKey, cfg);
 
@@ -215,16 +215,16 @@ export class PuckSession {
     // sessions don't function-call.
     const [contextEntries, tools] = await Promise.all([
       gatherPromise,
-      mode.type === "realtime" ? toolsPromise : Promise.resolve<ToolSpec[]>([]),
+      voice.type === "realtime" ? toolsPromise : Promise.resolve<ToolSpec[]>([]),
     ]);
     this.contextSnapshot = contextEntries;
 
     // Re-send session.update now that we have context + tools. The
     // initial connect() emitted a session.update with the mode's
     // static instructions; this one layers in the gathered context.
-    if (mode.type === "realtime") {
+    if (voice.type === "realtime") {
       this.openai.updateSession({
-        instructions: this.composeRealtimeInstructions(mode, contextEntries),
+        instructions: this.composeRealtimeInstructions(voice, contextEntries),
         tools: tools.map(stripInternalSourceField),
       });
       log.info(
@@ -235,17 +235,17 @@ export class PuckSession {
     // Let the voix builtin source close us when the model invokes
     // voix__end_session. Bound late so the tool call routes only after
     // the session is fully spun up.
-    if (mode.type === "realtime") {
+    if (voice.type === "realtime") {
       voixSource.bindSession(this.deps.hello.device_id, (reason) => {
         log.info(`session: ${this.deps.hello.device_id} voix.end_session — ${reason}`);
         this.close();
       });
     }
 
-    this.sendToPuck({ type: "ready", mode: mode.type });
+    this.sendToPuck({ type: "ready", mode: voice.type });
     log.info(
-      `session: started device=${this.deps.hello.device_id} mode=${mode.type} ` +
-        `mode_id=${mode.id} sess=${this.sessionId}`,
+      `session: started device=${this.deps.hello.device_id} mode=${voice.type} ` +
+        `mode_id=${voice.id} sess=${this.sessionId}`,
     );
 
     // Watchdog runs every second — cheaper than resetting a timer on
@@ -257,17 +257,17 @@ export class PuckSession {
   /** Combine the mode's static system prompt with the dynamic context
    *  block. The block goes BEFORE the mode prompt so the model reads
    *  "what's going on" before "what's my role". */
-  private composeRealtimeInstructions(mode: Mode, entries: ContextEntry[]): string {
+  private composeRealtimeInstructions(voice: Voice, entries: ContextEntry[]): string {
     const parts: string[] = [];
     const ctx = renderContextBlock(entries);
     if (ctx) parts.push(ctx);
-    if (mode.addendum.trim()) parts.push(mode.addendum.trim());
-    if (mode.prompt.trim()) parts.push(mode.prompt.trim());
+    if (voice.addendum.trim()) parts.push(voice.addendum.trim());
+    if (voice.prompt.trim()) parts.push(voice.prompt.trim());
     return parts.join("\n\n");
   }
 
-  private buildRealtimeConfig(mode: Mode): RealtimeSessionConfig {
-    if (mode.type === "dictation") {
+  private buildRealtimeConfig(voice: Voice): RealtimeSessionConfig {
+    if (voice.type === "dictation") {
       return {
         // The realtime model is required even for transcription-only
         // sessions — the inner transcription_model is what actually
@@ -275,7 +275,7 @@ export class PuckSession {
         model: "gpt-realtime-2",
         outputModalities: ["text"],
         instructions: "",
-        transcribeModel: mode.sttModel || "gpt-4o-mini-transcribe",
+        transcribeModel: voice.sttModel || "gpt-4o-mini-transcribe",
         // Dictation: VAD high means "stop listening quickly after a
         // pause". For ramble-y dictation it's too eager; we'll make
         // this per-mode tunable once we see real usage.
@@ -283,11 +283,11 @@ export class PuckSession {
       };
     }
     return {
-      model: mode.model || "gpt-realtime-2",
+      model: voice.model || "gpt-realtime-2",
       outputModalities: ["audio"],
-      instructions: mode.prompt,
-      transcribeModel: mode.sttModel || "gpt-4o-mini-transcribe",
-      voice: mode.voice || "alloy",
+      instructions: voice.prompt,
+      transcribeModel: voice.sttModel || "gpt-4o-mini-transcribe",
+      voice: voice.voice || "alloy",
       vadEagerness: "medium",
     };
   }
@@ -343,7 +343,7 @@ export class PuckSession {
       );
     }
 
-    if (this.mode.type === "realtime") {
+    if (this.voice.type === "realtime") {
       const { forward } = this.echoGate.shouldForward(pcm16k);
       this.echoLogCounter++;
       if (this.echoLogCounter % 50 === 0) {
@@ -473,12 +473,12 @@ export class PuckSession {
     let finalText = trimmed;
     let processedText: string | null = null;
 
-    if (this.mode.type === "dictation" && this.mode.postProcessPrompt.trim()) {
+    if (this.voice.type === "dictation" && this.voice.postProcessPrompt.trim()) {
       processedText = await postProcess({
         rawText: trimmed,
-        systemPrompt: this.mode.postProcessPrompt,
-        provider: this.mode.postProcessProvider,
-        model: this.mode.postProcessModel,
+        systemPrompt: this.voice.postProcessPrompt,
+        provider: this.voice.postProcessProvider,
+        model: this.voice.postProcessModel,
         contextBlock: this.renderContextBlock(),
         keys: { openai: this.deps.openaiApiKey, openrouter: config.openrouterApiKey },
       });
@@ -507,14 +507,14 @@ export class PuckSession {
     await appendHistory({
       deviceId: this.deps.hello.device_id,
       sessionId: this.sessionId,
-      modeId: this.mode.id,
-      modeName: this.mode.name,
-      modeType: this.mode.type,
+      voiceId: this.voice.id,
+      voiceName: this.voice.name,
+      modeType: this.voice.type,
       durationMs: Date.now() - this.startedAt,
       rawText: trimmed,
       processedText,
-      postProcessProvider: processedText ? this.mode.postProcessProvider : null,
-      postProcessModel: processedText ? this.mode.postProcessModel : null,
+      postProcessProvider: processedText ? this.voice.postProcessProvider : null,
+      postProcessModel: processedText ? this.voice.postProcessModel : null,
       contextSnapshot: this.contextSnapshot,
       transcriptPath: completed.path,
     });

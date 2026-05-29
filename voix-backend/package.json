@@ -7,8 +7,9 @@
     "dev": "bun --watch src/index.ts",
     "start": "bun src/index.ts",
     "typecheck": "tsc --noEmit",
-    "check": "biome check src",
-    "format": "biome format --write src"
+    "test": "bun test",
+    "check": "biome check src tests",
+    "format": "biome format --write src tests"
   },
   "dependencies": {
     "@elysiajs/eden": "^1.4.5",

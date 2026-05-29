@@ -10,7 +10,7 @@
  *     <sessionId>/
  *       mic.wav         16 kHz mono PCM16 — what the puck sent us
  *       speaker.wav     24 kHz mono PCM16 — what we sent to the puck
- *       meta.json       deviceId, modeId, startedAt, durationMs,
+ *       meta.json       deviceId, voiceId, startedAt, durationMs,
  *                       transcripts captured during the session
  *
  * Use case: diagnose XMOS pipeline-stage choices, verify the echo
@@ -42,8 +42,8 @@ const SPEAKER_RATE_HZ = 24000;
 export type RecorderMeta = {
   deviceId: string;
   sessionId: string;
-  modeId: string;
-  modeName: string;
+  voiceId: string;
+  voiceName: string;
   startedAt: string;
   durationMs: number;
   /** Captured during the session, newest-last. Each entry carries
@@ -62,8 +62,8 @@ export class SessionRecorder {
     private readonly deps: {
       deviceId: string;
       sessionId: string;
-      modeId: string;
-      modeName: string;
+      voiceId: string;
+      voiceName: string;
     },
   ) {}
 
@@ -103,8 +103,8 @@ export class SessionRecorder {
       const meta: RecorderMeta = {
         deviceId: this.deps.deviceId,
         sessionId: this.deps.sessionId,
-        modeId: this.deps.modeId,
-        modeName: this.deps.modeName,
+        voiceId: this.deps.voiceId,
+        voiceName: this.deps.voiceName,
         startedAt: new Date(this.startedAtMs).toISOString(),
         durationMs: Date.now() - this.startedAtMs,
         transcripts: this.transcripts,

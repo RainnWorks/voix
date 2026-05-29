@@ -1,25 +1,25 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { Puck } from "../components/Puck";
-import { type Device, type Mode, devicesApi, modesApi } from "../lib/api";
+import { type Device, type Voice, devicesApi, voicesApi } from "../lib/api";
 import { colors, fontFamily, nearestSwatch, radius, spacing } from "../lib/theme";
 
 type Props = {
-  onPickMode: (modeId: string) => void;
+  onPickVoice: (voiceId: string) => void;
 };
 
-export function ModeList({ onPickMode }: Props) {
-  const [modes, setModes] = useState<Mode[] | null>(null);
+export function VoiceList({ onPickVoice }: Props) {
+  const [voices, setVoices] = useState<Voice[] | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [activating, setActivating] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([modesApi.list(), devicesApi.list()])
+    Promise.all([voicesApi.list(), devicesApi.list()])
       .then(([m, d]) => {
         if (cancelled) return;
-        setModes(m);
+        setVoices(m);
         setDevices(d);
       })
       .catch((e) => {
@@ -30,12 +30,12 @@ export function ModeList({ onPickMode }: Props) {
     };
   }, []);
 
-  const activateMode = async (modeId: string) => {
+  const activateVoice = async (voiceId: string) => {
     const device = devices[0]; // single-puck household for now
     if (!device) return;
-    setActivating(modeId);
+    setActivating(voiceId);
     try {
-      const next = await devicesApi.setMode(device.deviceId, modeId);
+      const next = await devicesApi.setVoice(device.deviceId, voiceId);
       setDevices([next, ...devices.slice(1)]);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -47,12 +47,12 @@ export function ModeList({ onPickMode }: Props) {
   if (error) {
     return (
       <View style={styles.errorBox}>
-        <Text style={styles.errorTitle}>Couldn't load modes</Text>
+        <Text style={styles.errorTitle}>Couldn't load voices</Text>
         <Text style={styles.errorMsg}>{error}</Text>
       </View>
     );
   }
-  if (!modes) {
+  if (!voices) {
     return (
       <View style={styles.loadingBox}>
         <ActivityIndicator color={colors.haBlue} />
@@ -60,7 +60,7 @@ export function ModeList({ onPickMode }: Props) {
     );
   }
 
-  const activeModeId = devices[0]?.modeId;
+  const activeVoiceId = devices[0]?.voiceId;
 
   return (
     <View style={styles.outer}>
@@ -72,20 +72,20 @@ export function ModeList({ onPickMode }: Props) {
           </Text>
           <Text style={styles.activeStripDot}>·</Text>
           <Text style={styles.activeStripMode}>
-            {modes.find((m) => m.id === activeModeId)?.name ?? "—"}
+            {voices.find((m) => m.id === activeVoiceId)?.name ?? "—"}
           </Text>
         </View>
       )}
 
       <View style={styles.grid}>
-        {modes.map((m) => (
-          <ModeCard
+        {voices.map((m) => (
+          <VoiceCard
             key={m.id}
-            mode={m}
-            active={m.id === activeModeId}
+            voice={m}
+            active={m.id === activeVoiceId}
             activating={activating === m.id}
-            onEdit={() => onPickMode(m.id)}
-            onActivate={() => activateMode(m.id)}
+            onEdit={() => onPickVoice(m.id)}
+            onActivate={() => activateVoice(m.id)}
           />
         ))}
       </View>
@@ -93,20 +93,20 @@ export function ModeList({ onPickMode }: Props) {
   );
 }
 
-function ModeCard({
-  mode,
+function VoiceCard({
+  voice,
   active,
   activating,
   onEdit,
   onActivate,
 }: {
-  mode: Mode;
+  voice: Voice;
   active: boolean;
   activating: boolean;
   onEdit: () => void;
   onActivate: () => void;
 }) {
-  const swatch = nearestSwatch(mode.color);
+  const swatch = nearestSwatch(voice.color);
   return (
     <View style={[styles.card, active && styles.cardActive]}>
       <Pressable
@@ -116,12 +116,12 @@ function ModeCard({
         <Puck size={44} color={swatch.hex} />
         <View style={styles.cardBody}>
           <View style={styles.cardTitleRow}>
-            <Text style={styles.cardName}>{mode.name}</Text>
+            <Text style={styles.cardName}>{voice.name}</Text>
             {active && <Text style={styles.activeTag}>ACTIVE</Text>}
           </View>
           <Text style={styles.cardDesc} numberOfLines={2}>
-            {mode.routingHint ||
-              (mode.type === "realtime"
+            {voice.routingHint ||
+              (voice.type === "realtime"
                 ? "Real-time back and forth. Streams transcript live."
                 : "Press, speak, paste.")}
           </Text>

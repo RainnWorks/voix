@@ -53,7 +53,17 @@ async function listSessions(): Promise<SessionSummary[]> {
       let meta: RecorderMeta | null = null;
       if (metaText) {
         try {
-          meta = JSON.parse(metaText) as RecorderMeta;
+          // Legacy meta.json (pre-M02) used modeId/modeName. Promote
+          // them to voiceId/voiceName so the renderer doesn't show "?".
+          const raw = JSON.parse(metaText) as RecorderMeta & {
+            modeId?: string;
+            modeName?: string;
+          };
+          meta = {
+            ...raw,
+            voiceId: raw.voiceId ?? raw.modeId ?? "",
+            voiceName: raw.voiceName ?? raw.modeName ?? "",
+          };
         } catch {
           // Corrupt JSON — leave meta null, the row still renders.
         }
@@ -117,11 +127,11 @@ function renderIndex(sessions: SessionSummary[]): string {
           </div>`;
       return `
         <section>
-          <h2>${m?.startedAt ?? "?"} — ${escapeHtml(m?.modeName ?? "?")}</h2>
+          <h2>${m?.startedAt ?? "?"} — ${escapeHtml(m?.voiceName ?? "?")}</h2>
           <div class="meta">
             <code>${s.sessionId}</code> · device <code>${escapeHtml(m?.deviceId ?? "?")}</code>
             · ${m ? formatDuration(m.durationMs) : "?"}
-            · mode_id <code>${escapeHtml(m?.modeId ?? "?")}</code>
+            · voice_id <code>${escapeHtml(m?.voiceId ?? "?")}</code>
           </div>
           ${s.hasMic ? player("mic", s.bytesMic) : '<div class="player empty">no mic.wav</div>'}
           ${s.hasSpeaker ? player("speaker", s.bytesSpeaker) : '<div class="player empty">no speaker.wav</div>'}

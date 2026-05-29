@@ -25,8 +25,8 @@ export type HistoryEntry = {
   createdAt: string;
   deviceId: string;
   sessionId: string;
-  modeId: string;
-  modeName: string;
+  voiceId: string;
+  voiceName: string;
   modeType: "realtime" | "dictation";
   durationMs: number;
 

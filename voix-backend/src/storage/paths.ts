@@ -10,7 +10,7 @@
  *     underneath so code paths stay identical.
  *
  * Files we own:
- *   • `modes.json`        — full mode catalog (user-edited + built-ins)
+ *   • `voices.json`       — full voice catalog (user-edited + built-ins)
  *   • `history.json`      — JSONL one-entry-per-line; loaded as array on read
  *   • `transcripts/<deviceSlug>/<sessionId>-<role>.txt` — raw transcript files
  *   • `transcripts/<deviceSlug>/<sessionId>-<role>.raw.txt` — pre-post-proc sidecar
@@ -52,7 +52,11 @@ export function ensureDir(path: string): void {
 
 export const paths = {
   root: DATA_ROOT,
-  modesFile: dataPath("modes.json"),
+  voicesFile: dataPath("voices.json"),
+  /** Legacy path retained for one-shot migration (M02). The store
+   *  promotes modes.json → voices.json on first load if only the
+   *  former exists. */
+  legacyModesFile: dataPath("modes.json"),
   historyFile: dataPath("history.jsonl"),
   transcriptsDir: dataPath("transcripts"),
   transcriptDir: (deviceSlug: string): string => dataPath("transcripts", deviceSlug),

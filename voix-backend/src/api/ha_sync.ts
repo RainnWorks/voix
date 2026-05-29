@@ -1,21 +1,29 @@
 /**
  * Best-effort sync of daemon mutations into Home Assistant.
  *
- * The daemon is the source of truth — `modes.json` and `devices.json`
+ * The daemon is the source of truth — `voices.json` and `devices.json`
  * persist locally and survive HA restarts. But when the HA
  * integration is also installed, users expect entities to mirror the
- * state: the mode select on each device should reflect the active
- * mode, the LED ring should pick up colour changes, etc.
+ * state: the voice select on each device should reflect the active
+ * voice, the LED ring should pick up colour changes, etc.
  *
  * We push by calling HA's REST API with the `haToken` from env. If
  * the token isn't set the calls become no-ops and nothing breaks —
  * the daemon's data is still authoritative.
  *
+ * Vocabulary bridge: the daemon talks about *voices* (per M02). HA's
+ * services + entity domain are still named with the legacy `mode_*`
+ * wording (`voix.update_mode`, `voix.set_mode`, `mode_id` payload
+ * field) and the integration trim that aligns HA-side vocabulary is
+ * tracked separately. So the function names below are daemon-side
+ * (Voice) and the wire payload remains mode_id until then.
+ *
  * Wired into:
- *   • /api/modes PATCH    → voix.update_mode (so HA's mode catalog
- *                            matches; also surfaces to the puck's LED
- *                            on next refresh)
- *   • /api/modes POST     → voix.create_mode
+ *   • /api/voices PATCH    → voix.update_mode (so HA's voice catalog
+ *                            mirror stays current; light entities pick
+ *                            up colour/brightness/effect for the puck
+ *                            LED ring)
+ *   • /api/voices POST     → voix.create_mode
  *   • /api/devices/:id/mode PUT → voix.set_mode (HA pushes to puck NVS)
  */
 
@@ -44,14 +52,14 @@ async function call(domain: string, action: string, data: unknown): Promise<void
 }
 
 export const haSync = {
-  /** Best-effort: HA service `voix.update_mode` takes mode_id + any of
-   *  the mode fields. Field names map between daemon (camelCase) and
-   *  HA (snake_case) — the latter is what voix.update_mode expects. */
-  updateMode: (modeId: string, patch: Record<string, unknown>) => {
-    const haPatch: Record<string, unknown> = { mode_id: modeId };
+  /** Mirror a voice mutation into HA. HA's voix.update_mode service
+   *  takes mode_id + a subset of voice fields. Field names map between
+   *  daemon (camelCase) and HA (snake_case + mode_* prefix). */
+  updateVoice: (voiceId: string, patch: Record<string, unknown>) => {
+    const haPatch: Record<string, unknown> = { mode_id: voiceId };
     for (const [k, v] of Object.entries(patch)) {
       if (v === undefined) continue;
-      // camelCase → snake_case for the small set of mode fields HA's
+      // camelCase → snake_case for the small set of voice fields HA's
       // service accepts. Anything not in this map is forwarded as-is.
       const map: Record<string, string> = {
         postProcessPrompt: "post_process_prompt",
@@ -68,10 +76,9 @@ export const haSync = {
     void call("voix", "update_mode", haPatch);
   },
 
-  /** Set the active mode for a specific puck via HA. HA's
-   *  voix.set_mode pushes the mode_id to the puck via the
-   *  voix_set_state api.action; the puck writes its NVS so cold
-   *  boots come up in the new mode. */
-  setDeviceMode: (deviceId: string, modeId: string) =>
-    call("voix", "set_mode", { device_id: deviceId, mode_id: modeId }),
+  /** Set the active voice for a specific puck via HA. HA's
+   *  voix.set_mode pushes mode_id to the puck via voix_set_state; the
+   *  puck writes its NVS so cold boots come up in the new voice. */
+  setDeviceVoice: (deviceId: string, voiceId: string) =>
+    call("voix", "set_mode", { device_id: deviceId, mode_id: voiceId }),
 };

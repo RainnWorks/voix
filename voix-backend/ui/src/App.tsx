@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Text, View } from "react-native";
 import { AppShell, type Section } from "./components/AppShell";
-import { ModeEditor } from "./modes/ModeEditor";
-import { ModeList } from "./modes/ModeList";
+import { VoiceEditor } from "./voices/VoiceEditor";
+import { VoiceList } from "./voices/VoiceList";
 import { colors, fontFamily, spacing } from "./lib/theme";
 
 export function App() {
@@ -16,10 +16,10 @@ export function App() {
   if (section === "modes") {
     if (editingModeId === null) {
       title = "Modes";
-      content = <ModeList onPickMode={setEditingModeId} />;
+      content = <VoiceList onPickVoice={setEditingModeId} />;
     } else {
       title = "Edit mode";
-      content = <ModeEditor modeId={editingModeId} onClose={() => setEditingModeId(null)} />;
+      content = <VoiceEditor voiceId={editingModeId} onClose={() => setEditingModeId(null)} />;
     }
   } else if (section === "conversations") {
     title = "Conversations";

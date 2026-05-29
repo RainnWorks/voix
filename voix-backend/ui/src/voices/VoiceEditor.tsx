@@ -10,7 +10,7 @@ import {
   View,
 } from "react-native";
 import { Puck } from "../components/Puck";
-import { type Mode, type ModeUpdate, modesApi } from "../lib/api";
+import { type Voice, type VoiceUpdate, voicesApi } from "../lib/api";
 import {
   colors,
   fontFamily,
@@ -22,21 +22,21 @@ import {
 } from "../lib/theme";
 
 type Props = {
-  modeId: string;
+  voiceId: string;
   onClose: () => void;
 };
 
-export function ModeEditor({ modeId, onClose }: Props) {
-  const [mode, setMode] = useState<Mode | null>(null);
+export function VoiceEditor({ voiceId, onClose }: Props) {
+  const [voice, setVoice] = useState<Voice | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
-    modesApi
-      .get(modeId)
+    voicesApi
+      .get(voiceId)
       .then((m) => {
-        if (!cancelled) setMode(m);
+        if (!cancelled) setVoice(m);
       })
       .catch((e) => {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
@@ -44,14 +44,14 @@ export function ModeEditor({ modeId, onClose }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [modeId]);
+  }, [voiceId]);
 
-  const save = async (patch: ModeUpdate) => {
-    if (!mode) return;
+  const save = async (patch: VoiceUpdate) => {
+    if (!voice) return;
     setSaved(false);
     try {
-      const next = await modesApi.update(mode.id, patch);
-      setMode(next);
+      const next = await voicesApi.update(voice.id, patch);
+      setVoice(next);
       setSaved(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -69,7 +69,7 @@ export function ModeEditor({ modeId, onClose }: Props) {
       </View>
     );
   }
-  if (!mode) {
+  if (!voice) {
     return (
       <View style={styles.loadingBox}>
         <ActivityIndicator color={colors.haBlue} />
@@ -77,14 +77,14 @@ export function ModeEditor({ modeId, onClose }: Props) {
     );
   }
 
-  const swatch = nearestSwatch(mode.color);
-  const postProcEnabled = mode.postProcessPrompt.trim().length > 0;
+  const swatch = nearestSwatch(voice.color);
+  const postProcEnabled = voice.postProcessPrompt.trim().length > 0;
 
   return (
     <ScrollView contentContainerStyle={styles.scroll}>
       <View style={styles.topBar}>
         <Pressable onPress={onClose}>
-          <Text style={styles.backLink}>← Modes</Text>
+          <Text style={styles.backLink}>← Voices</Text>
         </Pressable>
         <Text style={styles.savedText}>{saved ? "Saved" : "Saving…"}</Text>
       </View>
@@ -93,17 +93,17 @@ export function ModeEditor({ modeId, onClose }: Props) {
         <Puck size={56} color={swatch.hex} />
         <View style={styles.identityCol}>
           <TextInput
-            value={mode.name}
-            onChangeText={(t) => setMode({ ...mode, name: t })}
-            onBlur={() => save({ name: mode.name })}
+            value={voice.name}
+            onChangeText={(t) => setVoice({ ...voice, name: t })}
+            onBlur={() => save({ name: voice.name })}
             style={styles.nameInput}
           />
           <TextInput
-            value={mode.routingHint}
-            placeholder="One-line description of when to use this mode."
+            value={voice.routingHint}
+            placeholder="One-line description of when to use this voice."
             placeholderTextColor={colors.textQuiet}
-            onChangeText={(t) => setMode({ ...mode, routingHint: t })}
-            onBlur={() => save({ routingHint: mode.routingHint })}
+            onChangeText={(t) => setVoice({ ...voice, routingHint: t })}
+            onBlur={() => save({ routingHint: voice.routingHint })}
             style={styles.descInput}
           />
         </View>
@@ -120,7 +120,7 @@ export function ModeEditor({ modeId, onClose }: Props) {
               key={key}
               onPress={() => {
                 const color = [...entry.rgb] as [number, number, number];
-                setMode({ ...mode, color });
+                setVoice({ ...voice, color });
                 void save({ color });
               }}
               style={({ pressed }) => [
@@ -145,16 +145,16 @@ export function ModeEditor({ modeId, onClose }: Props) {
         })}
       </View>
 
-      {mode.type === "realtime" && (
+      {voice.type === "realtime" && (
         <>
           <SettingRow
             label="Voice"
-            desc="The voice this mode speaks back in."
+            desc="The voice this voice speaks back in."
             control={
               <TextInput
-                value={mode.voice}
-                onChangeText={(t) => setMode({ ...mode, voice: t })}
-                onBlur={() => save({ voice: mode.voice })}
+                value={voice.voice}
+                onChangeText={(t) => setVoice({ ...voice, voice: t })}
+                onBlur={() => save({ voice: voice.voice })}
                 placeholder="alloy / ash / ballad / coral / echo / marin / cedar"
                 placeholderTextColor={colors.textQuiet}
                 style={styles.input}
@@ -166,9 +166,9 @@ export function ModeEditor({ modeId, onClose }: Props) {
             desc="The realtime model."
             control={
               <TextInput
-                value={mode.model}
-                onChangeText={(t) => setMode({ ...mode, model: t })}
-                onBlur={() => save({ model: mode.model })}
+                value={voice.model}
+                onChangeText={(t) => setVoice({ ...voice, model: t })}
+                onBlur={() => save({ model: voice.model })}
                 placeholder="gpt-realtime-2"
                 placeholderTextColor={colors.textQuiet}
                 style={styles.input}
@@ -180,18 +180,18 @@ export function ModeEditor({ modeId, onClose }: Props) {
 
       <SectionLabel>System prompt</SectionLabel>
       <TextInput
-        value={mode.prompt}
-        onChangeText={(t) => setMode({ ...mode, prompt: t })}
-        onBlur={() => save({ prompt: mode.prompt })}
+        value={voice.prompt}
+        onChangeText={(t) => setVoice({ ...voice, prompt: t })}
+        onBlur={() => save({ prompt: voice.prompt })}
         multiline
         placeholder={
-          mode.type === "realtime" ? "You are voix…" : "(leave empty for raw transcription)"
+          voice.type === "realtime" ? "You are voix…" : "(leave empty for raw transcription)"
         }
         placeholderTextColor={colors.textQuiet}
         style={styles.textarea}
       />
 
-      {mode.type === "dictation" && (
+      {voice.type === "dictation" && (
         <>
           <SettingRow
             label="Post-process with LLM"
@@ -200,12 +200,12 @@ export function ModeEditor({ modeId, onClose }: Props) {
               <Switch
                 value={postProcEnabled}
                 onValueChange={(on) => {
-                  if (on && !mode.postProcessPrompt) {
-                    const seed = mode.routingHint || "Polish the transcript for clarity.";
-                    setMode({ ...mode, postProcessPrompt: seed });
+                  if (on && !voice.postProcessPrompt) {
+                    const seed = voice.routingHint || "Polish the transcript for clarity.";
+                    setVoice({ ...voice, postProcessPrompt: seed });
                     void save({ postProcessPrompt: seed });
                   } else if (!on) {
-                    setMode({ ...mode, postProcessPrompt: "" });
+                    setVoice({ ...voice, postProcessPrompt: "" });
                     void save({ postProcessPrompt: "" });
                   }
                 }}
@@ -216,9 +216,9 @@ export function ModeEditor({ modeId, onClose }: Props) {
             <>
               <SectionLabel>Post-process prompt</SectionLabel>
               <TextInput
-                value={mode.postProcessPrompt}
-                onChangeText={(t) => setMode({ ...mode, postProcessPrompt: t })}
-                onBlur={() => save({ postProcessPrompt: mode.postProcessPrompt })}
+                value={voice.postProcessPrompt}
+                onChangeText={(t) => setVoice({ ...voice, postProcessPrompt: t })}
+                onBlur={() => save({ postProcessPrompt: voice.postProcessPrompt })}
                 multiline
                 style={styles.textarea}
               />
@@ -227,14 +227,14 @@ export function ModeEditor({ modeId, onClose }: Props) {
                 desc="OpenAI or OpenRouter."
                 control={
                   <TextInput
-                    value={mode.postProcessProvider}
+                    value={voice.postProcessProvider}
                     onChangeText={(t) =>
-                      setMode({
-                        ...mode,
+                      setVoice({
+                        ...voice,
                         postProcessProvider: t === "openrouter" ? "openrouter" : "openai",
                       })
                     }
-                    onBlur={() => save({ postProcessProvider: mode.postProcessProvider })}
+                    onBlur={() => save({ postProcessProvider: voice.postProcessProvider })}
                     style={styles.input}
                   />
                 }
@@ -244,9 +244,9 @@ export function ModeEditor({ modeId, onClose }: Props) {
                 desc="Chat-completions model."
                 control={
                   <TextInput
-                    value={mode.postProcessModel}
-                    onChangeText={(t) => setMode({ ...mode, postProcessModel: t })}
-                    onBlur={() => save({ postProcessModel: mode.postProcessModel })}
+                    value={voice.postProcessModel}
+                    onChangeText={(t) => setVoice({ ...voice, postProcessModel: t })}
+                    onBlur={() => save({ postProcessModel: voice.postProcessModel })}
                     placeholder="gpt-4o-mini"
                     placeholderTextColor={colors.textQuiet}
                     style={styles.input}

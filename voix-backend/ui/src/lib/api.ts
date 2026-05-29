@@ -14,7 +14,7 @@
  * shares the same base as the document.
  */
 
-export type Mode = {
+export type Voice = {
   id: string;
   name: string;
   type: "realtime" | "dictation";
@@ -36,7 +36,7 @@ export type Mode = {
   isBuiltin: boolean;
 };
 
-export type ModeUpdate = Partial<Omit<Mode, "id" | "isBuiltin">>;
+export type VoiceUpdate = Partial<Omit<Voice, "id" | "isBuiltin">>;
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const r = await fetch(path, {
@@ -53,11 +53,11 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return (await r.json()) as T;
 }
 
-export const modesApi = {
-  list: () => api<Mode[]>("/api/modes"),
-  get: (id: string) => api<Mode>(`/api/modes/${encodeURIComponent(id)}`),
-  update: (id: string, patch: ModeUpdate) =>
-    api<Mode>(`/api/modes/${encodeURIComponent(id)}`, {
+export const voicesApi = {
+  list: () => api<Voice[]>("/api/voices"),
+  get: (id: string) => api<Voice>(`/api/voices/${encodeURIComponent(id)}`),
+  update: (id: string, patch: VoiceUpdate) =>
+    api<Voice>(`/api/voices/${encodeURIComponent(id)}`, {
       method: "PATCH",
       body: JSON.stringify(patch),
     }),
@@ -66,15 +66,15 @@ export const modesApi = {
 export type Device = {
   deviceId: string;
   friendlyName?: string;
-  modeId: string;
+  voiceId: string;
   lastSeenMs: number;
 };
 
 export const devicesApi = {
   list: () => api<Device[]>("/api/devices"),
-  setMode: (deviceId: string, modeId: string) =>
-    api<Device>(`/api/devices/${encodeURIComponent(deviceId)}/mode`, {
+  setVoice: (deviceId: string, voiceId: string) =>
+    api<Device>(`/api/devices/${encodeURIComponent(deviceId)}/voice`, {
       method: "PUT",
-      body: JSON.stringify({ modeId }),
+      body: JSON.stringify({ voiceId }),
     }),
 };

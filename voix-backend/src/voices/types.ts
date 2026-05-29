@@ -1,11 +1,16 @@
 /**
- * Mode = a user-configurable preset that bundles every parameter
- * relevant to a single turn: which transcription provider, what voice
- * for realtime, which post-processing prompt for dictation, etc.
+ * Voice = a user-configurable preset that bundles every parameter
+ * relevant to a single turn: which transcription provider, what TTS
+ * voice for realtime, which post-processing prompt for dictation, etc.
  *
- * One catalog is shared across all pucks + the Mac app. Each input
- * source (puck, Mac hotkey, …) sends a `mode_id` in its hello and the
- * daemon looks up the mode here.
+ * Renamed from `Mode` in M02 (vocabulary alignment with the brand
+ * guides + architecture doc). The wire field a puck sends is still
+ * `mode_id` until M05 reshapes the protocol; locally the daemon talks
+ * about voices.
+ *
+ * One catalog is shared across all input sources (puck, Mac hotkey,
+ * iOS keyboard, …). Each hello carries a voice identifier and the
+ * daemon looks up the voice here.
  *
  * Schema mirrors the Python version that lived under
  * `ha-integration/custom_components/voix/const.py` — the names are kept
@@ -13,7 +18,8 @@
  * default-email, default-note, default-code, default-dictation)
  * survive the move.
  *
- * Two flavours of mode:
+ * Two flavours of voice (still keyed off `type` in M02; M03 reshapes
+ * this into the killer-flow conversation/output phases):
  *
  *   • `realtime` — full OpenAI Realtime audio session. `voice`, `model`,
  *     `prompt` (system instructions), `includeEntities/Persons`,
@@ -27,22 +33,21 @@
  *     `prompt` / `voice` ignored.
  *
  * `assist` (HA's built-in pipeline, used by the second wake word) is
- * NOT a voix mode — that wake word bypasses voix entirely on the
- * device side. Leaving it out of the type to avoid resurrecting the
- * deleted `default-assist` from the Python era.
+ * NOT a voix voice — that wake word bypasses voix entirely on the
+ * device side.
  */
 
-export type ModeType = "realtime" | "dictation";
+export type VoiceType = "realtime" | "dictation";
 
-export type Mode = {
+export type Voice = {
   id: string;
   name: string;
-  type: ModeType;
+  type: VoiceType;
 
   /** Realtime: system prompt sent in session.update. Dictation: ignored. */
   prompt: string;
 
-  /** Realtime voice (alloy, ash, ballad, …). Empty = inherit default. */
+  /** Realtime TTS voice (alloy, ash, ballad, …). Empty = inherit default. */
   voice: string;
 
   /** Realtime model id. Empty = inherit default. */
@@ -53,12 +58,12 @@ export type Mode = {
   brightness: number;
   effect: string;
 
-  /** STT provider key. Dictation modes use this; realtime modes use the
-   *  inner transcription embedded in the realtime session. */
+  /** STT provider key. Dictation voices use this; realtime voices use
+   *  the inner transcription embedded in the realtime session. */
   sttProvider: string;
   sttModel: string;
 
-  /** Per-mode entity-state context the user always wants the model to
+  /** Per-voice entity-state context the user always wants the model to
    *  know about. Names, not entity_ids — daemon resolves via the HA
    *  MCP server's state read. */
   includeEntities: string[];
@@ -74,18 +79,18 @@ export type Mode = {
   postProcessModel: string;
 
   /** One-line description for auto-routing. The router shows these to
-   *  a small LLM ("which mode is best for this context?") so the more
-   *  distinctive the routing_hint, the better the routing accuracy. */
+   *  a small LLM ("which voice is best for this context?") so the more
+   *  distinctive the routing hint, the better the routing accuracy. */
   routingHint: string;
 
-  /** Built-in modes are seeded on first boot. The flag lets us
+  /** Built-in voices are seeded on first boot. The flag lets us
    *  distinguish "user created" from "shipped with the daemon" — the
    *  UI may surface this as a reset button, and migrations only
    *  touch the built-ins. */
   isBuiltin: boolean;
 };
 
-/** Subset of `Mode` accepted by mode-update endpoints. All fields
+/** Subset of `Voice` accepted by voice-update endpoints. All fields
  *  optional so the client can send sparse updates without round-tripping
- *  the whole mode definition. */
-export type ModeUpdate = Partial<Omit<Mode, "id" | "isBuiltin">>;
+ *  the whole voice definition. */
+export type VoiceUpdate = Partial<Omit<Voice, "id" | "isBuiltin">>;

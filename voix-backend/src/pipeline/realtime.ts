@@ -29,7 +29,6 @@ import type { ContextEntry, ToolSpec } from "../context/types.ts";
 import { config } from "../env.ts";
 import { appendHistory } from "../history/store.ts";
 import { log } from "../log.ts";
-import { postProcess } from "../post_process/index.ts";
 import { OpenAIRealtimeClient, type RealtimeSessionConfig } from "../realtime/openai.ts";
 import { SessionRecorder } from "../recordings/store.ts";
 import {
@@ -39,6 +38,7 @@ import {
   writeRawSidecar,
 } from "../transcripts/store.ts";
 import type { Voice } from "../voices/types.ts";
+import { postProcess } from "./providers/llm/index.ts";
 import type { Pipeline, PipelineCallbacks, PipelineStart } from "./types.ts";
 import { SessionWatchdog } from "./watchdog.ts";
 

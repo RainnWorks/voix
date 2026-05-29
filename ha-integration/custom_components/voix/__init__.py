@@ -84,6 +84,55 @@ PLATFORMS: list[Platform] = [
 SIGNAL_SESSION_STATE_CHANGED = f"{DOMAIN}_session_state_changed"
 
 
+# ─── M02c: entity_id migration ─────────────────────────────────────────────
+@callback
+def _migrate_voice_entity_ids(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Rename any `voix_mode_*` / `voix_default_mode` entity_ids under this
+    config entry to the canonical `voix_voice_*` / `voix_default_voice`.
+    Idempotent: a second run after rename finishes is a no-op.
+
+    unique_ids are NOT touched — HA uses them to track entity identity
+    across renames, so changing them would orphan every installed
+    light/select. Renaming the entity_id is the user-visible part
+    (Devices & Entities, automations) and that's what this does.
+    """
+    from homeassistant.helpers import entity_registry as er
+
+    registry = er.async_get(hass)
+    renamed = 0
+    for reg_entry in er.async_entries_for_config_entry(registry, entry.entry_id):
+        eid = reg_entry.entity_id
+        new_eid: str | None = None
+        if "voix_mode_" in eid:
+            new_eid = eid.replace("voix_mode_", "voix_voice_", 1)
+        elif eid.endswith("voix_default_mode"):
+            new_eid = eid.replace("voix_default_mode", "voix_default_voice")
+        if not new_eid or new_eid == eid:
+            continue
+        # Avoid clobber if the target somehow already exists (e.g. a half-
+        # finished migration on a previous version). Leaving both around
+        # is safer than failing the entire migration.
+        if registry.async_get(new_eid):
+            _LOGGER.debug(
+                "voix entity_id migration: skipping %s → %s (target already exists)",
+                eid, new_eid,
+            )
+            continue
+        try:
+            registry.async_update_entity(eid, new_entity_id=new_eid)
+            _LOGGER.warning("voix entity_id migrated: %s → %s", eid, new_eid)
+            renamed += 1
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("voix entity_id migration failed for %s: %s", eid, err)
+    if renamed:
+        _LOGGER.warning(
+            "voix: migrated %d entity_id(s) from voix_mode_* to voix_voice_*. "
+            "Any HA automations or scripts that reference the old names need "
+            "to be updated manually.",
+            renamed,
+        )
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up voix from a config entry."""
     # Migrate older entries that pre-date WS token auth: generate a token on
@@ -127,6 +176,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.config_entries.async_update_entry(entry, options=bootstrapped)
 
     hass.data.setdefault(DOMAIN, {})
+
+    # M02c: one-shot entity_id migration. Renames any existing
+    # `*.voix_mode_*` / `select.voix_default_mode` registered against
+    # this config entry to the canonical `voix_voice_*` form. Runs
+    # BEFORE platforms set up so new entity instances pick up the new
+    # entity_id from the registry. Idempotent — a second run is a
+    # no-op once everything is renamed.
+    _migrate_voice_entity_ids(hass, entry)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 

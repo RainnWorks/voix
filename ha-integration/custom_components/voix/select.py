@@ -32,7 +32,7 @@ from .const import (
     KNOWN_WAKE_WORDS,
     REALTIME_VOICES,
 )
-from .modes import get_default_mode_id, get_mode, get_modes
+from .voices import get_default_voice_id, get_voice, get_voices
 from .util import device_slug, gateway_device_info
 
 _LOGGER = logging.getLogger(__name__)
@@ -45,12 +45,16 @@ async def async_setup_entry(
 ) -> None:
     from . import CONF_DISCOVERED_DEVICES, SIGNAL_DEVICE_DISCOVERED
 
+    # Bucket key kept as "mode_select" to match the slot __init__.py
+    # looks up under hass.data — renaming both atomically is the
+    # cleaner refactor but raises the surface area of this rename.
+    # The user-visible thing is the entity_id; this is internal.
     bucket = hass.data.setdefault(DOMAIN, {}).setdefault("mode_select", {})
 
     def _add_for(device_id: str, friendly_name: str | None) -> None:
         if device_id in bucket:
             return
-        ent = VoixModeSelect(entry, device_id, friendly_name or device_id)
+        ent = VoixDeviceVoiceSelect(entry, device_id, friendly_name or device_id)
         bucket[device_id] = ent
         async_add_entities([ent])
 
@@ -72,7 +76,7 @@ async def async_setup_entry(
     # Idle timeout is its own number sibling.
     gateway_entities = [
         VoixVoiceSelect(entry),
-        VoixDefaultModeSelect(entry),
+        VoixDefaultVoiceSelect(entry),
     ]
     async_add_entities(gateway_entities)
 
@@ -126,8 +130,8 @@ async def async_setup_entry(
     entry.async_on_unload(entry.add_update_listener(_on_options_update))
 
 
-class VoixModeSelect(SelectEntity, RestoreEntity):
-    """Per-device mode select. Options come from the global mode catalog."""
+class VoixDeviceVoiceSelect(SelectEntity, RestoreEntity):
+    """Per-device voice select. Options come from the global voice catalog."""
 
     _attr_has_entity_name = False
     _attr_should_poll = False
@@ -136,11 +140,15 @@ class VoixModeSelect(SelectEntity, RestoreEntity):
         self._entry = entry
         self._device_id = device_id
         slug = device_slug(device_id)
+        # unique_id keeps the legacy "voix-mode" suffix so HA's registry
+        # continues to track existing entities. M02c migrates the
+        # entity_id to the new "voix_voice_" prefix; unique_id is
+        # internal-only and never visible to the user.
         self._attr_unique_id = f"{entry.entry_id}-{slug}-voix-mode"
-        self._attr_name = f"voix mode {slug}"
-        self.entity_id = f"select.voix_mode_{slug}"
-        self._attr_options = list(get_modes(entry).keys())
-        self._attr_current_option = get_default_mode_id(entry)
+        self._attr_name = f"voix voice {slug}"
+        self.entity_id = f"select.voix_voice_{slug}"
+        self._attr_options = list(get_voices(entry).keys())
+        self._attr_current_option = get_default_voice_id(entry)
         self._attr_device_info = {
             "identifiers": {(DOMAIN, device_id)},
             "name": friendly_name,
@@ -161,8 +169,8 @@ class VoixModeSelect(SelectEntity, RestoreEntity):
         State values are user-defined mode_ids; behavior is always one of
         assist / dictation / realtime.
         """
-        mode_def = get_mode(self._entry, self._attr_current_option)
-        return {"behavior": mode_def.get("type", "assist")}
+        voice_def = get_voice(self._entry, self._attr_current_option)
+        return {"behavior": voice_def.get("type", "assist")}
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
@@ -172,14 +180,14 @@ class VoixModeSelect(SelectEntity, RestoreEntity):
 
     async def async_select_option(self, option: str) -> None:
         if option not in self._attr_options:
-            _LOGGER.warning("voix mode: rejected unknown option %r", option)
+            _LOGGER.warning("voix voice: rejected unknown option %r", option)
             return
         if option == self._attr_current_option:
             return
         prev = self._attr_current_option
         self._attr_current_option = option
         self.async_write_ha_state()
-        _LOGGER.info("voix mode (%s): %s → %s", self._device_id, prev, option)
+        _LOGGER.info("voix voice (%s): %s → %s", self._device_id, prev, option)
         self.hass.bus.async_fire(
             EVENT_MODE_CHANGED,
             {
@@ -200,13 +208,13 @@ class VoixModeSelect(SelectEntity, RestoreEntity):
     @callback
     def refresh_options(self) -> None:
         """Re-read the global mode catalog after the user added/removed a mode."""
-        new_opts = list(get_modes(self._entry).keys())
+        new_opts = list(get_voices(self._entry).keys())
         if new_opts == self._attr_options:
             return
         self._attr_options = new_opts
         # If the current selection vanished, fall back to the default.
         if self._attr_current_option not in new_opts:
-            new_current = get_default_mode_id(self._entry) if new_opts else None
+            new_current = get_default_voice_id(self._entry) if new_opts else None
             if new_current and new_current in new_opts:
                 self._attr_current_option = new_current
         self.async_write_ha_state()
@@ -251,7 +259,7 @@ class VoixVoiceSelect(SelectEntity):
         _LOGGER.info("voix voice → %s", option)
 
 
-class VoixDefaultModeSelect(SelectEntity):
+class VoixDefaultVoiceSelect(SelectEntity):
     """Default mode_id for new devices on first sight + as a fallback target."""
 
     _attr_has_entity_name = False
@@ -260,29 +268,30 @@ class VoixDefaultModeSelect(SelectEntity):
 
     def __init__(self, entry: ConfigEntry) -> None:
         self._entry = entry
-        self._attr_name = "voix default mode"
-        self.entity_id = "select.voix_default_mode"
+        self._attr_name = "voix default voice"
+        self.entity_id = "select.voix_default_voice"
+        # unique_id stays legacy "voix-default-mode" for registry stability.
         self._attr_unique_id = f"{entry.entry_id}-voix-default-mode"
-        self._attr_options = list(get_modes(entry).keys())
+        self._attr_options = list(get_voices(entry).keys())
         self._attr_device_info = gateway_device_info(DOMAIN)
 
     @property
     def current_option(self) -> str:
-        return get_default_mode_id(self._entry)
+        return get_default_voice_id(self._entry)
 
     async def async_select_option(self, option: str) -> None:
         if option not in self._attr_options:
-            _LOGGER.warning("voix default_mode: rejected unknown mode_id %r", option)
+            _LOGGER.warning("voix default_voice: rejected unknown voice_id %r", option)
             return
         new_opts = {**self._entry.options, CONF_DEFAULT_MODE: option}
         self.hass.config_entries.async_update_entry(self._entry, options=new_opts)
         self.async_write_ha_state()
-        _LOGGER.info("voix default_mode → %s", option)
+        _LOGGER.info("voix default_voice → %s", option)
 
     @callback
     def refresh_options(self) -> None:
         """Re-read the global mode catalog when the user adds/removes a mode."""
-        new_opts = list(get_modes(self._entry).keys())
+        new_opts = list(get_voices(self._entry).keys())
         if new_opts != self._attr_options:
             self._attr_options = new_opts
             self.async_write_ha_state()

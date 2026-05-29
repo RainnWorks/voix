@@ -149,10 +149,26 @@ MODE_TYPE_REALTIME = "realtime"
 # `default-assist` modes from existing config entries.
 MODE_TYPES = [MODE_TYPE_DICTATION, MODE_TYPE_REALTIME]
 
-# entry.options["modes"] = {mode_id: mode_def}
+# M02c/d aliases — same values, voice vocabulary. Python imports the
+# canonical "VOICE_*" names; the "MODE_*" names linger for one release
+# in case any external caller still imports them. Storage shape on
+# disk is unchanged (entry.options["modes"] still keys the catalog;
+# renaming the storage key would force a config-entry migration with
+# no user benefit).
+VOICE_TYPE_DICTATION = MODE_TYPE_DICTATION
+VOICE_TYPE_REALTIME = MODE_TYPE_REALTIME
+VOICE_TYPES = MODE_TYPES
+
+# entry.options["modes"] = {voice_id: voice_def}. Key name kept as
+# "modes" so existing installs don't need a forced storage migration;
+# Python identifiers are CONF_VOICES with CONF_MODES as a deprecated
+# alias.
 CONF_MODES = "modes"
-# entry.options["default_mode"] = mode_id used for new devices on first sight
+CONF_VOICES = CONF_MODES
+# entry.options["default_mode"] = voice_id used for new devices on first sight.
+# Same back-compat reasoning — the storage key stays "default_mode" for now.
 CONF_DEFAULT_MODE = "default_mode"
+CONF_DEFAULT_VOICE = CONF_DEFAULT_MODE
 
 # Global "always-included" prompt context that's prepended to every mode's
 # prompt (after HA's auto-generated tool prompt). Lets users pin specific
@@ -285,6 +301,7 @@ DEFAULT_MODE_IDS = (
     "default-note",
     "default-code",
 )
+DEFAULT_VOICE_IDS = DEFAULT_MODE_IDS
 
 DEFAULT_MODES: dict[str, dict] = {
     "default-realtime": {
@@ -370,11 +387,13 @@ DEFAULT_MODES: dict[str, dict] = {
                         "Use in terminals, IDEs, and coding tools.",
     },
 }
+DEFAULT_VOICES = DEFAULT_MODES  # deprecated alias
 
-# DEFAULT_MODE is the mode_id used for new devices on first discovery
+# DEFAULT_VOICE is the voice_id used for new devices on first discovery
 # (until the user picks something different). Realtime is the more
 # interesting starting point for the voix wake word.
-DEFAULT_MODE = "default-realtime"
+DEFAULT_VOICE = "default-realtime"
+DEFAULT_MODE = DEFAULT_VOICE  # deprecated alias
 
 # ─── HA bus events ───────────────────────────────────────────────────────────
 EVENT_DICTATION_CAPTURED = "voix_dictation_captured"

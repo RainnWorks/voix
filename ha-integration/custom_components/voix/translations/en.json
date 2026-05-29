@@ -73,9 +73,9 @@
     }
   },
   "services": {
-    "cycle_mode": {
-      "name": "Cycle mode",
-      "description": "Advance the voix mode select to the next mode in the catalog. Wraps at the end.",
+    "cycle_voice": {
+      "name": "Cycle voice",
+      "description": "Advance the voix voice select to the next voice in the catalog. Wraps at the end.",
       "fields": {
         "device_id": {
           "name": "Device ID",
@@ -83,13 +83,13 @@
         }
       }
     },
-    "set_mode": {
-      "name": "Set mode",
-      "description": "Directly set the voix mode for a device.",
+    "set_voice": {
+      "name": "Set voice",
+      "description": "Directly set the voix voice for a device.",
       "fields": {
-        "mode": {
-          "name": "Mode ID",
-          "description": "ID of a mode from the catalog (e.g. 'default-realtime')."
+        "voice": {
+          "name": "Voice ID",
+          "description": "ID of a voice from the catalog (e.g. 'default-realtime')."
         },
         "device_id": {
           "name": "Device ID",
@@ -97,11 +97,11 @@
         }
       }
     },
-    "create_mode": {
-      "name": "Create mode",
-      "description": "Add a new mode to the catalog. Mostly used by the Tauri app.",
+    "create_voice": {
+      "name": "Create voice",
+      "description": "Add a new voice to the catalog. Mostly used by the desktop app.",
       "fields": {
-        "name": {"name": "Name", "description": "Display name for the mode."},
+        "name": {"name": "Name", "description": "Display name for the voice."},
         "type": {"name": "Type", "description": "Behavior type: realtime or dictation."},
         "prompt": {"name": "Prompt", "description": "System prompt for the model."},
         "voice": {"name": "Voice", "description": "OpenAI voice name (optional)."},
@@ -111,11 +111,11 @@
         "effect": {"name": "Effect", "description": "LED effect name."}
       }
     },
-    "update_mode": {
-      "name": "Update mode",
-      "description": "Modify an existing mode in the catalog.",
+    "update_voice": {
+      "name": "Update voice",
+      "description": "Modify an existing voice in the catalog.",
       "fields": {
-        "mode_id": {"name": "Mode ID", "description": "ID of the mode to update."},
+        "voice_id": {"name": "Voice ID", "description": "ID of the voice to update."},
         "name": {"name": "Name", "description": "Display name."},
         "type": {"name": "Type", "description": "Behavior type."},
         "prompt": {"name": "Prompt", "description": "System prompt."},
@@ -126,12 +126,16 @@
         "effect": {"name": "Effect", "description": "LED effect name."}
       }
     },
-    "delete_mode": {
-      "name": "Delete mode",
-      "description": "Remove a mode from the catalog.",
+    "delete_voice": {
+      "name": "Delete voice",
+      "description": "Remove a voice from the catalog.",
       "fields": {
-        "mode_id": {"name": "Mode ID", "description": "ID of the mode to delete."}
+        "voice_id": {"name": "Voice ID", "description": "ID of the voice to delete."}
       }
+    },
+    "list_voices": {
+      "name": "List voices",
+      "description": "Return the full voice catalog with prompt/voice/model/color/brightness/effect — for the desktop app's editor."
     },
     "get_transcript": {
       "name": "Get transcript",
@@ -143,9 +147,46 @@
         }
       }
     },
+
+    "cycle_mode": {
+      "name": "Cycle mode (deprecated alias)",
+      "description": "Deprecated; use cycle_voice. Same behaviour.",
+      "fields": {
+        "device_id": {
+          "name": "Device ID",
+          "description": "Target a specific Voice PE if you have multiple. Omit for single-device installs."
+        }
+      }
+    },
+    "set_mode": {
+      "name": "Set mode (deprecated alias)",
+      "description": "Deprecated; use set_voice.",
+      "fields": {
+        "mode": {"name": "Mode ID", "description": "ID of a voice from the catalog."},
+        "device_id": {"name": "Device ID", "description": "Target a specific Voice PE."}
+      }
+    },
+    "create_mode": {
+      "name": "Create mode (deprecated alias)",
+      "description": "Deprecated; use create_voice."
+    },
+    "update_mode": {
+      "name": "Update mode (deprecated alias)",
+      "description": "Deprecated; use update_voice.",
+      "fields": {
+        "mode_id": {"name": "Mode ID", "description": "ID of the voice to update."}
+      }
+    },
+    "delete_mode": {
+      "name": "Delete mode (deprecated alias)",
+      "description": "Deprecated; use delete_voice.",
+      "fields": {
+        "mode_id": {"name": "Mode ID", "description": "ID of the voice to delete."}
+      }
+    },
     "list_modes": {
-      "name": "List modes",
-      "description": "Return the full mode catalog with prompt/voice/model/color/brightness/effect — for the desktop app's editor."
+      "name": "List modes (deprecated alias)",
+      "description": "Deprecated; use list_voices. Same payload."
     }
   }
 }

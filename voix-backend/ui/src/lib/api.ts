@@ -45,6 +45,13 @@ export type Voice = {
   postProcessProvider: "openai" | "openrouter";
   postProcessModel: string;
   routingHint: string;
+  /** M14 — which engine drives the discuss path. Optional; missing
+   *  is normalised to "realtime" on the daemon side. */
+  discussEngine?: "realtime" | "traditional";
+  /** M14 — TTS provider for the traditional discuss path. */
+  ttsProvider?: string;
+  /** M14 — provider-specific voice id for the TTS. */
+  ttsVoice?: string;
   isBuiltin: boolean;
 };
 

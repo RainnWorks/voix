@@ -246,35 +246,120 @@ export function VoiceEditor({ voiceId, onClose }: Props) {
 
       {advancedOpen && isRealtime && (
         <>
-          <SectionLabel>Talking phase plumbing</SectionLabel>
+          {/* Engine is the FIRST decision inside Advanced because it
+              reframes everything below — Wren (audit) called this
+              out: picking the engine changes how the voice sounds
+              and paces replies, so the user needs to make this
+              choice before they look at any plumbing. */}
+          <SectionLabel>Conversation feel</SectionLabel>
           <SettingRow
-            label="Speaker"
-            desc="The TTS voice the realtime model speaks back in."
+            label="Pacing"
+            desc="Live keeps the conversation flowing. Turn-based waits for you to finish, then answers. Changes how this voice sounds and paces replies."
             control={
-              <TextInput
-                value={voice.voice}
-                onChangeText={(t) => setVoice({ ...voice, voice: t })}
-                onBlur={() => save({ voice: voice.voice })}
-                placeholder="alloy"
-                placeholderTextColor={colors.textQuiet}
-                style={styles.input}
+              <Segmented
+                value={voice.discussEngine ?? "realtime"}
+                options={[
+                  { value: "realtime", label: "Live" },
+                  { value: "traditional", label: "Turn-based" },
+                ]}
+                onChange={(v) => {
+                  const next = v as NonNullable<Voice["discussEngine"]>;
+                  setVoice({ ...voice, discussEngine: next });
+                  void save({ discussEngine: next });
+                }}
               />
             }
           />
-          <SettingRow
-            label="Realtime model"
-            desc="The model used during the talking phase."
-            control={
-              <TextInput
-                value={voice.model}
-                onChangeText={(t) => setVoice({ ...voice, model: t })}
-                onBlur={() => save({ model: voice.model })}
-                placeholder="gpt-realtime-2"
-                placeholderTextColor={colors.textQuiet}
-                style={styles.input}
+
+          {(voice.discussEngine ?? "realtime") === "realtime" && (
+            <>
+              <SectionLabel>Talking phase plumbing</SectionLabel>
+              <SettingRow
+                label="Speaker"
+                desc="The TTS voice the realtime model speaks back in."
+                control={
+                  <TextInput
+                    value={voice.voice}
+                    onChangeText={(t) => setVoice({ ...voice, voice: t })}
+                    onBlur={() => save({ voice: voice.voice })}
+                    placeholder="alloy"
+                    placeholderTextColor={colors.textQuiet}
+                    style={styles.input}
+                  />
+                }
               />
-            }
-          />
+              <SettingRow
+                label="Realtime model"
+                desc="The model used during the talking phase."
+                control={
+                  <TextInput
+                    value={voice.model}
+                    onChangeText={(t) => setVoice({ ...voice, model: t })}
+                    onBlur={() => save({ model: voice.model })}
+                    placeholder="gpt-realtime-2"
+                    placeholderTextColor={colors.textQuiet}
+                    style={styles.input}
+                  />
+                }
+              />
+            </>
+          )}
+
+          {(voice.discussEngine ?? "realtime") === "traditional" && (
+            <>
+              <SectionLabel>Talking phase plumbing</SectionLabel>
+              <SettingRow
+                label="STT provider"
+                desc="Where mic audio gets transcribed."
+                control={
+                  <Segmented
+                    value={voice.sttProvider}
+                    options={[
+                      { value: "openai-realtime", label: "OpenAI" },
+                      { value: "deepgram", label: "Deepgram" },
+                    ]}
+                    onChange={(v) => {
+                      setVoice({ ...voice, sttProvider: v });
+                      void save({ sttProvider: v });
+                    }}
+                  />
+                }
+              />
+              <SettingRow
+                label="STT model"
+                desc="Provider-specific model. Empty = provider default."
+                control={
+                  <TextInput
+                    value={voice.sttModel}
+                    onChangeText={(t) => setVoice({ ...voice, sttModel: t })}
+                    onBlur={() => save({ sttModel: voice.sttModel })}
+                    placeholder="nova-3"
+                    placeholderTextColor={colors.textQuiet}
+                    style={styles.input}
+                  />
+                }
+              />
+              <SettingRow
+                label="Chat model"
+                desc="Per-turn chat model. Same provider as the output phase below."
+                control={
+                  <TextInput
+                    value={voice.model}
+                    onChangeText={(t) => setVoice({ ...voice, model: t })}
+                    onBlur={() => save({ model: voice.model })}
+                    placeholder="gpt-4o-mini"
+                    placeholderTextColor={colors.textQuiet}
+                    style={styles.input}
+                  />
+                }
+              />
+              {/* TTS provider + voice are deliberately hidden until
+                  there's a real second choice (Wren audit). Today
+                  Aura is the only impl; surfacing a text input
+                  fishing for a string the user can't know is
+                  worse than a sensible default. */}
+            </>
+          )}
 
           <SectionLabel>Output phase plumbing</SectionLabel>
           {!donePromptFilled && (

@@ -411,20 +411,28 @@ EVENT_MODE_CHANGED = "voix_mode_changed"
 TRANSCRIPTS_DIRNAME = "voix/transcripts"
 
 # ─── Services ────────────────────────────────────────────────────────────────
+#
+# M02b: the canonical service names use "voice" vocabulary, matching the
+# daemon + the desktop UI. The "mode_*" names are deprecated aliases —
+# both still register on every setup; calls to the deprecated names log
+# a warning and route to the same handler. Drop the aliases once the
+# Tauri / Mac app caller updates ship.
+SERVICE_CYCLE_VOICE = "cycle_voice"
+SERVICE_SET_VOICE = "set_voice"
+SERVICE_CREATE_VOICE = "create_voice"
+SERVICE_UPDATE_VOICE = "update_voice"
+SERVICE_DELETE_VOICE = "delete_voice"
+SERVICE_LIST_VOICES = "list_voices"
+# Deprecated aliases (kept for one release; remove once Tauri ships
+# the new names and no live automations reference the old).
 SERVICE_CYCLE_MODE = "cycle_mode"
 SERVICE_SET_MODE = "set_mode"
-# Mode CRUD from the desktop app. Same fields as the options flow form,
-# just bypassing the UI so the Tauri app can write back instantly.
 SERVICE_CREATE_MODE = "create_mode"
 SERVICE_UPDATE_MODE = "update_mode"
 SERVICE_DELETE_MODE = "delete_mode"
+SERVICE_LIST_MODES = "list_modes"
 # Transcript fetch — pass filepath from a sensor's state, get file content.
 SERVICE_GET_TRANSCRIPT = "get_transcript"
-# List all modes with their full definitions (prompt, voice, model, color,
-# brightness, effect). The HA UI / light entities only expose color +
-# brightness + effect; the desktop app needs the rest to render a proper
-# editor. Returns response data, no side effects.
-SERVICE_LIST_MODES = "list_modes"
 
 # ─── OpenAI ──────────────────────────────────────────────────────────────────
 REALTIME_WS_URL = "wss://api.openai.com/v1/realtime"

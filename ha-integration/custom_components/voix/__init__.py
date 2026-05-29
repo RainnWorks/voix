@@ -45,12 +45,18 @@ from .const import (
     EVENT_MODE_CHANGED,
     MODE_TYPE_REALTIME,
     SERVICE_CREATE_MODE,
+    SERVICE_CREATE_VOICE,
     SERVICE_CYCLE_MODE,
+    SERVICE_CYCLE_VOICE,
     SERVICE_DELETE_MODE,
+    SERVICE_DELETE_VOICE,
     SERVICE_GET_TRANSCRIPT,
     SERVICE_LIST_MODES,
+    SERVICE_LIST_VOICES,
     SERVICE_SET_MODE,
+    SERVICE_SET_VOICE,
     SERVICE_UPDATE_MODE,
+    SERVICE_UPDATE_VOICE,
     TRANSCRIPTS_DIRNAME,
 )
 from .modes import slugify_mode_id
@@ -414,6 +420,97 @@ async def _register_services(hass: HomeAssistant) -> None:
         DOMAIN,
         SERVICE_LIST_MODES,
         _list_modes,
+        schema=vol.Schema({}),
+        supports_response=SupportsResponse.ONLY,
+    )
+
+    # ─── M02b: voice-vocabulary aliases ────────────────────────────────
+    #
+    # Same handlers, registered under the canonical "voice" names so
+    # the HA UI + automations + the Mac app can use the new vocabulary.
+    # The old "mode_*" service names above stay registered for one
+    # release as deprecated aliases — drop them once the Tauri app
+    # ships the new names and no live automations reference the old.
+    #
+    # Field naming on the new services: `voice_id` is canonical (the
+    # daemon + UI speak it). The `update_voice` + `delete_voice`
+    # services accept either `voice_id` (canonical) or `mode_id`
+    # (legacy) so the handler doesn't need a second copy.
+
+    # Lightweight stand-in for ServiceCall; the handlers only read
+    # call.data, so a duck-typed wrapper with the renamed fields is
+    # enough — and it spares us from constructing a real ServiceCall
+    # (its constructor signature has drifted across HA versions).
+    class _RemappedCall:
+        def __init__(self, data: dict) -> None:
+            self.data = data
+
+    async def _update_voice(call: ServiceCall) -> None:
+        # Translate canonical voice_id back to mode_id internally —
+        # entry.options still uses the "modes" key (CONF_MODES) per
+        # the M02b scope decision.
+        voice_id = call.data.get("voice_id") or call.data.get("mode_id")
+        if not voice_id:
+            _LOGGER.warning("voix.update_voice: missing voice_id")
+            return
+        await _update_mode(_RemappedCall({**call.data, "mode_id": voice_id}))
+
+    async def _delete_voice(call: ServiceCall) -> None:
+        voice_id = call.data.get("voice_id") or call.data.get("mode_id")
+        if not voice_id:
+            return
+        await _delete_mode(_RemappedCall({**call.data, "mode_id": voice_id}))
+
+    async def _set_voice(call: ServiceCall) -> None:
+        # `voice` is the canonical field; accept legacy `mode` too.
+        voice = call.data.get("voice") or call.data.get("mode")
+        if not voice:
+            _LOGGER.warning("voix.set_voice: missing voice")
+            return
+        await _set(_RemappedCall({**call.data, "mode": voice}))
+
+    async def _list_voices(_call: ServiceCall) -> ServiceResponse:
+        entry = _entry()
+        if entry is None:
+            return {"voices": []}
+        modes = dict((entry.options or {}).get(CONF_MODES) or {})
+        # Same shape as list_modes but the row id key is "voice_id"
+        # and the wrapper key is "voices". Tauri can switch keys
+        # without re-deriving fields.
+        rows = [
+            {"voice_id": mid, **(mdef or {})} for mid, mdef in modes.items()
+        ]
+        return {"voices": rows}
+
+    # voice schemas mirror the mode ones but key on voice_id and
+    # accept both old + new field names (the handlers translate).
+    _voice_field_schema = _mode_field_schema
+
+    hass.services.async_register(
+        DOMAIN, SERVICE_CYCLE_VOICE, _cycle,
+        schema=vol.Schema({vol.Optional("device_id"): str}),
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_SET_VOICE, _set_voice,
+        schema=vol.Schema({
+            vol.Required("voice"): str,
+            vol.Optional("device_id"): str,
+        }),
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_CREATE_VOICE, _create_mode,
+        schema=_mode_field_schema.extend({vol.Required("name"): str}),
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_UPDATE_VOICE, _update_voice,
+        schema=_voice_field_schema.extend({vol.Required("voice_id"): str}),
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_DELETE_VOICE, _delete_voice,
+        schema=vol.Schema({vol.Required("voice_id"): str}),
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_LIST_VOICES, _list_voices,
         schema=vol.Schema({}),
         supports_response=SupportsResponse.ONLY,
     )

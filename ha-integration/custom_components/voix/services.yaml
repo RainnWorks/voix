@@ -1,8 +1,9 @@
 cycle_mode:
-  name: Cycle voix mode
+  name: Cycle voix mode (deprecated alias)
   description: >-
-    Advance the voix mode select to the next mode in the global catalog
-    (wraps at the end). Called by the Voice PE center button.
+    Deprecated; use voix.cycle_voice. Advance the voix voice select to the
+    next entry in the catalog (wraps at the end). Called by the Voice PE
+    center button.
   fields:
     device_id:
       name: Device ID
@@ -16,12 +17,13 @@ cycle_mode:
         text:
 
 set_mode:
-  name: Set voix mode
+  name: Set voix mode (deprecated alias)
   description: >-
-    Directly set the voix mode for a device. The `mode` argument is the
-    mode id from the global catalog (e.g. "default-assist", "default-realtime",
-    or any user-created id like "work" or "home"). See Options → Modes
-    for the current list; or read `select.voix_mode_<device>.attributes.options`.
+    Deprecated; use voix.set_voice. Directly set the voix voice for a device.
+    The `mode` argument is the voice id from the global catalog (e.g.
+    "default-realtime", or any user-created id like "work" or "home"). See
+    Options → Voices for the current list; or read
+    `select.voix_mode_<device>.attributes.options`.
   fields:
     mode:
       name: Mode ID
@@ -60,8 +62,95 @@ get_transcript:
       selector:
         text:
 
+# ─── M02b: voice-vocabulary aliases ─────────────────────────────────────
+# Same surface as the mode_* services above, renamed to the canonical
+# vocabulary. The mode_* names stay registered for one release; expect
+# them to disappear once the Tauri app ships the new names.
+
+cycle_voice:
+  name: Cycle voice
+  description: >-
+    Advance the voix voice select to the next entry in the catalog
+    (wraps at the end). Same as cycle_mode; the canonical name.
+  fields:
+    device_id:
+      name: Device ID
+      description: >-
+        Target a specific Voice PE. Omit for single-device installs.
+      example: "home-assistant-voice-095e4e"
+      required: false
+      selector:
+        text:
+
+set_voice:
+  name: Set voice
+  description: >-
+    Set the active voice for a device. `voice` is the voice id from the
+    catalog (e.g. "default-realtime"). Canonical replacement for set_mode.
+  fields:
+    voice:
+      name: Voice ID
+      description: >-
+        ID of a voice from the catalog. Invalid ids log a warning + no-op.
+      required: true
+      example: "default-realtime"
+      selector:
+        text:
+    device_id:
+      name: Device ID
+      description: Target a specific Voice PE. Omit for single-device installs.
+      required: false
+      example: "home-assistant-voice-095e4e"
+      selector:
+        text:
+
+create_voice:
+  name: Create voice
+  description: Canonical replacement for create_mode.
+  fields:
+    name:
+      name: Name
+      required: true
+      selector:
+        text:
+    type:
+      name: Type
+      description: realtime or dictation.
+      required: false
+      selector:
+        text:
+
+update_voice:
+  name: Update voice
+  description: Canonical replacement for update_mode.
+  fields:
+    voice_id:
+      name: Voice ID
+      required: true
+      example: "default-realtime"
+      selector:
+        text:
+
+delete_voice:
+  name: Delete voice
+  description: Canonical replacement for delete_mode.
+  fields:
+    voice_id:
+      name: Voice ID
+      required: true
+      example: "work"
+      selector:
+        text:
+
+list_voices:
+  name: List voices
+  description: >-
+    Return the full voice catalog with every field. Same shape as
+    list_modes but rows are keyed on voice_id and the response wrapper
+    key is "voices". Canonical replacement.
+
 list_modes:
-  name: List modes
+  name: List modes (deprecated alias)
   description: >-
     Return the full mode catalog with every field (prompt, voice, model,
     color, brightness, effect). Used by the desktop app to populate the

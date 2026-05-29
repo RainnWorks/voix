@@ -18,8 +18,13 @@
 import { Elysia } from "elysia";
 import { config } from "../env.ts";
 import { log } from "../log.ts";
-import { realtimePipelineFactory } from "../pipeline/realtime.ts";
+import { createOrchestrator } from "../pipeline/orchestrator.ts";
 import { AudioIoConnection, type WSLike } from "./connection.ts";
+
+// One orchestrator per daemon process — its `pick()` only inspects
+// the (intent, voice) for each call, so a single instance handles
+// every connection.
+const pipelineFactory = createOrchestrator();
 
 // Keyed by the underlying Bun socket reference — same object across
 // all Elysia hooks for a connection. Key type is `object` because
@@ -33,7 +38,7 @@ function getConn(ws: { raw: object }): AudioIoConnection {
   const fresh = new AudioIoConnection(ws.raw as unknown as WSLike, {
     wsToken: config.wsToken,
     openaiApiKey: config.openaiApiKey,
-    pipelineFactory: realtimePipelineFactory,
+    pipelineFactory,
   });
   connections.set(ws.raw, fresh);
   return fresh;

@@ -6,12 +6,15 @@
  * from the server's route definitions — but that's a follow-up; this
  * file ships value today.
  *
- * Base URL handling: in HA Add-on ingress mode the path prefix that
- * HA's Supervisor adds gets surfaced to us via the `X-Ingress-Path`
- * header on the initial document request. The init HTML can stamp
- * window.__VOIX_BASE__ from a server-rendered template if we ever
- * need it; for now relative paths Just Work because every API call
- * shares the same base as the document.
+ * Base URL handling: in HA Add-on ingress mode the document is
+ * served from `/api/hassio_ingress/<token>/`, not the site root. The
+ * fetch paths below are RELATIVE (no leading slash) so the browser
+ * resolves them under whatever base the document was loaded from —
+ * the ingress prefix in production, `/` in local dev, `tauri://` in
+ * a future Tauri shell. (Vite's `base: "./"` covers the asset paths
+ * in index.html; this file covers the API calls. Both have to be
+ * relative, or HA's ingress prefix gets stripped on the way to the
+ * daemon and every request lands as a 404 at the bare domain.)
  */
 
 export type Voice = {
@@ -63,10 +66,10 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const voicesApi = {
-  list: () => api<Voice[]>("/api/voices"),
-  get: (id: string) => api<Voice>(`/api/voices/${encodeURIComponent(id)}`),
+  list: () => api<Voice[]>("api/voices"),
+  get: (id: string) => api<Voice>(`api/voices/${encodeURIComponent(id)}`),
   update: (id: string, patch: VoiceUpdate) =>
-    api<Voice>(`/api/voices/${encodeURIComponent(id)}`, {
+    api<Voice>(`api/voices/${encodeURIComponent(id)}`, {
       method: "PATCH",
       body: JSON.stringify(patch),
     }),
@@ -80,9 +83,9 @@ export type Device = {
 };
 
 export const devicesApi = {
-  list: () => api<Device[]>("/api/devices"),
+  list: () => api<Device[]>("api/devices"),
   setVoice: (deviceId: string, voiceId: string) =>
-    api<Device>(`/api/devices/${encodeURIComponent(deviceId)}/voice`, {
+    api<Device>(`api/devices/${encodeURIComponent(deviceId)}/voice`, {
       method: "PUT",
       body: JSON.stringify({ voiceId }),
     }),

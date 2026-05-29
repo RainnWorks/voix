@@ -131,6 +131,29 @@ audio_io home-assistant-voice-095e4e: hello v1 kind=puck intent=discuss
   audio_io/route.ts now uses the orchestrator's factory. 7
   orchestrator tests on top of the inherited 97 → **104 daemon
   tests passing**.
+- **M13b merged** (`a0b7648`). Voice editor rewrite: Realtime vs
+  Dictation surfaced as the primary axis, with conditional layout
+  per type and audit-fix pass (Marina + Wren). Briefs at
+  `docs/agents/m13b-{marina,wren}.md`.
+- **M02b merged + deployed** (`72c6b2f`). HA service-name aliases:
+  voix.cycle_voice / set_voice / create_voice / update_voice /
+  delete_voice / list_voices registered alongside the existing
+  mode_* services. Old names labeled "(deprecated alias)" in the
+  HA UI. 13 voix services visible in Developer Tools.
+- **M02c+d merged + deployed** (`bf802c2`). Entity_id migration:
+  voix_mode_* → voix_voice_* across light + select entities; new
+  voices.py module with canonical function aliases; en.json
+  translations for all new services. Verified live: 0 stale
+  voix_mode_* entities, 17 voix_voice_* entities tracking
+  correctly. Storage key entry.options["modes"] kept as-is for
+  back-compat (no benefit to a forced storage migration).
+- **M02e on disk, untracked**. Tauri rename diffs applied to
+  app/src-tauri/src/{commands,tray}.rs + app/src/settings.js
+  (voix.list_modes → voix.list_voices etc.). The entire app/
+  tree is untracked in the voix repo so no commit landed; rename
+  travels with the on-disk files until the user decides to
+  commit app/. Once committed, the M02b deprecated mode_*
+  service aliases can be removed.
 
 Three queued homelab tasks: M01 deploy (rsync HA integration), M05b
 firmware deploy. Both can land back-to-back next time the homelab is

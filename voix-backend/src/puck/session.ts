@@ -50,7 +50,7 @@ import {
 } from "../transcripts/store.ts";
 import { getVoice } from "../voices/store.ts";
 import type { Voice } from "../voices/types.ts";
-import type { DaemonToPuck, PuckHello } from "./protocol.ts";
+import { type DaemonToPuck, type Intent, type PuckHello, resolveCapture } from "./protocol.ts";
 
 /**
  * Minimal interface PuckSession needs from the underlying WebSocket.
@@ -137,6 +137,11 @@ export class PuckSession {
 
   private readonly sessionId = randomBytes(8).toString("hex");
   private voice: Voice;
+  /** Resolved once at construction from the hello (with legacy mode/
+   *  mode_id fallback). The session's pipeline shape is decided by
+   *  this, not by `voice.type` — same outcome today but the right
+   *  axis to lean on going forward. */
+  private intent: Intent;
   /** Captures mic + speaker PCM per session. Written to disk on close
    *  for offline playback / diagnosis (e.g. confirming whether XMOS's
    *  output on a given pipeline stage actually contains speech). */
@@ -162,9 +167,13 @@ export class PuckSession {
     private readonly ws: WSLike,
     private readonly deps: SessionDeps,
   ) {
-    // Resolve once at construction. The mode catalog is a stable
-    // in-memory map — no async I/O here.
-    this.voice = getVoice(this.deps.hello.mode_id);
+    // Resolve the canonical intent + voice id once. Falls back to the
+    // legacy `mode` / `mode_id` fields when an old-firmware puck is
+    // still on the wire. The voice catalog is a stable in-memory map
+    // — no async I/O here.
+    const capture = resolveCapture(this.deps.hello);
+    this.intent = capture.intent;
+    this.voice = getVoice(capture.voiceId);
     this.recorder = new SessionRecorder({
       deviceId: this.deps.hello.device_id,
       sessionId: this.sessionId,
@@ -178,7 +187,7 @@ export class PuckSession {
     // /api/devices. Best-effort — a write failure here is logged but
     // doesn't gate the session.
     void recordSeen(this.deps.hello.device_id, {
-      voiceId: this.deps.hello.mode_id,
+      voiceId: this.voice.id,
     }).catch((err) => log.debug("session: recordSeen failed:", err));
 
     // Kick off context gather + tool enumeration BEFORE awaiting the
@@ -242,10 +251,14 @@ export class PuckSession {
       });
     }
 
-    this.sendToPuck({ type: "ready", mode: voice.type });
+    // The puck firmware still keys off the `mode` field in the
+    // ready payload (legacy "realtime" / "dictation" vocabulary).
+    // Map the resolved intent back for back-compat.
+    const legacyMode = this.intent === "discuss" ? "realtime" : "dictation";
+    this.sendToPuck({ type: "ready", mode: legacyMode });
     log.info(
-      `session: started device=${this.deps.hello.device_id} mode=${voice.type} ` +
-        `mode_id=${voice.id} sess=${this.sessionId}`,
+      `session: started device=${this.deps.hello.device_id} intent=${this.intent} ` +
+        `voice_id=${voice.id} sess=${this.sessionId}`,
     );
 
     // Watchdog runs every second — cheaper than resetting a timer on

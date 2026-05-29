@@ -2,9 +2,33 @@
 
 ## Latest status (read this first)
 
-**Phase 1 + Phase 2 complete** (tagged `v0.phase-1`, `v0.phase-2`).
-Five milestones merged in this session. Next phase (Audio I/O port,
-M06-M08) is unblocked.
+**Phases 1, 2, 3 complete on source.** All eight milestones merged.
+Tags: `v0.phase-1`, `v0.phase-2`. (`v0.phase-3` not tagged yet —
+waiting for the puck OTA to land + verify before stamping it.)
+
+**Queued homelab deploy**: Puck firmware OTA — the v1 capability
+handshake (M08) is compiled, in `esphome/.esphome/build/.../
+firmware.bin`, and verified to contain the new fields. Puck has
+been `unavailable` in HA since 14:44 UTC 2026-05-29 (predates the
+M08 work) — `esphome upload` returns "Network is unreachable" both
+from the dev Mac and from the HA host. Daemon already accepts the
+new shape; on the puck's reconnect, run:
+
+```
+export PATH="$HOME/Library/Python/3.14/bin:$PATH"
+esphome upload esphome/home-assistant-voice-095e4e.yaml --device <ip>
+```
+
+Resolve `<ip>` via `ssh root@192.168.96.15 'getent hosts
+home-assistant-voice-095e4e.local'` once it's back.
+
+Smoke-test acceptance is one line in the daemon log on next
+wake-word session:
+```
+audio_io home-assistant-voice-095e4e: hello v1 kind=puck intent=discuss
+  voice_id=default-realtime mic=16000/1 speaker=24000
+  half_duplex_on_chip=true wake_words=[voix]
+```
 
 - **M01 deployed + verified** (commit `30d1768`). -2,425 LOC of
   pre-pivot HA bridge code gone. `scripts/deploy-ha-integration.sh`
@@ -33,8 +57,25 @@ M06-M08) is unblocked.
   canonical `intent` (dictate/discuss) + `voice_id` fields; legacy
   `mode` + `mode_id` accepted via `resolveCapture()` mapping
   (realtime→discuss, dictation→dictate). 7 unit tests.
-- **M05b queued** (task #120). Firmware-side hello extension —
-  needs homelab to compile + upload + verify.
+- **M06 merged** (`9192174`). Audio I/O port v1 protocol spec.
+  `protocol/audio-io/spec.md` (the doc) +
+  `voix-backend/src/audio_io/protocol.ts` (the TS types +
+  `parseHello` validator + `needsDaemonEchoGate` policy). 14 tests.
+- **M07 merged** (`0399302`). Split `puck/session.ts` (641 LOC) into
+  `audio_io/connection.ts` (WS-facing) and
+  `pipeline/{realtime,watchdog,types}.ts` (provider-facing). They
+  meet through the `Pipeline` + `PipelineCallbacks` interface — no
+  cross-module reach-through. WS URL `/ws` unchanged so firmware
+  isn't disturbed. 13 connection tests + 30 carried over → 43 total.
+- **M08 merged** (`fa58375`). Firmware sends the v1 capability
+  handshake. New hello shape from the puck:
+  `protocol_version=1`, `intent`, `voice_id`, `capabilities.{mic,
+  speaker, half_duplex_on_chip, wake_words}`, `client_info.kind=
+  "puck"`. YAML gains a `voix_mode_id` global; HA's `voix_set_state`
+  push extended with `mode_id`. Daemon's `audio_io/connection.ts`
+  logs the capabilities on every hello at WARN. Compiles clean
+  (ESP32-S3, RAM 23.2%, Flash 82.7%). **Puck OTA queued** — see
+  "Queued homelab deploy" at the top.
 
 Three queued homelab tasks: M01 deploy (rsync HA integration), M05b
 firmware deploy. Both can land back-to-back next time the homelab is

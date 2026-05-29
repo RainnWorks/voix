@@ -45,6 +45,13 @@ export const colors = {
   // chrome.
   haBlue: "#03A9F4",
   haBlueBg: "rgba(3,169,244,0.08)",
+
+  // Semantic danger surface for error toasts + invalid form rows.
+  // Hand-rolled hex previously lived inline in VoiceEditor — tokenised
+  // in M04 after Marina (audit agent) flagged the duplication.
+  danger: "#a02d20",
+  dangerBg: "#fff3f0",
+  dangerBorder: "#f5c6c0",
 } as const;
 
 /**

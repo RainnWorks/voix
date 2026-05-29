@@ -15,6 +15,9 @@ import { readFileSync } from "node:fs";
 type RawAddonOptions = {
   openai_api_key?: string;
   openrouter_api_key?: string;
+  /** M10: optional Deepgram streaming STT key. Used by voices whose
+   *  sttProvider is "deepgram". */
+  deepgram_api_key?: string;
   ws_token?: string;
   port?: number;
   log_level?: string;
@@ -61,6 +64,12 @@ export const config = {
   // fine; the post-proc layer falls back to raw text if a mode wants
   // OpenRouter but no key was configured.
   openrouterApiKey: addon?.openrouter_api_key || env["OPENROUTER_API_KEY"] || undefined,
+  /** Optional — only voices that pick Deepgram as their STT provider
+   *  need a key. Missing key → the deepgram STT factory throws at
+   *  session open with a clear message; selecting it in the voice
+   *  editor without configuring the key surfaces a settings error,
+   *  not a silent fallback. */
+  deepgramApiKey: addon?.deepgram_api_key || env["DEEPGRAM_API_KEY"] || undefined,
   wsToken: required(addon?.ws_token || env["VOIX_WS_TOKEN"], "VOIX_WS_TOKEN"),
   port: Number(addon?.port ?? env["VOIX_PORT"] ?? 8765),
   // HA MCP connection.

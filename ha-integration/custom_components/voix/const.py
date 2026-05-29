@@ -26,10 +26,9 @@ CONF_OPENROUTER_API_KEY = "openrouter_api_key"
 #   • `ws://192.168.1.42:8765/ws` — daemon running on a separate Docker
 #     host or development machine.
 #
-# When empty/unset we fall back to the legacy `/api/voix/realtime` path
-# served by `ws_view.py` inside this integration. Once the daemon is
-# validated end-to-end, the legacy code can be deleted and this option
-# becomes mandatory.
+# Required: the integration no longer ships an in-HA audio bridge. When
+# unset, voix adoption skips the puck push and logs a warning telling
+# the user where to set it.
 CONF_DAEMON_URL = "daemon_url"
 CONF_REALTIME_MODEL = "realtime_model"
 CONF_REALTIME_VOICE = "realtime_voice"

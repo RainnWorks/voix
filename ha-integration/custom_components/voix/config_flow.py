@@ -38,7 +38,6 @@ from .const import (
     DOMAIN,
     MODE_TYPES,
 )
-from .stt import DEFAULT_STT_PROVIDER, STT_PROVIDERS
 from .modes import (
     ensure_builtin_modes,
     get_modes,
@@ -220,12 +219,6 @@ class VoixOptionsFlow(OptionsFlow):
                 "prompt": user_input.get("prompt") or "",
                 "voice": user_input.get("voice") or "",
                 "model": user_input.get("model") or "",
-                "stt_provider": user_input.get("stt_provider") or DEFAULT_STT_PROVIDER,
-                "stt_model": (user_input.get("stt_model") or "").strip()
-                or STT_PROVIDERS.get(
-                    user_input.get("stt_provider") or DEFAULT_STT_PROVIDER,
-                    ("", ""),
-                )[1],
                 # Per-mode prompt context (formerly the global "Prompt
                 # context" options-flow step). Each mode carries its own
                 # entity/person inclusions + addendum so "Work" and "Home"
@@ -278,12 +271,6 @@ class VoixOptionsFlow(OptionsFlow):
 def _mode_form_schema(existing: dict, draft: dict | None) -> vol.Schema:
     """Schema for the add/edit mode form. Pre-fills from existing or draft."""
     src = draft or existing or {}
-    # STT provider picker: only relevant for dictation modes, but we show
-    # it on every form so users can flip the type without losing the
-    # picker. The bridge ignores stt_* fields for non-dictation modes.
-    stt_provider_choices = {
-        pid: label for pid, (label, _model) in STT_PROVIDERS.items()
-    }
     return vol.Schema(
         {
             vol.Required("name", default=src.get("name", "")): str,
@@ -293,17 +280,6 @@ def _mode_form_schema(existing: dict, draft: dict | None) -> vol.Schema:
             ): str,
             vol.Optional("voice", default=src.get("voice", DEFAULT_REALTIME_VOICE)): str,
             vol.Optional("model", default=src.get("model", DEFAULT_REALTIME_MODEL)): str,
-            vol.Optional(
-                "stt_provider",
-                default=src.get("stt_provider", DEFAULT_STT_PROVIDER),
-            ): vol.In(stt_provider_choices),
-            vol.Optional(
-                "stt_model",
-                default=src.get(
-                    "stt_model",
-                    STT_PROVIDERS.get(DEFAULT_STT_PROVIDER, ("", ""))[1],
-                ),
-            ): str,
             vol.Optional(
                 "include_entities",
                 default=list(src.get("include_entities") or []),

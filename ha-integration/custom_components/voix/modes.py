@@ -60,28 +60,12 @@ def get_default_mode_id(entry: ConfigEntry) -> str:
 
 
 def ensure_builtin_modes(opts: dict[str, Any]) -> dict[str, Any]:
-    """Return options with the built-in modes merged in (no clobber).
-
-    Also migrates older mode definitions: backfills `stt_provider` and
-    `stt_model` for dictation-capable modes so existing setups pick up
-    the default streaming-capable backend (openai-realtime) without
-    breaking. No-op when fields are already present.
-    """
-    # Lazy import to dodge cycle: stt module pulls in HA helpers via the
-    # backends, which can re-enter modes during integration setup.
-    from .stt import DEFAULT_STT_PROVIDER, STT_PROVIDERS
-
+    """Return options with the built-in modes merged in (no clobber)."""
     out = dict(opts)
     existing = dict(out.get(CONF_MODES) or {})
     for mid, mdef in DEFAULT_MODES.items():
         if mid not in existing:
             existing[mid] = dict(mdef)
-    # Backfill STT defaults on every mode (cheap; only writes missing keys).
-    for mid, mdef in list(existing.items()):
-        if "stt_provider" not in mdef:
-            mdef["stt_provider"] = DEFAULT_STT_PROVIDER
-        if "stt_model" not in mdef:
-            mdef["stt_model"] = STT_PROVIDERS.get(mdef["stt_provider"], ("", ""))[1]
     # One-shot migration: prompt-context fields used to live under a
     # global `prompt_extras` options key. Per-mode is the new model.
     # Copy global values into every mode that doesn't have them set yet,

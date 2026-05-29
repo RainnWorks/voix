@@ -1,15 +1,23 @@
-"""voix integration entry point.
+"""voix HA integration — connector only.
 
-Mode dispatch is owned by the WS bridge in `ws_view.py`: the firmware's
-`voix_realtime_client` opens a WebSocket to `/api/voix/realtime`, sends
-its mode in the hello message, and we proxy to OpenAI Realtime
-(realtime mode) or an OpenAI transcription session (dictation mode).
-Mode A (assist) is a no-op here — upstream HA Assist owns the pipeline
-when "Okay Nabu" fires.
+The integration is the bridge between Home Assistant and the voix
+backend daemon. It does NOT carry audio: the daemon owns that path
+end-to-end via its own WebSocket endpoint. Pucks talk directly to
+the daemon; HA's only audio-path job is telling them where to find
+it (the adoption push under `_register_voix_adoption`).
 
-This module sets up the platform entities (per-device selects, lights,
-button, binary_sensor, etc.), registers the WS view, and wires services
-(cycle_mode / set_mode) and dispatcher signals.
+What this integration does:
+  • Discover voix-capable ESPHome devices (those exposing
+    `voix_set_server` / `voix_set_state` api.actions)
+  • Push the daemon's URL + a shared auth token to each device
+  • Expose per-device entities (mode select, LED ring, sensors,
+    buttons, wake-word selects)
+  • Register `voix.set_mode` / `voix.cycle_mode` / `voix.update_mode`
+    / `voix.create_mode` / `voix.delete_mode` services so HA
+    automations and the daemon's ha_sync layer can mutate state
+  • Mirror the daemon's mode catalog into entry.options so the
+    light entities can render colour and the select entities can
+    enumerate choices without a round-trip
 """
 from __future__ import annotations
 
@@ -47,7 +55,6 @@ from .const import (
 )
 from .modes import slugify_mode_id
 from .modes import ensure_builtin_modes, get_mode
-from .ws_view import VoixRealtimeView
 
 # Signal dispatched when a new device is discovered via WS hello.
 # Per-device entity platforms subscribe and call async_add_entities.
@@ -117,11 +124,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # Register the WebSocket endpoint the firmware's voix_realtime_client
-    # connects to. Always registered; refuses connections with a 503 if no
-    # OpenAI key is configured.
-    hass.http.register_view(VoixRealtimeView(hass, dict(entry.data), entry.entry_id))
-
     # Register voix.cycle_mode + voix.set_mode services (called by the device's
     # center button and the LED idle-color pusher).
     await _register_services(hass)
@@ -152,17 +154,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # voix piggybacks on it via the device's API actions.
     _register_voix_adoption(hass, entry)
 
-    from .const import CONF_OPENAI_API_KEY as _CONF_KEY
-    has_key = bool(
-        entry.options.get(_CONF_KEY) or entry.data.get(_CONF_KEY)
-    )
-    if has_key:
-        _LOGGER.info("voix: ready. WS endpoint at /api/voix/realtime")
-    else:
-        _LOGGER.info(
-            "voix: ready (assist-only). Add an OpenAI API key in Options "
-            "to enable Realtime and Dictation modes."
-        )
+    _LOGGER.info("voix: ready (connector mode — daemon owns the audio path)")
     return True
 
 
@@ -531,12 +523,16 @@ def _led_entity_for(device_id: str) -> str:
 
 
 def _register_device_discovery(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Register a callback the WS view uses to record new devices.
+    """Register the discovery callback used by the adoption push.
 
-    On first sight of a device_id, we persist it in entry.options and fire
+    Called from `_on_service_registered` (when ESPHome exposes a
+    voix-capable device's `voix_set_server` action) and from the
+    initial push that scans existing services on integration setup.
+    Persists the device in entry.options and fires
     SIGNAL_DEVICE_DISCOVERED so the per-device entity platforms (select,
-    text) can call async_add_entities. Devices survive HA restarts because
-    the platforms read the persisted list on async_setup_entry.
+    text) can call async_add_entities. Devices survive HA restarts
+    because the platforms read the persisted list on
+    async_setup_entry.
     """
     from homeassistant.helpers.dispatcher import async_dispatcher_send
 
@@ -716,14 +712,12 @@ def _register_voix_adoption(hass: HomeAssistant, entry: ConfigEntry) -> None:
     Triggers:
       1. On setup, push to every already-known voix-capable device
          (in case HA restarts after devices were adopted).
-      2. On device discovery (SIGNAL_DEVICE_DISCOVERED — fired when a
-         device sends its first WS hello to /api/voix/realtime, but
-         also on first ESPHome adoption via the upstream device hello).
+      2. On device discovery (SIGNAL_DEVICE_DISCOVERED — fired on
+         first ESPHome adoption via the upstream device hello).
       3. On EVENT_MODE_CHANGED — push the new mode_type.
       4. On wake-word change — push the new wake word.
     """
     from homeassistant.helpers.dispatcher import async_dispatcher_connect
-    from homeassistant.helpers.network import get_url
 
     def _esphome_svc(device_id: str, action: str) -> str:
         # HA's ESPHome integration registers actions as
@@ -744,64 +738,43 @@ def _register_voix_adoption(hass: HomeAssistant, entry: ConfigEntry) -> None:
             )
             return
 
-        # Daemon URL wins when set. This is the new path — pucks talk
-        # directly to the voix-backend daemon (running as an HA Add-on
-        # or external service), bypassing the legacy in-HA WS bridge.
+        # Pucks talk directly to the voix-backend daemon (running as an
+        # HA Add-on or external service). The integration's only job in
+        # the audio path is telling the puck where to find the daemon —
+        # we do NOT host an in-HA bridge anymore.
         from .const import CONF_DAEMON_URL
         from urllib.parse import urlparse
         daemon_url = (entry.options.get(CONF_DAEMON_URL)
                       or entry.data.get(CONF_DAEMON_URL)
                       or "").strip()
-        ws_url: str | None = None
-        if daemon_url:
-            # User supplied a daemon URL. Accept ws://, wss://, http://,
-            # https:// — normalise to ws/wss scheme. Append the daemon's
-            # /ws path if the user gave a bare host.
-            parsed = urlparse(daemon_url)
-            scheme = parsed.scheme.lower()
-            if scheme in ("http", "ws"):
-                scheme = "ws"
-            elif scheme in ("https", "wss"):
-                scheme = "wss"
-            else:
-                _LOGGER.warning(
-                    "voix adoption: %s unsupported daemon URL scheme %r — skipping push",
-                    device_id, parsed.scheme,
-                )
-                return
-            netloc = parsed.netloc or parsed.path  # bare host falls through to path
-            path = parsed.path if parsed.netloc else ""
-            if not path or path == "/":
-                path = "/ws"
-            ws_url = f"{scheme}://{netloc}{path}"
-            _LOGGER.info("voix adoption: %s → daemon at %s", device_id, ws_url)
+        if not daemon_url:
+            _LOGGER.warning(
+                "voix adoption: %s — no daemon URL configured. "
+                "Set it in voix Options → Defaults so the puck knows "
+                "where to connect.",
+                device_id,
+            )
+            return
+        # Accept ws://, wss://, http://, https:// — normalise to ws/wss
+        # scheme. Append /ws if the user gave a bare host.
+        parsed = urlparse(daemon_url)
+        scheme = parsed.scheme.lower()
+        if scheme in ("http", "ws"):
+            scheme = "ws"
+        elif scheme in ("https", "wss"):
+            scheme = "wss"
         else:
-            # Legacy in-HA bridge fallback. Same path the integration
-            # has been using since the start. Deletable once everyone's
-            # moved to the daemon, but for now we keep it so existing
-            # installs don't break the moment someone updates the
-            # integration without installing the daemon.
-            ha_url = None
-            try:
-                ha_url = get_url(
-                    hass, allow_internal=True, prefer_internal=True,
-                    require_ssl=False, require_standard_port=False,
-                )
-            except Exception:  # noqa: BLE001
-                pass
-            if not ha_url:
-                try:
-                    ha_url = get_url(hass, require_ssl=False, require_standard_port=False)
-                except Exception:  # noqa: BLE001
-                    pass
-            if not ha_url:
-                ha_url = "http://homeassistant.local:8123"
-                _LOGGER.info(
-                    "voix adoption: no HA URL configured; defaulting to %s for %s",
-                    ha_url, device_id,
-                )
-            ws_url = ha_url.replace("https://", "wss://").replace("http://", "ws://")
-            ws_url = ws_url.rstrip("/") + "/api/voix/realtime"
+            _LOGGER.warning(
+                "voix adoption: %s unsupported daemon URL scheme %r — skipping push",
+                device_id, parsed.scheme,
+            )
+            return
+        netloc = parsed.netloc or parsed.path  # bare host falls through to path
+        path = parsed.path if parsed.netloc else ""
+        if not path or path == "/":
+            path = "/ws"
+        ws_url = f"{scheme}://{netloc}{path}"
+        _LOGGER.info("voix adoption: %s → daemon at %s", device_id, ws_url)
         token = entry.data.get(CONF_WS_TOKEN) or ""
         if not token:
             _LOGGER.warning(
@@ -921,6 +894,13 @@ def _register_voix_adoption(hass: HomeAssistant, entry: ConfigEntry) -> None:
         if not svc.endswith("_voix_set_server"):
             return
         device_id = svc[: -len("_voix_set_server")]
+        # Discovery now happens here. The WS hello used to be the
+        # earliest signal a puck was up; with the audio path moved to
+        # the daemon, ESPHome registering voix_set_server is the new
+        # earliest signal.
+        register_device = hass.data.get(DOMAIN, {}).get("register_device")
+        if register_device:
+            register_device(device_id, device_id)
         hass.async_create_task(_push_server(device_id))
         hass.async_create_task(_push_state(device_id))
 
@@ -996,11 +976,15 @@ def _register_voix_adoption(hass: HomeAssistant, entry: ConfigEntry) -> None:
         #     directly as device_id since hyphen↔underscore conversion
         #     isn't reversible (some user-named devices may genuinely
         #     have underscores in their ESPHome name).
+        register_device = hass.data.get(DOMAIN, {}).get("register_device")
         known_slugs = {device_slug(d) for d in known}
         for svc_name in list(esphome_services.keys()):
             if not svc_name.endswith("_voix_set_server"):
                 continue
             slug = svc_name[: -len("_voix_set_server")]
+            # Discover the device so per-device entities get created.
+            if register_device:
+                register_device(slug, slug)
             if slug in known_slugs:
                 continue  # handled in pass 1
             _LOGGER.info(

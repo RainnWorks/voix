@@ -154,6 +154,25 @@ audio_io home-assistant-voice-095e4e: hello v1 kind=puck intent=discuss
   travels with the on-disk files until the user decides to
   commit app/. Once committed, the M02b deprecated mode_*
   service aliases can be removed.
+- **M14 merged** (`9126238`). TraditionalDiscussPipeline + Voice
+  schema fields `discussEngine` / `ttsProvider` / `ttsVoice` +
+  multi-turn LlmRequest.messages + orchestrator routing on
+  discussEngine. 10 discuss tests on synthetic-amplitude VAD
+  transitions → 114 daemon tests passing.
+- **M15 merged** (`ed21f30`). Voice editor exposes the dial as
+  "Live" vs "Turn-based" (audit-driven naming — Wren caught that
+  "Realtime/Traditional" collided with the voice type word).
+  Engine row is the first thing inside Advanced for Realtime
+  voices; engine-specific plumbing rows swap underneath. Audit
+  briefs at `docs/agents/m15-{marina,wren}.md`. Daemon-side
+  RealtimeProvider types-only interface (full refactor of
+  RealtimePipeline behind it is M16+ work; not needed today since
+  the discussEngine routing already lives in the orchestrator).
+
+**Phase 4 complete on source** (M09-M15 + M13b). Waiting on
+deploy-side acceptance (#124 puck OTA + #130 dictate round-trip,
+plus a new discuss-engine sweep on both modes once the puck is
+back) before tagging `v0.phase-4`.
 
 Three queued homelab tasks: M01 deploy (rsync HA integration), M05b
 firmware deploy. Both can land back-to-back next time the homelab is

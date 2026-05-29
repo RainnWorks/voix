@@ -12,30 +12,97 @@ drifted from the plan.
 
 ## Operating rules
 
-1. **One milestone = one PR.** Branch off `main`, ship merged.
-   Milestones are sized so each is reviewable in one sitting (target:
-   < 800 LOC diff, hard cap: 1,500). If a milestone won't fit, split
-   it into M-Na / M-Nb.
-2. **Strict sequence within a phase.** Phases run sequentially. Within
-   a phase, milestones can sometimes parallelise, noted explicitly per
-   phase below.
-3. **Each milestone has a written acceptance check.** "What command /
-   what UI / what test proves this milestone landed?" If you can't
-   write it before you start, the milestone is under-specified.
-4. **Don't merge across two phases.** If you're in Phase 4 work and
-   realise Phase 3 is wrong, stop, fix Phase 3, then resume. No
-   half-fixed layers.
-5. **Auto-mode for tracking.** The task tracker holds the live
+1. **One milestone = one PR.** Branch off `main`, ship merged. Target
+   < 800 LOC diff, hard cap 1,500 (excluding pure deletes — those have
+   no cap). If a milestone won't fit, split into M-Na / M-Nb.
+2. **Merge to main per milestone without asking.** Solo work, no PR
+   review machinery. The branch is for "I want to see the diff before
+   it lands"; the merge is the default close. Same for pushing main.
+3. **Deploy after each merge.** The HA Add-on `dev_mode` auto-pull
+   makes daemon-side merges live in ~30s. HA-integration merges need
+   an explicit `rsync` + `ha core restart` (the daemon path doesn't
+   pull from `main` for `ha-integration/`). If the homelab isn't
+   reachable from the dev machine, queue the deploy and proceed —
+   blocking on it stalls the workflow for nothing.
+4. **Strict sequence within a phase.** Phases run sequentially. Within
+   a phase, some milestones parallelise (called out explicitly).
+5. **Each milestone has a written acceptance check** before it starts.
+   "What command / what UI / what test proves this milestone landed?"
+   If you can't write it, the milestone is under-specified.
+6. **Don't merge across two phases.** If Phase 4 work reveals Phase 3
+   is wrong, stop, fix Phase 3, then resume. No half-fixed layers.
+7. **Tracker + doc don't duplicate.** Task tracker holds the live
    milestones (this phase + next). This doc holds the full roadmap.
-   Tasks get closed; the doc gets edited. They don't duplicate.
-6. **Dead code dies the same PR.** When a milestone replaces an old
+   Tasks get closed; the doc gets edited.
+8. **Dead code dies in the same PR.** When a milestone replaces an old
    path, delete the old path in that PR. No "we'll clean it up later."
-7. **Deploy after each milestone.** The HA Add-on `dev_mode` auto-pull
-   means a merged PR is live on the homelab daemon within ~30s. Use
-   it. Smoke-test the puck after every merge that touches the puck
-   path.
-8. **STATE.md is the session handoff.** When a milestone lands, update
-   `docs/STATE.md` so the next Claude session can pick up cold.
+9. **STATE.md is the session handoff.** Update it at every milestone
+   merge so the next Claude session can pick up cold.
+
+## Test coverage rule
+
+Every milestone ships with **one** of:
+
+- **Daemon-side change** → at least one unit/integration test under
+  `voix-backend/tests/` (or whatever testbed exists) covering the new
+  behaviour. Pure-delete milestones are exempt — there's nothing left
+  to test.
+- **Firmware change** → a manual test recipe in the PR body: how to
+  trigger it, what to look for in `/tmp/voix-device.log`.
+- **HA integration change** → a unit test under
+  `ha-integration/tests/unit/` for any logic added, plus a
+  manual-acceptance recipe for the entity behaviour.
+- **UI change** → see the UI/UX audit rule below — agents replace
+  most of what would otherwise be Storybook / VRT for now.
+
+"Decent test coverage" means: if the milestone introduces logic with
+non-trivial branches, there's a test exercising each branch. We're
+not chasing % coverage; we're chasing "the next refactor doesn't
+silently break this."
+
+## UI/UX audit rule (any milestone touching the UI)
+
+Before merging a milestone that touches UI/UX, spin up **at least
+two audit agents** via the `Agent` tool. Each agent gets:
+
+- A **small, targeted brief** — not the full project context. A
+  paragraph or two describing the screen / interaction being
+  audited, the brand rules they need to honour (system fonts only,
+  HA blue for voix moments only, puck glyph proportions locked,
+  12-colour palette), and what acceptance looks like.
+- A **personality**. Give each agent a character: a name, a point
+  of view, an axe to grind. The lens shapes what they notice. A
+  generic "audit this" gets generic feedback; a "Marina the OS-X
+  HIG zealot who hates rounded corners that aren't system-rounded"
+  finds the specific thing.
+- **No license to redesign** — just to critique. Their job is to
+  surface issues, not propose alternatives unless the brief asks.
+
+Recommended starting cast (mix and match per audit):
+
+- **Marina** — macOS HIG zealot. Hates anything that breaks SF Pro
+  rhythm, system focus rings, native menu-bar conventions. Cares
+  about font weight choices, line-height inheritance, the exact
+  16-pixel spacing grid.
+- **Sven** — Scandinavian typographer. Cares about hierarchy,
+  tracking, the difference between 11px and 12px text. Will flag
+  any whitespace that doesn't earn its place.
+- **Priya** — accessibility-first engineer. Catches focus order,
+  contrast under 4.5:1, screen-reader labels, keyboard traps, missing
+  ARIA. Has zero patience for "I'll add it later."
+- **Wren** — voice-first product designer. Knows the user's primary
+  modality is voice, so screen affordances are secondary cues, not
+  primary controls. Will flag any "press this to talk" that buries
+  the actual capture flow.
+- **Caleb** — power-user developer. Wants keyboard shortcuts,
+  bulk operations, copy-able state, mono labels on technical things.
+  Will flag any settings page that's just toggles when it should be
+  a config file.
+
+Each audit returns a punch list. Resolve the substantive ones in the
+milestone; defer or close-as-wontfix the rest with a one-line note.
+Save the briefs as `docs/agents/<milestone>-<persona>.md` so future
+milestones can reference them.
 
 ---
 

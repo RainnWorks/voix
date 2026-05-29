@@ -2,9 +2,33 @@
 
 ## Latest status (read this first)
 
-**Phases 1, 2, 3 complete on source.** All eight milestones merged.
-Tags: `v0.phase-1`, `v0.phase-2`. (`v0.phase-3` not tagged yet —
-waiting for the puck OTA to land + verify before stamping it.)
+**Phases 1, 2, 3 + 5/7 of Phase 4 complete on source.** Thirteen
+milestones merged. Tags: `v0.phase-1`, `v0.phase-2`. (`v0.phase-3`
+and `v0.phase-4` not tagged yet — waiting for the puck OTA + a
+real dictate round-trip to verify before stamping them.)
+
+**The Phase 4 wiring is hot but unverified end-to-end.** Daemon
+side has:
+  - Energy VAD + tuning bench (`scripts/vad-bench.ts`)
+  - STT provider interface + Deepgram impl
+  - LLM provider interface + OpenAI/OpenRouter impls (replacing the
+    old `post_process/` module)
+  - TTS provider interface + Aura impl
+  - Pipeline orchestrator + TraditionalDictatePipeline
+  - 104 unit tests pass; biome + typecheck clean.
+
+To actually exercise the traditional dictate path on the puck:
+  1. Land the queued puck OTA (#124) so the v1 hello arrives.
+  2. Add `DEEPGRAM_API_KEY` to .env / HA Add-on options.
+  3. Edit any built-in dictation voice (e.g. Email) and set its
+     `sttProvider` to `deepgram` via the voices API.
+  4. Dictate. Should log "orchestrator: ... → TraditionalDictate"
+     and produce a polished history entry without OpenAI Realtime.
+
+Phase 4 remaining work: **M14** (discuss-via-traditional turn loop:
+STT → LLM(talkingPrompt) → TTS, plus VAD-driven end-of-user-turn
+detection), then **M15** (realtime provider behind the orchestrator
+interface + voice.discussEngine dial in the editor).
 
 **Queued homelab deploy**: Puck firmware OTA — the v1 capability
 handshake (M08) is compiled, in `esphome/.esphome/build/.../
@@ -76,6 +100,37 @@ audio_io home-assistant-voice-095e4e: hello v1 kind=puck intent=discuss
   logs the capabilities on every hello at WARN. Compiles clean
   (ESP32-S3, RAM 23.2%, Flash 82.7%). **Puck OTA queued** — see
   "Queued homelab deploy" at the top.
+- **UI ingress fix** (`b0715d1`). Daemon's UI bundle was 404ing
+  for the HA-add-on user — `api.ts` used absolute `/api/voices`
+  paths that bypassed the `/api/hassio_ingress/<token>/` prefix.
+  Switched all API URLs to relative (no leading slash), same
+  trick as the M04-era vite `base: "./"`.
+- **M09 merged** (`78bf122`). Energy VAD (`src/vad/`) with
+  hysteresis + hangover + start-frames guard, plus a tuning bench
+  CLI (`scripts/vad-bench.ts`) that replays a WAV through the VAD
+  and logs every transition with timing + RMS. 10 unit tests.
+  Defaults: startThreshold=800, endThreshold=400, smoothMs=50,
+  minSilenceMs=400, startFrames=2 — needs 20-utterance human
+  tuning sweep per the acceptance check.
+- **M10 merged** (`f7ba67d`). STT provider interface
+  (`pipeline/providers/stt/types.ts`) + Deepgram streaming impl
+  (`deepgram.ts`). 14 tests against a stub WS — no real network.
+  Needs `DEEPGRAM_API_KEY` in env / add-on options to actually
+  run.
+- **M11 merged** (`eb031bf`). LLM provider interface +
+  OpenAI/OpenRouter impls. Promotes `post_process/` into
+  `pipeline/providers/llm/`. `ChatCompletionsProvider` shared by
+  both impls; 5-line factory each. `postProcess` facade still
+  guarantees "any failure → return raw text" so a dictation is
+  never lost when the polisher flakes. 17 tests.
+- **M12 merged** (`c8d5ce8`). TTS provider interface + Deepgram
+  Aura streaming impl. Same shape as M10. 14 tests.
+- **M13 merged** (`c376d04`). Pipeline orchestrator
+  (`pipeline/orchestrator.ts`) + traditional dictate pipeline
+  (`pipeline/dictate_traditional.ts`). Wires everything together;
+  audio_io/route.ts now uses the orchestrator's factory. 7
+  orchestrator tests on top of the inherited 97 → **104 daemon
+  tests passing**.
 
 Three queued homelab tasks: M01 deploy (rsync HA integration), M05b
 firmware deploy. Both can land back-to-back next time the homelab is

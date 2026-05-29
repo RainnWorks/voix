@@ -262,7 +262,7 @@ export class PuckSession {
     const ctx = renderContextBlock(entries);
     if (ctx) parts.push(ctx);
     if (voice.addendum.trim()) parts.push(voice.addendum.trim());
-    if (voice.prompt.trim()) parts.push(voice.prompt.trim());
+    if (voice.talkingPrompt.trim()) parts.push(voice.talkingPrompt.trim());
     return parts.join("\n\n");
   }
 
@@ -285,7 +285,7 @@ export class PuckSession {
     return {
       model: voice.model || "gpt-realtime-2",
       outputModalities: ["audio"],
-      instructions: voice.prompt,
+      instructions: voice.talkingPrompt,
       transcribeModel: voice.sttModel || "gpt-4o-mini-transcribe",
       voice: voice.voice || "alloy",
       vadEagerness: "medium",
@@ -473,10 +473,10 @@ export class PuckSession {
     let finalText = trimmed;
     let processedText: string | null = null;
 
-    if (this.voice.type === "dictation" && this.voice.postProcessPrompt.trim()) {
+    if (this.voice.type === "dictation" && this.voice.donePrompt.trim()) {
       processedText = await postProcess({
         rawText: trimmed,
-        systemPrompt: this.voice.postProcessPrompt,
+        systemPrompt: this.voice.donePrompt,
         provider: this.voice.postProcessProvider,
         model: this.voice.postProcessModel,
         contextBlock: this.renderContextBlock(),

@@ -44,7 +44,35 @@ export type Voice = {
   name: string;
   type: VoiceType;
 
-  /** Realtime: system prompt sent in session.update. Dictation: ignored. */
+  /**
+   * **The talking phase prompt** (M03+ canonical). What the model is
+   * told *during* the conversation — its persona, its rules, its
+   * register. Empty when this voice has no talking phase (pure
+   * dictation: capture, transform, deliver).
+   *
+   * The legacy `prompt` field is kept in sync with this on read +
+   * write so old clients can still set/read it; the daemon's
+   * realtime path reads this field directly.
+   */
+  talkingPrompt: string;
+
+  /**
+   * **The done phase prompt** (M03+ canonical). What the model is
+   * told *when the user signals they're ready to produce the
+   * artifact* — the design-brief §3 killer-flow handoff. For pure
+   * dictation voices this is the post-process prompt (rewrite the
+   * raw transcript into the right register). For pure realtime
+   * voices this is empty.
+   *
+   * The legacy `postProcessPrompt` field is kept in sync with this.
+   */
+  donePrompt: string;
+
+  /**
+   * @deprecated Use `talkingPrompt`. Kept in sync on read + write so
+   * existing UI editors that target this field still work; will be
+   * dropped once the M04 voice-editor rewrite lands.
+   */
   prompt: string;
 
   /** Realtime TTS voice (alloy, ash, ballad, …). Empty = inherit default. */
@@ -72,8 +100,11 @@ export type Voice = {
   /** Free-form addendum appended to the system prompt. */
   addendum: string;
 
-  /** Dictation: when non-empty, raw transcript runs through an LLM
-   *  with this as the system prompt. Empty = no post-processing. */
+  /**
+   * @deprecated Use `donePrompt`. Kept in sync on read + write so
+   * existing UI editors that target this field still work; will be
+   * dropped once the M04 voice-editor rewrite lands.
+   */
   postProcessPrompt: string;
   postProcessProvider: "openai" | "openrouter";
   postProcessModel: string;

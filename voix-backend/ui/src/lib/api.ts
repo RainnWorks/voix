@@ -18,6 +18,14 @@ export type Voice = {
   id: string;
   name: string;
   type: "realtime" | "dictation";
+  /** Canonical from M03: what the model is told during the
+   *  conversation. Mirrored from / to `prompt` on the daemon side. */
+  talkingPrompt: string;
+  /** Canonical from M03: what the model is told when producing the
+   *  artifact. Mirrored from / to `postProcessPrompt`. */
+  donePrompt: string;
+  /** @deprecated kept in sync with `talkingPrompt` until the M04
+   *  editor rewrite drops it client-side. */
   prompt: string;
   voice: string;
   model: string;
@@ -29,6 +37,7 @@ export type Voice = {
   includeEntities: string[];
   includePersons: string[];
   addendum: string;
+  /** @deprecated kept in sync with `donePrompt`. */
   postProcessPrompt: string;
   postProcessProvider: "openai" | "openrouter";
   postProcessModel: string;

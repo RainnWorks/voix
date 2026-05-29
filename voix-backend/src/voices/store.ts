@@ -53,6 +53,45 @@ export async function migrateModesToVoices(): Promise<"none" | "migrated" | "ski
   return "migrated";
 }
 
+/**
+ * M03 phase-prompt normalisation.
+ *
+ * Voices on disk may have only the legacy `prompt` / `postProcessPrompt`
+ * fields (everything written before M03), or only the new
+ * `talkingPrompt` / `donePrompt` fields (forward-compat), or both
+ * (steady state). Normalise so both pairs are populated in memory,
+ * with the new fields taking precedence when both are present.
+ *
+ * Exported for the unit test under `tests/voices/`.
+ */
+export function normalisePhasePrompts(v: Partial<Voice> & { id: string }): Voice {
+  // Cast through unknown so we can read fields that may or may not be
+  // present on the on-disk record without TS complaining.
+  const raw = v as Record<string, unknown>;
+  const talkingPrompt =
+    typeof raw["talkingPrompt"] === "string" && raw["talkingPrompt"] !== ""
+      ? (raw["talkingPrompt"] as string)
+      : typeof raw["prompt"] === "string"
+        ? (raw["prompt"] as string)
+        : "";
+  const donePrompt =
+    typeof raw["donePrompt"] === "string" && raw["donePrompt"] !== ""
+      ? (raw["donePrompt"] as string)
+      : typeof raw["postProcessPrompt"] === "string"
+        ? (raw["postProcessPrompt"] as string)
+        : "";
+  return {
+    ...(v as Voice),
+    talkingPrompt,
+    donePrompt,
+    // Mirror the new fields back into the legacy ones so any code that
+    // still reads `prompt` / `postProcessPrompt` (the UI editor, until
+    // M04) sees the same value.
+    prompt: talkingPrompt,
+    postProcessPrompt: donePrompt,
+  };
+}
+
 async function readFromDisk(): Promise<Voice[]> {
   try {
     const raw = await readFile(paths.voicesFile, "utf8");
@@ -61,7 +100,7 @@ async function readFromDisk(): Promise<Voice[]> {
       log.warn(`voices: ${paths.voicesFile} is not a JSON array — ignoring`);
       return [];
     }
-    return parsed as Voice[];
+    return (parsed as Array<Partial<Voice> & { id: string }>).map(normalisePhasePrompts);
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
     log.warn("voices: failed to read voices.json:", err);
@@ -98,13 +137,19 @@ export async function loadVoices(): Promise<void> {
     if (!existing.isBuiltin) continue; // user-renamed a builtin → leave it
     const userTouched = !KNOWN_BUILTIN_PROMPTS.has(existing.prompt);
     if (userTouched) continue;
-    if (existing.prompt !== builtin.prompt) {
+    if (
+      existing.talkingPrompt !== builtin.talkingPrompt ||
+      existing.donePrompt !== builtin.donePrompt
+    ) {
       // Update only the built-in-shipped fields. Preserve color etc.
-      // which users may have customised through the LED UI.
+      // which users may have customised through the LED UI. Set both
+      // pairs so a downgraded daemon still sees a consistent voice.
       cache.set(builtin.id, {
         ...existing,
-        prompt: builtin.prompt,
-        postProcessPrompt: builtin.postProcessPrompt,
+        talkingPrompt: builtin.talkingPrompt,
+        donePrompt: builtin.donePrompt,
+        prompt: builtin.talkingPrompt,
+        postProcessPrompt: builtin.donePrompt,
         routingHint: builtin.routingHint,
       });
       refreshed++;
@@ -149,19 +194,33 @@ export function getVoice(id: string | undefined | null): Voice {
   return fallback;
 }
 
-export async function upsertVoice(mode: Voice): Promise<Voice> {
-  cache.set(mode.id, mode);
+export async function upsertVoice(voice: Voice): Promise<Voice> {
+  const normalised = normalisePhasePrompts(voice);
+  cache.set(normalised.id, normalised);
   await persist();
-  return mode;
+  return normalised;
 }
 
 export async function updateVoice(id: string, patch: VoiceUpdate): Promise<Voice> {
   const existing = cache.get(id);
-  if (!existing) throw new Error(`voices: cannot update unknown mode ${id}`);
-  const updated: Voice = { ...existing, ...patch, id, isBuiltin: existing.isBuiltin };
-  cache.set(id, updated);
+  if (!existing) throw new Error(`voices: cannot update unknown voice ${id}`);
+  // Patch logic: detect whether the caller intends to set new-style or
+  // legacy fields. When only the legacy field is touched, treat it as
+  // an alias for the new one (and vice versa); when both are touched,
+  // the new-style field wins. Without this, a UI still pinned to
+  // `prompt` would write `prompt` while leaving stale `talkingPrompt`
+  // in place — readers would see the OLD talking prompt.
+  const merged: Voice = { ...existing, ...patch, id, isBuiltin: existing.isBuiltin };
+  if ("prompt" in patch && !("talkingPrompt" in patch)) {
+    merged.talkingPrompt = patch.prompt ?? "";
+  }
+  if ("postProcessPrompt" in patch && !("donePrompt" in patch)) {
+    merged.donePrompt = patch.postProcessPrompt ?? "";
+  }
+  const normalised = normalisePhasePrompts(merged);
+  cache.set(id, normalised);
   await persist();
-  return updated;
+  return normalised;
 }
 
 export async function deleteVoice(id: string): Promise<void> {

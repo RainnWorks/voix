@@ -118,8 +118,20 @@ Style:
 - Never repeat the user's question back to them before answering. Just answer.`,
 ]);
 
-function makeVoice(partial: Omit<Voice, "isBuiltin">): Voice {
-  return { ...partial, isBuiltin: true };
+/** Build a built-in voice from its essentials. The legacy `prompt` /
+ *  `postProcessPrompt` fields are mirrored from the new
+ *  `talkingPrompt` / `donePrompt` so both pairs stay in sync without
+ *  the caller spelling each value twice. The mirror is what keeps the
+ *  M03 schema migration honest: any code still reading the legacy
+ *  fields sees the same value, anyone reading the new fields sees the
+ *  canonical one. */
+function makeVoice(partial: Omit<Voice, "isBuiltin" | "prompt" | "postProcessPrompt">): Voice {
+  return {
+    ...partial,
+    prompt: partial.talkingPrompt,
+    postProcessPrompt: partial.donePrompt,
+    isBuiltin: true,
+  };
 }
 
 export const BUILTIN_VOICES: Voice[] = [
@@ -127,7 +139,7 @@ export const BUILTIN_VOICES: Voice[] = [
     id: "default-realtime",
     name: "Realtime",
     type: "realtime",
-    prompt: DEFAULT_REALTIME_INSTRUCTIONS,
+    talkingPrompt: DEFAULT_REALTIME_INSTRUCTIONS,
     voice: "alloy",
     model: "gpt-realtime-2",
     color: [255, 51, 204],
@@ -138,7 +150,7 @@ export const BUILTIN_VOICES: Voice[] = [
     includeEntities: [],
     includePersons: [],
     addendum: "",
-    postProcessPrompt: "",
+    donePrompt: "",
     postProcessProvider: "openai",
     postProcessModel: "gpt-4o-mini",
     routingHint: "",
@@ -147,7 +159,7 @@ export const BUILTIN_VOICES: Voice[] = [
     id: "default-dictation",
     name: "Dictation",
     type: "dictation",
-    prompt: "",
+    talkingPrompt: "",
     voice: "",
     model: "",
     color: [255, 178, 0],
@@ -158,7 +170,7 @@ export const BUILTIN_VOICES: Voice[] = [
     includeEntities: [],
     includePersons: [],
     addendum: "",
-    postProcessPrompt: "",
+    donePrompt: "",
     postProcessProvider: "openai",
     postProcessModel: "gpt-4o-mini",
     routingHint: "Raw transcription with no processing. Use when exact words matter.",
@@ -167,7 +179,7 @@ export const BUILTIN_VOICES: Voice[] = [
     id: "default-message",
     name: "Message",
     type: "dictation",
-    prompt: "",
+    talkingPrompt: "",
     voice: "",
     model: "",
     color: [76, 175, 80],
@@ -178,7 +190,7 @@ export const BUILTIN_VOICES: Voice[] = [
     includeEntities: [],
     includePersons: [],
     addendum: "",
-    postProcessPrompt: PP_MESSAGE,
+    donePrompt: PP_MESSAGE,
     postProcessProvider: "openai",
     postProcessModel: "gpt-4o-mini",
     routingHint:
@@ -188,7 +200,7 @@ export const BUILTIN_VOICES: Voice[] = [
     id: "default-email",
     name: "Email",
     type: "dictation",
-    prompt: "",
+    talkingPrompt: "",
     voice: "",
     model: "",
     color: [33, 150, 243],
@@ -199,7 +211,7 @@ export const BUILTIN_VOICES: Voice[] = [
     includeEntities: [],
     includePersons: [],
     addendum: "",
-    postProcessPrompt: PP_EMAIL,
+    donePrompt: PP_EMAIL,
     postProcessProvider: "openai",
     postProcessModel: "gpt-4o-mini",
     routingHint: "Format as professional email. Use for mail apps and email compose.",
@@ -208,7 +220,7 @@ export const BUILTIN_VOICES: Voice[] = [
     id: "default-note",
     name: "Note",
     type: "dictation",
-    prompt: "",
+    talkingPrompt: "",
     voice: "",
     model: "",
     color: [156, 39, 176],
@@ -219,7 +231,7 @@ export const BUILTIN_VOICES: Voice[] = [
     includeEntities: [],
     includePersons: [],
     addendum: "",
-    postProcessPrompt: PP_NOTE,
+    donePrompt: PP_NOTE,
     postProcessProvider: "openai",
     postProcessModel: "gpt-4o-mini",
     routingHint:
@@ -229,7 +241,7 @@ export const BUILTIN_VOICES: Voice[] = [
     id: "default-code",
     name: "Code",
     type: "dictation",
-    prompt: "",
+    talkingPrompt: "",
     voice: "",
     model: "",
     color: [0, 188, 212],
@@ -240,7 +252,7 @@ export const BUILTIN_VOICES: Voice[] = [
     includeEntities: [],
     includePersons: [],
     addendum: "",
-    postProcessPrompt: PP_CODE,
+    donePrompt: PP_CODE,
     postProcessProvider: "openai",
     postProcessModel: "gpt-4o-mini",
     routingHint:

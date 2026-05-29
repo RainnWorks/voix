@@ -3,19 +3,23 @@
 ## Latest status (read this first)
 
 - **M01 merged** on main (`30d1768`). -2,425 LOC of pre-pivot HA
-  bridge code gone. **Deploy pending** — homelab `192.168.96.15`
-  unreachable from current dev network; queued for the next time it's
-  reachable. Until M01 deploys to the homelab, HA's running the old
-  integration; the daemon still serves the puck path (unchanged).
-- **M02 in progress**: Mode → Voice rename. Pure mechanical refactor;
-  schema-shape change is M03.
-- **Workflow doc** (`docs/build-workflow.md`) now codifies: merge to
+  bridge code gone. **Deploy still pending** — homelab `192.168.96.15`
+  unreachable from current dev network; daemon-side path unaffected.
+- **M02 merged** on main (`e3e80af`). Mode → Voice rename across
+  daemon + UI. File moves + symbol renames + persistence migrations
+  (modes.json → voices.json, devices.json modeId → voiceId,
+  recordings meta.json legacy field fallback). 4 unit tests, biome +
+  typecheck clean, UI builds. Daemon dev_mode auto-pull picks this up
+  in ~30s.
+- **M03 in progress**: Voice schema two-phase prompts (talkingPrompt
+  + donePrompt). Schema migration; daemon realtime path consumes new
+  field when present.
+- **Workflow doc** (`docs/build-workflow.md`) codifies: merge to
   main per milestone without asking; test coverage required per
   milestone; UI/UX audit agents (with personalities) spun up before
   any UI merge. Five-persona starting cast: Marina, Sven, Priya,
   Wren, Caleb.
-- **Active tasks (#115-#119)**: M01 (in_progress, awaiting deploy +
-  accept), M02-M05 (queued).
+- **Active tasks**: M03 (in_progress), M04-M05 (queued). M01-M02 closed.
 
 ## Pre-M01 snapshot follows
 

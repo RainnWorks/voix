@@ -128,6 +128,16 @@ class VoixRealtimeClient : public Component {
   void set_microphone(microphone::Microphone *mic) { this->microphone_ = mic; }
   void set_speaker(speaker::Speaker *spk) { this->speaker_ = spk; }
 
+  // M08: capability handshake state. HA pushes the user's active voice
+  // + mode-type via voix_set_state; we stamp them here so the next
+  // session's hello carries them. Both can be empty until HA pushes,
+  // in which case the daemon falls back to the default voice +
+  // discuss intent. We don't persist these to NVS — HA re-pushes
+  // on every adoption, so a reboot picking up "" is fine and avoids
+  // the flash-write cost on every mode cycle.
+  void set_voice_id(const std::string &id) { this->voice_id_ = id; }
+  void set_mode_type(const std::string &t) { this->mode_type_ = t; }
+
   // Actions
   void start();
   void stop();
@@ -168,6 +178,9 @@ class VoixRealtimeClient : public Component {
 
   std::string server_url_;
   std::string ws_token_;
+  // M08 capability-handshake state. See set_voice_id / set_mode_type.
+  std::string voice_id_;
+  std::string mode_type_;
   microphone::Microphone *microphone_{nullptr};
   // Helper that converts the raw 32-bit stereo i2s_mics stream to 16-bit
   // mono using channel 0 (the voice_kit AEC-processed mic). passive=true

@@ -312,17 +312,48 @@ void VoixRealtimeClient::setup() {
 void VoixRealtimeClient::loop() {
   if (this->pending_connected_.exchange(false)) {
     this->set_state_(State::RUNNING);
-    // Greet the server with our identity + shared-secret token. The HA
-    // integration uses the device_id to auto-register entities; the token
-    // is the WS auth gate. Without a matching token the server closes us
-    // before any OpenAI session opens.
-    std::string hello = R"({"type":"hello","device_id":")";
-    hello += App.get_name();
-    hello += R"(","friendly_name":")";
-    hello += App.get_friendly_name();
-    hello += R"(","token":")";
+    // Greet the server with the v1 audio-io hello (M08). The daemon
+    // accepts both the legacy puck shape and this one; we send v1
+    // unconditionally — older daemons fall through to the
+    // legacy-puck-defaults path on the daemon side without breaking.
+    //
+    // Capabilities for a Voice PE puck:
+    //   • mic 16 kHz mono PCM16 (XMOS channel 0)
+    //   • speaker 24 kHz PCM16 (the announcement_resampling_speaker chain)
+    //   • half-duplex on chip (XMOS does AEC + AGC, daemon skips its
+    //     software echo gate)
+    //   • wake_words: ["voix"] — the slot we claim
+    //
+    // intent + voice_id come from voix_set_state pushes (mode_type_,
+    // voice_id_). When mode_type_ is empty or "realtime", intent is
+    // "discuss"; when it's "dictation", intent is "dictate". voice_id
+    // is omitted from the JSON when empty — the daemon falls back to
+    // the household's default voice.
+    const char *intent =
+        (this->mode_type_ == "dictation") ? "dictate" : "discuss";
+
+    std::string hello;
+    hello.reserve(512);
+    hello += R"({"type":"hello","protocol_version":1,"token":")";
     hello += this->ws_token_;
-    hello += R"("})";
+    hello += R"(","device_id":")";
+    hello += App.get_name();
+    hello += R"(","intent":")";
+    hello += intent;
+    hello += R"(")";
+    if (!this->voice_id_.empty()) {
+      hello += R"(,"voice_id":")";
+      hello += this->voice_id_;
+      hello += R"(")";
+    }
+    hello += R"(,"capabilities":{)";
+    hello += R"("mic":{"sample_rate_hz":16000,"channels":1},)";
+    hello += R"("speaker":{"sample_rate_hz":24000},)";
+    hello += R"("half_duplex_on_chip":true,)";
+    hello += R"("wake_words":["voix"])";
+    hello += R"(},"client_info":{"kind":"puck","friendly_name":")";
+    hello += App.get_friendly_name();
+    hello += R"("}})";
     this->send_text_(hello);
     this->connected_trigger_.trigger();
   }

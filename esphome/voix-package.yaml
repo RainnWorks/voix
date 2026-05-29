@@ -120,6 +120,12 @@ api:
       variables:
         mode_type: string
         wake_word: string
+        # M08: voice id (formerly "mode id"). Optional — older HA
+        # integrations omit it; new HA always sends it. The firmware
+        # passes it through to the daemon in its hello (capability
+        # handshake), so the daemon resolves the right voice from the
+        # session start instead of always falling back to default.
+        mode_id: string
       then:
         - lambda: |-
             // Diff-check before assigning: globals have restore_value=true,
@@ -135,9 +141,20 @@ api:
               id(voix_wake_word) = wake_word;
               changed = true;
             }
+            if (id(voix_mode_id) != mode_id) {
+              id(voix_mode_id) = mode_id;
+              changed = true;
+            }
+            // Push live values into the realtime client too — its next
+            // hello stamps these into the capability handshake. We push
+            // on every call (not just `changed`), since the realtime
+            // client doesn't persist across boots and a reboot loses
+            // the values until HA re-pushes.
+            id(voix_rt).set_mode_type(mode_type);
+            id(voix_rt).set_voice_id(mode_id);
             if (changed) {
-              ESP_LOGI("voix", "state synced from HA: mode=%s wake_word=%s",
-                       mode_type.c_str(), wake_word.c_str());
+              ESP_LOGI("voix", "state synced from HA: mode=%s wake_word=%s voice_id=%s",
+                       mode_type.c_str(), wake_word.c_str(), mode_id.c_str());
             }
 
 # ─── Button override ─────────────────────────────────────────────────────────
@@ -249,6 +266,14 @@ micro_wake_word:
           # at 2× speed.
           - speaker.stop:
               id: announcement_resampling_speaker
+          # M08: stamp the current voice + mode-type into the realtime
+          # client right before start, so the hello it sends carries
+          # the user's selection. Globals are restored from NVS on
+          # boot so this works even before HA's first state push of
+          # the session.
+          - lambda: |-
+              id(voix_rt).set_mode_type(id(voix_mode_type));
+              id(voix_rt).set_voice_id(id(voix_mode_id));
           - voix_realtime_client.start:
               id: voix_rt
 
@@ -262,6 +287,15 @@ globals:
     restore_value: true
     initial_value: '""'
   - id: voix_wake_word
+    type: std::string
+    restore_value: true
+    initial_value: '""'
+  # M08: the active voice id pushed from HA via voix_set_state. Drives
+  # the v1 capability-handshake hello's `voice_id` field. Persisted so
+  # the puck remembers its last-known voice across reboots (HA also
+  # re-pushes on reconnect, but persisting avoids "wrong voice picked
+  # for the first session after a power blip" race conditions).
+  - id: voix_mode_id
     type: std::string
     restore_value: true
     initial_value: '""'

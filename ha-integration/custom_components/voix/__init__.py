@@ -814,12 +814,19 @@ def _register_voix_adoption(hass: HomeAssistant, entry: ConfigEntry) -> None:
             await hass.services.async_call(
                 "esphome",
                 _esphome_svc(device_id, "voix_set_state"),
-                {"mode_type": mode_type, "wake_word": wake_word},
+                # M08: mode_id pushed alongside mode_type so the puck's
+                # next hello carries the canonical voice id. Empty
+                # string is a valid value (daemon falls back to default).
+                {
+                    "mode_type": mode_type,
+                    "wake_word": wake_word,
+                    "mode_id": mode_id,
+                },
                 blocking=False,
             )
             _LOGGER.debug(
-                "voix adoption: pushed state to %s (mode_type=%s, wake=%s)",
-                device_id, mode_type, wake_word,
+                "voix adoption: pushed state to %s (mode_type=%s, wake=%s, mode_id=%s)",
+                device_id, mode_type, wake_word, mode_id,
             )
         except Exception as e:  # noqa: BLE001
             _LOGGER.debug(

@@ -194,6 +194,21 @@ export class AudioIoConnection {
     const voice = getVoice(voiceId);
     this.intent = intent;
 
+    // M08 acceptance: surface the capabilities on hello so we can see
+    // what each endpoint declared without enabling debug logging. The
+    // format is compact (one line) so multi-puck households don't
+    // drown in capability noise on every wake-word session.
+    const clientKind =
+      (r["client_info"] as { kind?: string } | undefined)?.kind ?? (isV1 ? "?" : "puck-legacy");
+    log.warn(
+      `audio_io ${deviceId}: hello v${isV1 ? PROTOCOL_VERSION : "legacy"} ` +
+        `kind=${clientKind} intent=${intent} voice_id=${voice.id} ` +
+        `mic=${capabilities.mic.sample_rate_hz}/${capabilities.mic.channels} ` +
+        `speaker=${capabilities.speaker?.sample_rate_hz ?? "none"} ` +
+        `half_duplex_on_chip=${capabilities.half_duplex_on_chip === true} ` +
+        `wake_words=[${(capabilities.wake_words ?? []).join(",")}]`,
+    );
+
     // Best-effort device "last seen" — write failure logged but
     // doesn't gate the session.
     void recordSeen(deviceId, { voiceId: voice.id }).catch((err) =>

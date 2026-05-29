@@ -1,14 +1,14 @@
 {
   "domain": "voix",
-  "name": "voix",
-  "version": "0.1.0",
-  "documentation": "https://github.com/USER/voix",
-  "issue_tracker": "https://github.com/USER/voix/issues",
-  "codeowners": ["@thomas"],
+  "name": "voix — Voice PE custom modes + OpenAI Realtime bridge",
+  "version": "0.2.0",
+  "documentation": "https://github.com/thenairn/voix",
+  "issue_tracker": "https://github.com/thenairn/voix/issues",
+  "codeowners": ["@thenairn"],
   "config_flow": true,
   "iot_class": "local_push",
   "integration_type": "service",
-  "dependencies": ["esphome"],
+  "dependencies": ["http"],
   "requirements": [
     "websockets>=12.0",
     "audioop-lts>=0.2.1"

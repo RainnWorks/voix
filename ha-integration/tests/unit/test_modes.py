@@ -1,0 +1,240 @@
+"""Pure-logic tests for `custom_components.voix.modes`.
+
+No Home Assistant imports needed — the module's functions accept an
+"entry-like" object that only exposes `.options`, so we use the
+`fake_entry` fixture from conftest.
+
+Covers:
+  - get_modes (empty → builtins fallback, populated → returns as-is)
+  - get_mode (known id, unknown id, None id)
+  - get_default_mode_id (explicit, missing, invalid)
+  - ensure_builtin_modes (idempotent, no-clobber, default_mode seeding)
+  - validate_mode_def (every branch in the validator)
+  - slugify_mode_id (alpha, mixed, edge cases)
+"""
+from __future__ import annotations
+
+import pytest
+
+from custom_components.voix.const import (
+    CONF_DEFAULT_MODE,
+    CONF_MODES,
+    DEFAULT_MODE_IDS,
+    DEFAULT_MODES,
+    MODE_TYPE_ASSIST,
+    MODE_TYPE_DICTATION,
+    MODE_TYPE_REALTIME,
+)
+from custom_components.voix.modes import (
+    ensure_builtin_modes,
+    get_default_mode_id,
+    get_mode,
+    get_modes,
+    slugify_mode_id,
+    validate_mode_def,
+)
+
+
+class _Entry:
+    """Tiny ConfigEntry stand-in. Only `.options` is read by the module."""
+
+    def __init__(self, options: dict | None = None) -> None:
+        self.options = options or {}
+
+
+# ─── get_modes ───────────────────────────────────────────────────────────────
+
+
+def test_get_modes_returns_builtins_when_options_empty():
+    """Given an entry with no modes, When get_modes, Then it returns DEFAULT_MODES."""
+    entry = _Entry({})
+    modes = get_modes(entry)
+    assert set(modes.keys()) == set(DEFAULT_MODES.keys())
+
+
+def test_get_modes_returns_builtins_when_modes_key_is_none():
+    """Given an entry whose modes key is None, When get_modes, Then it falls back to builtins."""
+    entry = _Entry({CONF_MODES: None})
+    modes = get_modes(entry)
+    assert set(modes.keys()) == set(DEFAULT_MODES.keys())
+
+
+def test_get_modes_returns_user_modes_when_populated(fake_entry):
+    """Given user modes plus builtins in options, When get_modes, Then both are returned."""
+    modes = get_modes(fake_entry)
+    assert "work" in modes
+    assert "home" in modes
+    assert "default-realtime" in modes
+
+
+# ─── get_mode ────────────────────────────────────────────────────────────────
+
+
+def test_get_mode_returns_named_mode(fake_entry):
+    """Given a known mode_id, When get_mode, Then the matching mode_def is returned."""
+    mode = get_mode(fake_entry, "work")
+    assert mode["name"] == "Work"
+    assert mode["voice"] == "echo"
+
+
+def test_get_mode_falls_back_to_default_when_unknown(fake_entry):
+    """Given an unknown mode_id, When get_mode, Then the default mode is returned."""
+    mode = get_mode(fake_entry, "this-does-not-exist")
+    # fake_entry has default_mode == "default-realtime"
+    assert mode == fake_entry.options[CONF_MODES]["default-realtime"]
+
+
+def test_get_mode_with_none_returns_default(fake_entry):
+    """Given mode_id=None, When get_mode, Then the default mode is returned."""
+    mode = get_mode(fake_entry, None)
+    assert mode == fake_entry.options[CONF_MODES]["default-realtime"]
+
+
+def test_get_mode_with_empty_entry_falls_back_to_builtin():
+    """Given an entry with no options and an unknown id, When get_mode, Then default-realtime builtin is returned."""
+    entry = _Entry({})
+    mode = get_mode(entry, "anything")
+    assert mode == DEFAULT_MODES["default-realtime"]
+
+
+# ─── get_default_mode_id ─────────────────────────────────────────────────────
+
+
+def test_get_default_mode_id_uses_explicit_when_valid(fake_entry):
+    """Given default_mode is set and exists in modes, When get_default_mode_id, Then it returns that id."""
+    fake_entry.options[CONF_DEFAULT_MODE] = "home"
+    assert get_default_mode_id(fake_entry) == "home"
+
+
+def test_get_default_mode_id_falls_back_when_explicit_missing(fake_entry):
+    """Given default_mode points to a deleted mode, When get_default_mode_id, Then it falls back to first builtin."""
+    fake_entry.options[CONF_DEFAULT_MODE] = "ghost-mode"
+    assert get_default_mode_id(fake_entry) == DEFAULT_MODE_IDS[0]
+
+
+def test_get_default_mode_id_falls_back_when_unset():
+    """Given no default_mode key, When get_default_mode_id, Then default-realtime is returned."""
+    entry = _Entry({})
+    assert get_default_mode_id(entry) == "default-realtime"
+
+
+# ─── ensure_builtin_modes ────────────────────────────────────────────────────
+
+
+def test_ensure_builtin_modes_seeds_all_three_when_empty():
+    """Given empty options, When ensure_builtin_modes, Then all 3 builtin modes are seeded."""
+    out = ensure_builtin_modes({})
+    assert set(out[CONF_MODES].keys()) == set(DEFAULT_MODES.keys())
+    assert out[CONF_DEFAULT_MODE] == DEFAULT_MODE_IDS[0]
+
+
+def test_ensure_builtin_modes_does_not_clobber_user_edits():
+    """Given the user has edited default-realtime's name, When ensure_builtin_modes, Then their edit is preserved."""
+    user_modes = {
+        "default-realtime": {
+            "name": "MY ASSIST",
+            "type": MODE_TYPE_ASSIST,
+            "prompt": "",
+            "voice": "",
+            "model": "",
+            "color": [1, 2, 3],
+            "brightness": 0.5,
+            "effect": "None",
+        }
+    }
+    out = ensure_builtin_modes({CONF_MODES: user_modes})
+    assert out[CONF_MODES]["default-realtime"]["name"] == "MY ASSIST"
+    # missing builtins still filled in
+    assert "default-dictation" in out[CONF_MODES]
+    assert "default-realtime" in out[CONF_MODES]
+
+
+def test_ensure_builtin_modes_preserves_existing_default_mode():
+    """Given default_mode is already set, When ensure_builtin_modes, Then it is not overwritten."""
+    out = ensure_builtin_modes({CONF_DEFAULT_MODE: "default-realtime"})
+    assert out[CONF_DEFAULT_MODE] == "default-realtime"
+
+
+def test_ensure_builtin_modes_is_idempotent():
+    """Given already-bootstrapped options, When called again, Then nothing changes."""
+    first = ensure_builtin_modes({})
+    second = ensure_builtin_modes(first)
+    assert first == second
+
+
+# ─── validate_mode_def ───────────────────────────────────────────────────────
+
+
+def _good_mode() -> dict:
+    return {
+        "name": "OK",
+        "type": MODE_TYPE_REALTIME,
+        "prompt": "hi",
+        "voice": "alloy",
+        "model": "gpt-realtime",
+        "color": [10, 20, 30],
+        "brightness": 0.4,
+        "effect": "None",
+    }
+
+
+def test_validate_accepts_well_formed_mode():
+    """Given a well-formed mode_def, When validate_mode_def, Then (True, None) is returned."""
+    ok, err = validate_mode_def(_good_mode())
+    assert ok is True
+    assert err is None
+
+
+@pytest.mark.parametrize(
+    "patch,expected_fragment",
+    [
+        ({"name": ""}, "name"),
+        ({"name": "   "}, "name"),
+        ({"type": "banana"}, "type"),
+        ({"color": [10, 20]}, "color"),
+        ({"color": [10, 20, 300]}, "color"),
+        ({"color": "not a list"}, "color"),
+        ({"brightness": 2.0}, "brightness"),
+        ({"brightness": -0.5}, "brightness"),
+        ({"brightness": "loud"}, "brightness"),
+    ],
+)
+def test_validate_rejects_bad_input(patch, expected_fragment):
+    """Given a mode_def with one bad field, When validate_mode_def, Then a specific error is returned."""
+    mode = _good_mode()
+    mode.update(patch)
+    ok, err = validate_mode_def(mode)
+    assert ok is False
+    assert err is not None
+    assert expected_fragment in err
+
+
+@pytest.mark.parametrize("mtype", [MODE_TYPE_ASSIST, MODE_TYPE_DICTATION, MODE_TYPE_REALTIME])
+def test_validate_accepts_all_mode_types(mtype):
+    """Given each of the 3 supported types, When validate_mode_def, Then it accepts."""
+    mode = _good_mode()
+    mode["type"] = mtype
+    ok, err = validate_mode_def(mode)
+    assert ok, err
+
+
+# ─── slugify_mode_id ─────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "name,expected",
+    [
+        ("Work", "work"),
+        ("Work Mode", "work-mode"),
+        ("  Work  ", "work"),
+        ("MY ASSIST!", "my-assist"),
+        ("café", "caf"),  # non-ascii stripped (current behaviour: regex on a-z0-9)
+        ("---", "mode"),  # all-bad → fallback
+        ("", "mode"),
+        ("a__b__c", "a-b-c"),
+        ("home-assistant-voice-095e4e", "home-assistant-voice-095e4e"),
+    ],
+)
+def test_slugify_mode_id(name, expected):
+    """Given a name, When slugify_mode_id, Then a stable lowercase-dash slug is produced."""
+    assert slugify_mode_id(name) == expected

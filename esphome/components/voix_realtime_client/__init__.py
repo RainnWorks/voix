@@ -44,8 +44,11 @@ IsSpeakingCondition = voix_realtime_client_ns.class_(
 )
 
 CONF_SERVER_URL = "server_url"
+CONF_WS_TOKEN = "ws_token"
 CONF_ON_CONNECTED = "on_connected"
 CONF_ON_DISCONNECTED = "on_disconnected"
+CONF_ON_USER_SPEECH_START = "on_user_speech_start"
+CONF_ON_USER_SPEECH_END = "on_user_speech_end"
 CONF_ON_AUDIO_OUT_START = "on_audio_out_start"
 CONF_ON_AUDIO_OUT_END = "on_audio_out_end"
 CONF_ON_ERROR = "on_error"
@@ -53,13 +56,25 @@ CONF_ON_ERROR = "on_error"
 CONFIG_SCHEMA = cv.Schema(
     {
         cv.GenerateID(): cv.declare_id(VoixRealtimeClient),
-        cv.Required(CONF_SERVER_URL): cv.string,
+        # server_url + ws_token are pushed by the HA integration via the
+        # `voix_set_server` API action after standard ESPHome adoption.
+        # The component persists both to NVS, so YAML-time values aren't
+        # needed. Kept optional with empty default so existing configs
+        # that DO set them at YAML-time still validate.
+        cv.Optional(CONF_SERVER_URL, default=""): cv.string,
+        cv.Optional(CONF_WS_TOKEN, default=""): cv.string,
         cv.Required(CONF_MICROPHONE): cv.use_id(microphone.Microphone),
         cv.Required(CONF_SPEAKER): cv.use_id(speaker.Speaker),
         cv.Optional(CONF_ON_CONNECTED): automation.validate_automation(
             cv.Schema({})
         ),
         cv.Optional(CONF_ON_DISCONNECTED): automation.validate_automation(
+            cv.Schema({})
+        ),
+        cv.Optional(CONF_ON_USER_SPEECH_START): automation.validate_automation(
+            cv.Schema({})
+        ),
+        cv.Optional(CONF_ON_USER_SPEECH_END): automation.validate_automation(
             cv.Schema({})
         ),
         cv.Optional(CONF_ON_AUDIO_OUT_START): automation.validate_automation(
@@ -77,6 +92,7 @@ async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     cg.add(var.set_server_url(config[CONF_SERVER_URL]))
+    cg.add(var.set_ws_token(config[CONF_WS_TOKEN]))
 
     mic = await cg.get_variable(config[CONF_MICROPHONE])
     cg.add(var.set_microphone(mic))
@@ -86,6 +102,8 @@ async def to_code(config):
     for trigger_key, trigger_class in (
         (CONF_ON_CONNECTED, "get_connected_trigger"),
         (CONF_ON_DISCONNECTED, "get_disconnected_trigger"),
+        (CONF_ON_USER_SPEECH_START, "get_user_speech_start_trigger"),
+        (CONF_ON_USER_SPEECH_END, "get_user_speech_end_trigger"),
         (CONF_ON_AUDIO_OUT_START, "get_audio_out_start_trigger"),
         (CONF_ON_AUDIO_OUT_END, "get_audio_out_end_trigger"),
         (CONF_ON_ERROR, "get_error_trigger"),

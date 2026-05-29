@@ -1,0 +1,22 @@
+# Test dependencies for the voix integration.
+#
+# Install with:
+#   pip install -r tests/requirements-test.txt
+#
+# Two tiers of tests live in this directory:
+#
+#   * Pure-logic unit tests (test_modes.py, test_prompt_assembly.py, ...).
+#     Run with plain pytest — no HA install needed.
+#
+#   * HA-integration tests (test_config_flow.py, test_select.py, ...).
+#     Use pytest-homeassistant-custom-component which pulls in HA core
+#     and gives us the `hass` fixture, MockConfigEntry, etc.
+
+pytest>=8.0
+pytest-asyncio>=0.23
+pytest-cov>=5.0
+pytest-homeassistant-custom-component>=0.13
+
+# Used by the integration itself; imported in some test paths.
+voluptuous>=0.13
+voluptuous-openapi>=0.0.4

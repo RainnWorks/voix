@@ -1,30 +1,33 @@
-# Tom's Voice PE consumer YAML.
+# Tom's Voice PE — minimal device YAML.
 #
-# Mirrors upstream's CI build by pulling in the SAME yaml chain the release
-# binary is built from (home-assistant-voice.8mb.yaml → factory.yaml → main),
-# not just the bare home-assistant-voice.yaml.
+# Everything voix-specific is in voix-package.yaml; everything Voice PE
+# hardware-specific is in the upstream package. This YAML is just the
+# per-device identity. WS URL + shared token + mode state get pushed by
+# the voix HA integration after HA's standard ESPHome adoption — no
+# substitutions, no secrets needed for voix itself.
 #
-# Why this matters (we learned this the hard way):
-#   - factory.yaml adds `wait_until: not ble.enabled` + `delay: 2s` to the
-#     start of `on_client_connected`. Without these, micro_wake_word.start
-#     runs before BLE is shut down and audio is ready → mWW silently fails
-#     to detect anything.
-#   - 8mb.yaml sets `esp32.flash_size: 8MB` — partition table is built from
-#     this. Wrong flash_size → wrong NVS layout → device's stored state
-#     becomes unreadable.
+# (The api.encryption.key + wifi block below are kept because I'm
+# compiling via the CLI rather than HA's ESPHome dashboard adoption
+# path. End users adopting via the dashboard get those injected
+# automatically.)
 
 packages:
   voice_pe:
     url: https://github.com/esphome/home-assistant-voice-pe
     files:
       - home-assistant-voice.8mb.yaml
-    # 26.5.0 fixes issue #582: removed the stale esphome@ff8ce89 external_components
-    # pin that was silently breaking micro_wake_word on newer ESPHome dashboards.
+    # 26.5.0 fixes issue #582 (stale esphome@ff8ce89 pin breaking mWW).
     # Requires ESPHome dashboard >= 2026.5.0.
     ref: 26.5.0
     refresh: 1d
+  # Local include during development. Switch to a git-fetched ref once
+  # the voix repo is published; pattern:
+  #   voix:
+  #     url: https://github.com/thenairn/voix
+  #     files: [esphome/voix-package.yaml]
+  #     ref: main
+  voix: !include voix-package.yaml
 
-# Keep our specific device identity (not the upstream "ha-voice-8mb" name).
 esphome:
   name: home-assistant-voice-095e4e
   name_add_mac_suffix: false
@@ -32,152 +35,8 @@ esphome:
 api:
   encryption:
     key: !secret voice_pe_095e4e_api_key
-  # Manual start/stop so we can test the WS bridge from HA without wiring
-  # the wake-word path yet. Call from HA: Settings → Devices & services →
-  # ESPHome → 095e4e → Services → voix_realtime_start.
-  actions:
-    - action: voix_realtime_start
-      then:
-        - voix_realtime_client.start:
-            id: voix_rt
-    - action: voix_realtime_stop
-      then:
-        - voix_realtime_client.stop:
-            id: voix_rt
-    - action: voix_realtime_interrupt
-      then:
-        - voix_realtime_client.interrupt:
-            id: voix_rt
 
 wifi:
   networks:
     - ssid: !secret wifi_ssid
       password: !secret wifi_password
-
-# ─── voix custom firmware component (Mode B) ─────────────────────────────────
-# Layers on top of the stock Voice PE — does NOT replace voice_assistant.
-# Mode A and Mode C still run through upstream's pipeline. This component
-# only fires when we hand it the audio path (currently nothing routes here;
-# the next iteration will wire mWW's "Hey Mycroft" branch to start() it).
-external_components:
-  - source:
-      type: local
-      path: components
-    components: [voix_realtime_client]
-
-voix_realtime_client:
-  id: voix_rt
-  server_url: ws://192.168.96.15:8123/api/voix/realtime
-  microphone: i2s_mics
-  speaker: announcement_resampling_speaker
-  on_connected:
-    - logger.log: "voix_rt: connected"
-    # Magenta tint on the outer ring while Realtime is active.
-    - light.turn_on:
-        id: led_ring
-        red: 80%
-        green: 20%
-        blue: 90%
-        brightness: 60%
-  on_disconnected:
-    - logger.log: "voix_rt: disconnected"
-    - light.turn_off:
-        id: led_ring
-  on_error:
-    - logger.log:
-        format: "voix_rt: error"
-        level: WARN
-
-
-# ─── voix globals ────────────────────────────────────────────────────────────
-# Mode-specific behaviour (helper writes, TTS suppression, etc.) is owned by
-# the `voix` custom HA integration. The firmware just tracks WHICH mode the
-# user invoked so the integration and our LED hooks below can branch on it.
-#
-# voix_mode values:
-#   0 = unknown / no mode active
-#   1 = assist        (default HA voice assistant)
-#   2 = dictation     (Hey Jarvis → conversation.dictation)
-#   3 = realtime      (Hey Mycroft → custom_components/voix Realtime bridge)
-globals:
-  - id: voix_last_wake_word
-    type: std::string
-    restore_value: false
-    initial_value: '""'
-  - id: voix_mode
-    type: uint8_t
-    restore_value: false
-    initial_value: '0'
-
-# When a wake word fires, capture it + classify the mode. Our actions are
-# APPENDED to upstream's complex if-chain (which is what actually starts the
-# pipeline), so the mode global is set before any downstream events fire.
-#
-# We also fire a HA event on the Realtime wake word so the integration can
-# claim the satellite's voice_assistant subscription and bridge audio to
-# OpenAI Realtime. The standard pipeline will still kick off briefly (upstream
-# already called voice_assistant.start); the integration races to take over.
-micro_wake_word:
-  on_wake_word_detected:
-    - lambda: |-
-        id(voix_last_wake_word) = wake_word;
-        if (wake_word == "Hey Jarvis") {
-          id(voix_mode) = 2;          // dictation
-        } else if (wake_word == "Hey Mycroft") {
-          id(voix_mode) = 3;          // realtime
-        } else if (wake_word == "Okay Nabu") {
-          id(voix_mode) = 1;          // assist
-        } else {
-          id(voix_mode) = 0;
-        }
-    # Mode B routing for "Hey Mycroft" will land here once the
-    # voix_realtime_client custom component is wired in (next iteration).
-    # For now, mWW still hands "Hey Mycroft" to upstream's voice_assistant
-    # chain, which fires the standard pipeline — same as any other wake word.
-
-# ─── Mode-discriminated LED hints ────────────────────────────────────────────
-# Upstream's control_leds owns the standard pipeline visualisations. We add
-# our own colour washes on top by writing the OUTER `led_ring` (which upstream
-# leaves alone — only the inner `voice_assistant_leds` partition is driven by
-# control_leds). Each pipeline phase sets a mode-specific outer-ring colour;
-# the inner ring keeps its standard listening/thinking/replying behaviour.
-#
-# Palette:
-#   Mode 1 (Assist):    blue tint
-#   Mode 2 (Dictation): amber tint
-#   Mode 3 (Realtime):  magenta tint
-#
-# The integration will overlay its own colours on top during Realtime sessions
-# (response.audio.delta, response.done, etc.) by calling light services on
-# led_ring directly.
-voice_assistant:
-  on_listening:
-    - lambda: |-
-        float r = 0.0f, g = 0.0f, b = 0.0f;
-        switch (id(voix_mode)) {
-          case 1: r = 0.20f; g = 0.40f; b = 1.00f; break;  // assist - blue
-          case 2: r = 1.00f; g = 0.70f; b = 0.00f; break;  // dictation - amber
-          case 3: r = 1.00f; g = 0.20f; b = 0.80f; break;  // realtime - magenta
-          default: return;                                  // unknown mode - leave LED alone
-        }
-        auto call = id(led_ring).turn_on();
-        call.set_brightness(0.4f);
-        call.set_rgb(r, g, b);
-        call.perform();
-  on_end:
-    # When the pipeline ends naturally, fade the outer ring out. The
-    # conversation agent already handles the green capture-flash for
-    # Mode C; this just clears any lingering mode-colour wash.
-    - light.turn_off:
-        id: led_ring
-        transition_length: 300ms
-  on_error:
-    - light.turn_on:
-        id: led_ring
-        brightness: 60%
-        red: 100%
-        green: 0%
-        blue: 0%
-    - delay: 600ms
-    - light.turn_off:
-        id: led_ring

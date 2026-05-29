@@ -1,0 +1,9 @@
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "enable_custom_integrations: enable the HA test harness's custom-component loader",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]

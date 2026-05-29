@@ -1,0 +1,1031 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voix · Brand Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Hanken+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #faf8f3;
+    --paper-warm: #f4f0e6;
+    --ink: #18181b;
+    --ink-soft: #2a2a2e;
+    --ha-blue: #03A9F4;
+    --type-body: #4a4640;
+    --type-muted: #8b8578;
+    --type-quiet: #a8a399;
+    --rule: #d4d0c4;
+    --rule-soft: #e6e2d6;
+    --dark-bg: #18181b;
+    --dark-card: #2a2a2e;
+    --dark-text: #f4f4f5;
+    --dark-text-muted: #a1a1aa;
+    --dark-text-quiet: #71717a;
+    --dark-rule: #3a3a3e;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'Hanken Grotesk', sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    line-height: 1.55;
+  }
+
+  .serif { font-family: 'Instrument Serif', serif; font-weight: 400; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+
+  /* ---- LAYOUT ---- */
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 0 32px; }
+
+  /* ---- NAV ---- */
+  .nav {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: var(--paper);
+    border-bottom: 0.5px solid var(--rule);
+    padding: 18px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .wordmark {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .glyph {
+    width: 22px;
+    height: 22px;
+    background: var(--ink);
+    border-radius: 6px;
+    align-self: center;
+    position: relative;
+  }
+  .glyph::after {
+    content: '';
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    width: 9px; height: 9px;
+    background: var(--ha-blue);
+    border-radius: 50%;
+  }
+  .glyph.light { background: var(--dark-text); }
+  .wm-text { font-family: 'Instrument Serif', serif; font-size: 22px; letter-spacing: -0.3px; color: var(--ink); }
+  .pronounce { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--type-muted); }
+
+  .nav-meta { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--type-muted); letter-spacing: 1.5px; }
+  .nav-links { display: flex; gap: 28px; align-items: center; }
+  .nav-links a { color: var(--type-body); text-decoration: none; font-size: 13px; }
+  .nav-links a:hover { color: var(--ink); }
+
+  /* ---- HERO ---- */
+  .hero {
+    background: var(--paper);
+    padding: 0;
+    position: relative;
+    overflow: hidden;
+    min-height: 88vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .hero-headline {
+    text-align: center;
+    margin: 0 auto;
+    padding: 0 32px;
+  }
+
+  .hero-headline h1 {
+    font-family: 'Instrument Serif', serif;
+    font-weight: 400;
+    font-size: clamp(56px, 9vw, 120px);
+    line-height: 0.92;
+    letter-spacing: -0.04em;
+    margin-bottom: 56px;
+  }
+
+  .hero-headline em { font-style: italic; }
+
+  .hero-sub {
+    text-align: center;
+    position: relative;
+    z-index: 5;
+  }
+
+  .hero-sub p {
+    font-size: 16px;
+    color: var(--type-body);
+    margin-bottom: 24px;
+  }
+
+  .ctas { display: inline-flex; gap: 12px; }
+
+  .btn {
+    display: inline-block;
+    padding: 12px 22px;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: 6px;
+    text-decoration: none;
+    transition: transform 0.15s ease;
+  }
+  .btn:hover { transform: translateY(-1px); }
+  .btn-primary { background: var(--ink); color: var(--paper); }
+  .btn-secondary { border: 0.5px solid var(--ink); color: var(--ink); background: transparent; }
+  .btn-primary-blue { background: var(--ha-blue); color: var(--ink); }
+
+  /* ---- THE PUCK (hero) ---- */
+  .puck-hero {
+    position: absolute;
+    left: 50%;
+    bottom: -180px;
+    transform: translateX(-50%);
+    width: 360px;
+    height: 360px;
+    background: var(--ink);
+    border-radius: 70px;
+    z-index: 1;
+  }
+  .puck-hero::after {
+    content: '';
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    width: 124px; height: 124px;
+    background: var(--ha-blue);
+    border-radius: 50%;
+  }
+
+  /* ---- SECTION (cream) ---- */
+  section {
+    padding: 100px 32px;
+    border-top: 0.5px solid var(--rule);
+  }
+
+  section.first { border-top: none; }
+
+  .section-head {
+    max-width: 1136px;
+    margin: 0 auto 56px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 32px;
+    flex-wrap: wrap;
+  }
+
+  .section-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--type-muted);
+    letter-spacing: 2px;
+  }
+
+  .section-head h2 {
+    font-family: 'Instrument Serif', serif;
+    font-weight: 400;
+    font-size: clamp(40px, 5vw, 64px);
+    line-height: 0.96;
+    letter-spacing: -0.03em;
+    flex: 1;
+    min-width: 280px;
+  }
+
+  .section-head em { font-style: italic; }
+
+  .section-head .intro {
+    max-width: 360px;
+    font-size: 14px;
+    color: var(--type-body);
+  }
+
+  .section-body {
+    max-width: 1136px;
+    margin: 0 auto;
+  }
+
+  /* ---- DARK SECTION ---- */
+  section.dark {
+    background: var(--dark-bg);
+    color: var(--dark-text);
+    border-top: none;
+    position: relative;
+  }
+  section.dark::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 4px;
+    background: repeating-linear-gradient(90deg, var(--dark-bg) 0 60px, var(--ha-blue) 60px 62px, var(--dark-bg) 62px 120px);
+  }
+  section.dark .section-num { color: var(--ha-blue); }
+  section.dark .section-head .intro { color: var(--dark-text-muted); }
+
+  /* ---- CARDS / TILES ---- */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+
+  @media (max-width: 800px) {
+    .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+    .puck-hero { width: 240px; height: 240px; border-radius: 48px; bottom: -120px; }
+    .puck-hero::after { width: 80px; height: 80px; }
+  }
+
+  .tile {
+    background: rgba(255, 255, 255, 0.6);
+    border: 0.5px solid var(--rule);
+    border-radius: 12px;
+    padding: 24px;
+  }
+
+  .tile-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--type-muted);
+    letter-spacing: 1.5px;
+    margin-bottom: 14px;
+  }
+
+  .tile h3 {
+    font-family: 'Instrument Serif', serif;
+    font-weight: 400;
+    font-size: 26px;
+    line-height: 1.1;
+    margin-bottom: 8px;
+    letter-spacing: -0.5px;
+  }
+
+  .tile p { font-size: 13px; color: var(--type-body); }
+
+  /* ---- COLOUR SWATCHES ---- */
+  .swatch {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .swatch-chip {
+    width: 100%;
+    aspect-ratio: 16/10;
+    border-radius: 10px;
+    position: relative;
+    overflow: hidden;
+  }
+  .swatch-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .swatch-meta strong { font-size: 14px; font-weight: 500; letter-spacing: -0.2px; }
+  .swatch-meta span { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--type-muted); }
+  .swatch p { font-size: 12px; color: var(--type-muted); }
+
+  /* ---- TYPE SPECIMENS ---- */
+  .specimen {
+    border: 0.5px solid var(--rule);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .specimen-head {
+    padding: 16px 24px;
+    border-bottom: 0.5px solid var(--rule);
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .specimen-head strong { font-size: 13px; font-weight: 500; }
+  .specimen-head span { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--type-muted); }
+  .specimen-body { padding: 32px 24px; }
+
+  .spec-display {
+    font-family: 'Instrument Serif', serif;
+    font-size: 64px;
+    line-height: 0.95;
+    letter-spacing: -0.03em;
+    margin-bottom: 16px;
+  }
+  .spec-display em { font-style: italic; }
+  .spec-body-text {
+    font-family: 'Hanken Grotesk', sans-serif;
+    font-size: 15px;
+    line-height: 1.55;
+    color: var(--type-body);
+    max-width: 540px;
+    margin-bottom: 16px;
+  }
+  .spec-mono {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--type-muted);
+    letter-spacing: 1.5px;
+  }
+
+  /* ---- GLYPH GRID ---- */
+  .glyph-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 24px;
+  }
+  .glyph-cell {
+    background: rgba(255,255,255,0.4);
+    border: 0.5px solid var(--rule);
+    border-radius: 12px;
+    padding: 32px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+  .glyph-cell.dark { background: var(--dark-card); border-color: var(--dark-rule); }
+  .glyph-cell .label { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--type-muted); letter-spacing: 1.5px; }
+  .glyph-cell.dark .label { color: var(--dark-text-quiet); }
+
+  /* puck variants */
+  .puck-icon-sm { width: 32px; height: 32px; background: var(--ink); border-radius: 8px; position: relative; }
+  .puck-icon-sm::after { content:''; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 11px; height: 11px; background: var(--ha-blue); border-radius: 50%; }
+
+  .puck-icon-md { width: 56px; height: 56px; background: var(--ink); border-radius: 14px; position: relative; }
+  .puck-icon-md::after { content:''; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 20px; height: 20px; background: var(--ha-blue); border-radius: 50%; }
+
+  .puck-icon-lg { width: 96px; height: 96px; background: var(--ink); border-radius: 22px; position: relative; }
+  .puck-icon-lg::after { content:''; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 34px; height: 34px; background: var(--ha-blue); border-radius: 50%; }
+
+  .puck-light { background: var(--dark-text) !important; }
+
+  .puck-active { position: relative; }
+  .puck-active::before {
+    content: '';
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    width: 180px; height: 180px;
+    border: 1px solid var(--ha-blue);
+    border-radius: 50%;
+    opacity: 0.2;
+  }
+  .puck-active::after { /* inner blue dot still centred, override */ }
+
+  /* ---- DOS AND DON'TS ---- */
+  .rule-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-bottom: 16px;
+  }
+  .rule-card {
+    border: 0.5px solid var(--rule);
+    border-radius: 12px;
+    padding: 20px 22px;
+    background: rgba(255,255,255,0.5);
+  }
+  .rule-card.do { border-left: 2px solid var(--ha-blue); border-radius: 12px; }
+  .rule-card.dont { border-left: 2px solid #c4302b; border-radius: 12px; }
+  .rule-card .tag { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 1.5px; color: var(--type-muted); margin-bottom: 8px; }
+  .rule-card.do .tag { color: var(--ha-blue); }
+  .rule-card.dont .tag { color: #c4302b; }
+  .rule-card p { font-size: 13px; color: var(--ink); line-height: 1.5; }
+
+  /* ---- VOICE EXAMPLES ---- */
+  .voice {
+    border: 0.5px solid var(--rule);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 12px;
+    background: rgba(255,255,255,0.5);
+  }
+  .voice .quote {
+    font-family: 'Instrument Serif', serif;
+    font-size: 22px;
+    line-height: 1.25;
+    letter-spacing: -0.3px;
+    color: var(--ink);
+    margin-bottom: 8px;
+  }
+  .voice .quote em { font-style: italic; }
+  .voice .meta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    color: var(--type-muted);
+  }
+
+  /* ---- ANATOMY ---- */
+  .anatomy {
+    background: var(--paper-warm);
+    border-radius: 12px;
+    padding: 56px 32px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    min-height: 320px;
+  }
+  .anatomy-puck {
+    width: 200px;
+    height: 200px;
+    background: var(--ink);
+    border-radius: 40px;
+    position: relative;
+  }
+  .anatomy-puck::after {
+    content: '';
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    width: 70px; height: 70px;
+    background: var(--ha-blue);
+    border-radius: 50%;
+  }
+  .anatomy-label {
+    position: absolute;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    color: var(--type-muted);
+  }
+  .anatomy-label::before {
+    content: '';
+    position: absolute;
+    border-top: 0.5px dashed var(--type-muted);
+  }
+  .label-body {
+    top: 50%;
+    left: calc(50% + 130px);
+    transform: translateY(-50%);
+  }
+  .label-body::before {
+    width: 40px;
+    left: -48px;
+    top: 50%;
+  }
+  .label-voice {
+    top: 50%;
+    right: calc(50% + 130px);
+    transform: translateY(-50%);
+    text-align: right;
+  }
+  .label-voice::before {
+    width: 40px;
+    right: -48px;
+    top: 50%;
+  }
+  .label-radius {
+    bottom: calc(50% + 130px);
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  /* ---- FOOTER ---- */
+  footer {
+    padding: 60px 32px 80px;
+    border-top: 0.5px solid var(--rule);
+    text-align: center;
+  }
+  footer p { font-size: 13px; color: var(--type-muted); margin-bottom: 8px; }
+  footer .mono { font-size: 11px; color: var(--type-quiet); }
+
+  /* ---- TONE TILE (cream on dark) ---- */
+  .tone-tile {
+    background: rgba(255,255,255,0.04);
+    border: 0.5px solid var(--dark-rule);
+    border-radius: 12px;
+    padding: 24px;
+  }
+  .tone-tile .tile-label { color: var(--dark-text-quiet); }
+  .tone-tile h3 { color: var(--dark-text); }
+  .tone-tile p { color: var(--dark-text-muted); }
+
+  /* ---- LIVE DEMO PUCK ---- */
+  .demo-puck-wrap {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 40px 0;
+    position: relative;
+    min-height: 320px;
+  }
+  .demo-puck {
+    width: 180px;
+    height: 180px;
+    background: var(--dark-card);
+    border-radius: 36px;
+    position: relative;
+    z-index: 2;
+  }
+  .demo-puck::after {
+    content: '';
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    width: 64px; height: 64px;
+    background: var(--ha-blue);
+    border-radius: 50%;
+  }
+  .ring {
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    border: 1px solid var(--ha-blue);
+    border-radius: 50%;
+    z-index: 1;
+  }
+  .ring-1 { width: 240px; height: 240px; opacity: 0.3; }
+  .ring-2 { width: 320px; height: 320px; opacity: 0.18; }
+  .ring-3 { width: 400px; height: 400px; opacity: 0.08; }
+
+</style>
+</head>
+<body>
+
+<!-- ---- NAV ---- -->
+<nav class="nav">
+  <div class="wordmark">
+    <div class="glyph"></div>
+    <span class="wm-text">Voix</span>
+    <span class="pronounce">/vwa/</span>
+  </div>
+  <div class="nav-links">
+    <a href="#system">System</a>
+    <a href="#colour">Colour</a>
+    <a href="#type">Type</a>
+    <a href="#shape">Shape</a>
+    <a href="#voice">Voice</a>
+    <span class="nav-meta">BRAND GUIDE · v1.0</span>
+  </div>
+</nav>
+
+<!-- ---- HERO ---- -->
+<header class="hero">
+  <div class="hero-headline">
+    <h1>The Voix<br><em>brand guide.</em></h1>
+  </div>
+  <div class="hero-sub">
+    <p>A real brain for the puck.</p>
+    <div class="ctas">
+      <a href="#system" class="btn btn-primary">Read the guide</a>
+      <a href="#voice" class="btn btn-secondary">Brand voice</a>
+    </div>
+  </div>
+  <div class="puck-hero"></div>
+</header>
+
+<!-- ---- SECTION 1 · WHAT VOIX IS ---- -->
+<section class="first" id="what">
+  <div class="section-head">
+    <span class="section-num">N° 01 · WHAT VOIX IS</span>
+    <h2>A voice interface for Home Assistant <em>that actually has a conversation.</em></h2>
+    <p class="intro">Voix turns the Home Assistant Voice PE into something worth talking to. Real-time conversation, optional dictation, modes for different moods. Locally hosted. Nothing leaves the network except the LLM call.</p>
+  </div>
+
+  <div class="section-body">
+    <div class="grid-3">
+      <div class="tile">
+        <div class="tile-label">01 · WHY</div>
+        <h3>The puck deserved better.</h3>
+        <p>Beautiful hardware shipped with a polite default brain. Voix is the upgrade — the conversation the device was always capable of.</p>
+      </div>
+      <div class="tile">
+        <div class="tile-label">02 · WHO FOR</div>
+        <h3>People who own the network.</h3>
+        <p>Homelab tinkerers. Home Assistant owners. The kind of person who reads release notes for fun and wires their house themselves.</p>
+      </div>
+      <div class="tile">
+        <div class="tile-label">03 · WHAT MAKES IT VOIX</div>
+        <h3>Confident, not clever.</h3>
+        <p>It listens, answers, remembers. It doesn't preface. It doesn't apologise. It doesn't pretend to be a person — but it talks like one.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ---- SECTION 2 · THE SYSTEM (dark) ---- -->
+<section class="dark" id="system">
+  <div class="section-head">
+    <span class="section-num">N° 02 · THE SYSTEM</span>
+    <h2>Two registers. <em>One brand.</em></h2>
+    <p class="intro">The brand lives in the dialogue between two surfaces: cream paper for thought, dark for state. Same wordmark, same shape language, same HA blue — but doing different jobs in each.</p>
+  </div>
+
+  <div class="section-body">
+    <div class="grid-2">
+      <div class="tone-tile">
+        <div class="tile-label">PAPER · CREAM</div>
+        <h3 style="font-family: 'Instrument Serif', serif; font-size: 28px; line-height: 1.1; margin-bottom: 8px;">Restrained. Considered.</h3>
+        <p>Cream paper (#FAF8F3), ink black type, HA blue used only as a punchline accent on a single word or phrase. This is where ideas live: marketing copy, headlines, the README, anything still.</p>
+      </div>
+      <div class="tone-tile">
+        <div class="tile-label">DARK · LIVE</div>
+        <h3 style="font-family: 'Instrument Serif', serif; font-size: 28px; line-height: 1.1; margin-bottom: 8px; color: var(--ha-blue);"><em>Active. Listening.</em></h3>
+        <p>Ink black ground (#18181B), pale type, HA blue carrying state. The blue earns its place — when you see it, Voix is doing something. Use for the product itself, status, anything live.</p>
+      </div>
+    </div>
+
+    <div class="demo-puck-wrap" style="margin-top: 56px;">
+      <div class="ring ring-3"></div>
+      <div class="ring ring-2"></div>
+      <div class="ring ring-1"></div>
+      <div class="demo-puck"></div>
+    </div>
+
+    <p style="text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--dark-text-quiet); letter-spacing: 2px; margin-top: 24px;">PUCK · ACTIVE · RINGS ARE THE VOICE</p>
+  </div>
+</section>
+
+<!-- ---- SECTION 3 · COLOUR ---- -->
+<section id="colour">
+  <div class="section-head">
+    <span class="section-num">N° 03 · COLOUR</span>
+    <h2>Three colours. <em>That's all.</em></h2>
+    <p class="intro">A restrained palette is the system. The discipline is what makes it work — adding a fourth colour breaks the contract between paper and dark.</p>
+  </div>
+
+  <div class="section-body">
+    <div class="grid-4">
+      <div class="swatch">
+        <div class="swatch-chip" style="background: #FAF8F3; border: 0.5px solid var(--rule);"></div>
+        <div class="swatch-meta">
+          <strong>Paper</strong>
+          <span>#FAF8F3</span>
+        </div>
+        <p>Hero canvas. Cream, warm, not white. Anything cooler reads as SaaS.</p>
+      </div>
+      <div class="swatch">
+        <div class="swatch-chip" style="background: #18181B;"></div>
+        <div class="swatch-meta">
+          <strong>Ink</strong>
+          <span>#18181B</span>
+        </div>
+        <p>Primary type, dark surfaces, the puck body. Never pure black.</p>
+      </div>
+      <div class="swatch">
+        <div class="swatch-chip" style="background: #03A9F4;"></div>
+        <div class="swatch-meta">
+          <strong>HA blue</strong>
+          <span>#03A9F4</span>
+        </div>
+        <p>The accent. Borrowed from Home Assistant on purpose — to signal we live in that ecosystem without copying it.</p>
+      </div>
+      <div class="swatch">
+        <div class="swatch-chip" style="background: #F4F0E6; border: 0.5px solid var(--rule);"></div>
+        <div class="swatch-meta">
+          <strong>Paper warm</strong>
+          <span>#F4F0E6</span>
+        </div>
+        <p>Secondary surface. Use sparingly for cards and depth within the cream world.</p>
+      </div>
+    </div>
+
+    <div class="rule-row" style="margin-top: 48px;">
+      <div class="rule-card do">
+        <div class="tag">DO</div>
+        <p>Let the blue be rare. One word per headline. One state per screen. Restraint is what makes it land when it does appear.</p>
+      </div>
+      <div class="rule-card dont">
+        <div class="tag">DON'T</div>
+        <p>Add a second accent colour. No amber, no coral, no purple gradients. The discipline of three colours is the brand.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ---- SECTION 4 · TYPE ---- -->
+<section id="type">
+  <div class="section-head">
+    <span class="section-num">N° 04 · TYPE</span>
+    <h2>Instrument Serif. Hanken Grotesk. <em>JetBrains Mono.</em></h2>
+    <p class="intro">A serif for the wordmark and display. A grotesque for the body. A monospace for system text. All three are free, all three have character, none are on the AI-slop default list.</p>
+  </div>
+
+  <div class="section-body" style="display: flex; flex-direction: column; gap: 20px;">
+
+    <div class="specimen">
+      <div class="specimen-head">
+        <strong>Instrument Serif — display</strong>
+        <span>Google Fonts · Free</span>
+      </div>
+      <div class="specimen-body">
+        <div class="spec-display">A real brain<br><em>for the puck.</em></div>
+        <p class="spec-mono">USED FOR · WORDMARK · HEADLINES · DISPLAY MOMENTS</p>
+      </div>
+    </div>
+
+    <div class="specimen">
+      <div class="specimen-head">
+        <strong>Hanken Grotesk — body</strong>
+        <span>Google Fonts · Free</span>
+      </div>
+      <div class="specimen-body">
+        <p class="spec-body-text">Voix turns the Home Assistant Voice PE into something worth talking to — proper real-time conversation, optional dictation, modes for whatever mood you're in. Nothing leaves your network except the LLM call.</p>
+        <p class="spec-mono">USED FOR · BODY COPY · UI · LABELS · CTAS</p>
+      </div>
+    </div>
+
+    <div class="specimen">
+      <div class="specimen-head">
+        <strong>JetBrains Mono — system</strong>
+        <span>Google Fonts · Free</span>
+      </div>
+      <div class="specimen-body">
+        <p style="font-family: 'JetBrains Mono', monospace; font-size: 15px; line-height: 1.5; color: var(--ink); margin-bottom: 16px;">
+          $ voix --listen<br>
+          listening on .local<br>
+          → "lock the back door and dim the kitchen"<br>
+          ✓ done. anything else?
+        </p>
+        <p class="spec-mono">USED FOR · PRONUNCIATION GLYPH · CODE · STATUS · ANNOTATIONS</p>
+      </div>
+    </div>
+
+    <div class="rule-row" style="margin-top: 32px;">
+      <div class="rule-card do">
+        <div class="tag">DO</div>
+        <p>Use Instrument Serif italic for the punchline word — "for the puck," "it talks back." Two of these per headline at most.</p>
+      </div>
+      <div class="rule-card dont">
+        <div class="tag">DON'T</div>
+        <p>Reach for Inter, Geist, Söhne, Manrope, or Space Grotesk because they're "safer." They are slop. They are why everything looks the same.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ---- SECTION 5 · THE SHAPE (dark) ---- -->
+<section class="dark" id="shape">
+  <div class="section-head">
+    <span class="section-num">N° 05 · THE SHAPE</span>
+    <h2>One puck. <em>Many sizes.</em></h2>
+    <p class="intro">A rounded square with a centred circle. The body is the squircle, the voice is the circle. They scale together, in fixed proportion, from favicon to hero. They are never separated.</p>
+  </div>
+
+  <div class="section-body">
+    <div class="glyph-grid">
+      <div class="glyph-cell dark">
+        <div class="puck-icon-sm puck-light"></div>
+        <span class="label">FAVICON · 32px</span>
+      </div>
+      <div class="glyph-cell dark">
+        <div class="puck-icon-md puck-light"></div>
+        <span class="label">WORDMARK · 56px</span>
+      </div>
+      <div class="glyph-cell dark">
+        <div class="puck-icon-lg puck-light"></div>
+        <span class="label">FEATURE · 96px</span>
+      </div>
+      <div class="glyph-cell dark">
+        <div style="width: 140px; height: 140px; background: var(--dark-text); border-radius: 32px; position: relative;">
+          <div style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 50px; height: 50px; background: var(--ha-blue); border-radius: 50%;"></div>
+        </div>
+        <span class="label">HERO · 140px+</span>
+      </div>
+    </div>
+
+    <div style="margin-top: 56px; background: rgba(255,255,255,0.03); border-radius: 12px; padding: 48px 32px;">
+      <p style="text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--dark-text-quiet); letter-spacing: 2px; margin-bottom: 32px;">PROPORTIONS · LOCKED</p>
+      <div style="display: flex; justify-content: center; align-items: center; gap: 80px; flex-wrap: wrap;">
+        <div style="text-align: center;">
+          <div style="width: 160px; height: 160px; background: var(--dark-text); border-radius: 36px; position: relative; margin: 0 auto 16px;">
+            <div style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 56px; height: 56px; background: var(--ha-blue); border-radius: 50%;"></div>
+          </div>
+          <p style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--dark-text-quiet); letter-spacing: 1.5px;">RADIUS · 22% OF SIDE</p>
+        </div>
+        <div style="text-align: center;">
+          <div style="position: relative; width: 200px; margin: 0 auto;">
+            <svg width="200" height="160" viewBox="0 0 200 160" style="display: block;">
+              <line x1="20" y1="80" x2="180" y2="80" stroke="#03A9F4" stroke-width="1" stroke-dasharray="3 3" opacity="0.5"/>
+              <line x1="20" y1="80" x2="180" y2="80" stroke="#03A9F4" stroke-width="0" />
+              <text x="100" y="70" text-anchor="middle" fill="#a1a1aa" font-family="JetBrains Mono" font-size="10" letter-spacing="1.5">100</text>
+              <line x1="60" y1="100" x2="140" y2="100" stroke="#03A9F4" stroke-width="1" stroke-dasharray="3 3" opacity="0.8"/>
+              <text x="100" y="120" text-anchor="middle" fill="#03A9F4" font-family="JetBrains Mono" font-size="10" letter-spacing="1.5">35</text>
+            </svg>
+          </div>
+          <p style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--dark-text-quiet); letter-spacing: 1.5px;">CIRCLE · 35% OF BODY</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="rule-row" style="margin-top: 56px;">
+      <div class="rule-card do" style="background: rgba(255,255,255,0.04); border-color: var(--dark-rule); border-left-color: var(--ha-blue);">
+        <div class="tag">DO</div>
+        <p style="color: var(--dark-text);">Centre the circle. Always. Geometrically dead-centre, not optically. The puck is a symmetrical object.</p>
+      </div>
+      <div class="rule-card dont" style="background: rgba(255,255,255,0.04); border-color: var(--dark-rule); border-left-color: #c4302b;">
+        <div class="tag">DON'T</div>
+        <p style="color: var(--dark-text);">Don't change the proportions. Don't rotate it. Don't add a face. Don't put it next to other logos in a "as seen on" row.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ---- SECTION 6 · LAYOUT ---- -->
+<section id="layout">
+  <div class="section-head">
+    <span class="section-num">N° 06 · LAYOUT</span>
+    <h2>The puck sits at the bottom. <em>The page is the room.</em></h2>
+    <p class="intro">On hero surfaces the puck is a real-sized object at the bottom of the viewport, partly cropped. The headline floats above it. The composition is the metaphor — small device, big voice.</p>
+  </div>
+
+  <div class="section-body">
+    <!-- mini layout demo -->
+    <div style="background: var(--paper-warm); border-radius: 12px; padding: 0; position: relative; overflow: hidden; aspect-ratio: 16/10; max-width: 900px; margin: 0 auto;">
+      <div style="position: absolute; top: 0; left: 0; right: 0; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; z-index: 4;">
+        <div class="wordmark">
+          <div class="glyph"></div>
+          <span class="wm-text" style="font-size: 17px;">Voix</span>
+          <span class="pronounce" style="font-size: 10px;">/vwa/</span>
+        </div>
+        <span class="nav-meta">N° 01 · LIVE</span>
+      </div>
+      <div style="position: absolute; left: 50%; top: 22%; transform: translateX(-50%); text-align: center; z-index: 3; width: 90%;">
+        <h1 class="serif" style="font-size: 48px; font-weight: 400; margin: 0; line-height: 0.94; letter-spacing: -1.3px; color: var(--ink);">A real brain<br><em>for the puck.</em></h1>
+      </div>
+      <div style="position: absolute; left: 50%; top: 64%; transform: translateX(-50%); text-align: center; z-index: 3; width: 100%;">
+        <p style="font-size: 13px; color: var(--type-body); margin-bottom: 14px;">Real-time voice for Home Assistant. Locally hosted. Bring your own brain.</p>
+        <div style="display: inline-flex; gap: 10px;">
+          <span style="background: var(--ink); color: var(--paper); padding: 9px 16px; font-size: 12px; font-weight: 500; border-radius: 6px;">Install Voix</span>
+          <span style="border: 0.5px solid var(--ink); color: var(--ink); padding: 9px 16px; font-size: 12px; font-weight: 500; border-radius: 6px;">Read the docs</span>
+        </div>
+      </div>
+      <div style="position: absolute; left: 50%; bottom: -110px; transform: translateX(-50%); width: 220px; height: 220px; background: var(--ink); border-radius: 44px; z-index: 1;">
+        <div style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 76px; height: 76px; background: var(--ha-blue); border-radius: 50%;"></div>
+      </div>
+    </div>
+
+    <div class="rule-row" style="margin-top: 48px;">
+      <div class="rule-card do">
+        <div class="tag">DO</div>
+        <p>Let the puck's top arc nearly touch the subhead. The collision is the joke — the page describes the thing, the thing arrives.</p>
+      </div>
+      <div class="rule-card dont">
+        <div class="tag">DON'T</div>
+        <p>Don't centre the puck in the viewport like a logo. Don't shrink it to a tiny corner icon. It sits at the bottom, real-sized, cropped.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ---- SECTION 7 · VOICE (dark) ---- -->
+<section class="dark" id="voice">
+  <div class="section-head">
+    <span class="section-num">N° 07 · VOICE</span>
+    <h2>Confident. Specific. <em>Slightly knowing.</em></h2>
+    <p class="intro">The voice has opinions. It's not impressed with itself, but it's not apologising for itself either. Short sentences. Concrete nouns. The cheek is in the timing, not the volume.</p>
+  </div>
+
+  <div class="section-body" style="display: flex; flex-direction: column; gap: 12px;">
+
+    <div class="voice" style="background: rgba(255,255,255,0.04); border-color: var(--dark-rule);">
+      <p class="quote" style="color: var(--dark-text);">A real brain <em style="color: var(--ha-blue);">for the puck.</em></p>
+      <p class="meta" style="color: var(--dark-text-quiet);">HEADLINE · SECTION 01</p>
+    </div>
+
+    <div class="voice" style="background: rgba(255,255,255,0.04); border-color: var(--dark-rule);">
+      <p class="quote" style="color: var(--dark-text);">Talk to it. <em style="color: var(--ha-blue);">It talks back.</em></p>
+      <p class="meta" style="color: var(--dark-text-quiet);">HEADLINE · SECTION 02</p>
+    </div>
+
+    <div class="voice" style="background: rgba(255,255,255,0.04); border-color: var(--dark-rule);">
+      <p class="quote" style="color: var(--dark-text); font-family: 'Hanken Grotesk', sans-serif; font-size: 16px; font-weight: 400; line-height: 1.5;">Home Assistant Voice PE shipped beautiful hardware. The default brain was just OK. Voix is the upgrade.</p>
+      <p class="meta" style="color: var(--dark-text-quiet);">BODY · WHY IT EXISTS</p>
+    </div>
+
+    <div class="voice" style="background: rgba(255,255,255,0.04); border-color: var(--dark-rule);">
+      <p class="quote" style="color: var(--dark-text); font-family: 'Hanken Grotesk', sans-serif; font-size: 16px; font-weight: 400; line-height: 1.5;">Your puck running an actual brain. Locally. Quietly. With opinions.</p>
+      <p class="meta" style="color: var(--dark-text-quiet);">BODY · WHAT IT IS</p>
+    </div>
+
+    <div class="rule-row" style="margin-top: 32px;">
+      <div class="rule-card do" style="background: rgba(255,255,255,0.04); border-color: var(--dark-rule); border-left-color: var(--ha-blue);">
+        <div class="tag">DO</div>
+        <p style="color: var(--dark-text);">Concrete nouns. "Pulled pork. Six hours in." Tell people exactly what's happening.</p>
+      </div>
+      <div class="rule-card dont" style="background: rgba(255,255,255,0.04); border-color: var(--dark-rule); border-left-color: #c4302b;">
+        <div class="tag">DON'T</div>
+        <p style="color: var(--dark-text);">No "harness the power of." No "seamlessly." No "intelligent" or "smart." No exclamation marks. Ever.</p>
+      </div>
+    </div>
+
+    <div class="rule-row">
+      <div class="rule-card do" style="background: rgba(255,255,255,0.04); border-color: var(--dark-rule); border-left-color: var(--ha-blue);">
+        <div class="tag">DO</div>
+        <p style="color: var(--dark-text);">Take the piss out of itself before anyone else does. "It came with a brain the size of a peanut. We swapped it."</p>
+      </div>
+      <div class="rule-card dont" style="background: rgba(255,255,255,0.04); border-color: var(--dark-rule); border-left-color: #c4302b;">
+        <div class="tag">DON'T</div>
+        <p style="color: var(--dark-text);">Punch down at the user. No "finally a voice assistant that doesn't suck." Cheek is at the category, not the person.</p>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ---- SECTION 8 · WORDMARK + GLYPH ---- -->
+<section id="wordmark">
+  <div class="section-head">
+    <span class="section-num">N° 08 · WORDMARK</span>
+    <h2>The glyph. The name. <em>The pronunciation.</em></h2>
+    <p class="intro">Three elements, always in this order, always together. The pronunciation glyph <code style="font-family: 'JetBrains Mono', monospace; font-size: 13px; background: rgba(0,0,0,0.05); padding: 2px 6px; border-radius: 3px;">/vwa/</code> is part of the wordmark. It tells people how to say it and signals that this is French, on purpose.</p>
+  </div>
+
+  <div class="section-body">
+    <div class="grid-2">
+      <div class="anatomy">
+        <div class="anatomy-puck"></div>
+        <div class="anatomy-label label-body">SQUIRCLE · BODY</div>
+        <div class="anatomy-label label-voice">CIRCLE · VOICE</div>
+      </div>
+      <div class="anatomy" style="flex-direction: column; gap: 32px;">
+        <div style="display: flex; align-items: baseline; gap: 14px;">
+          <div style="width: 36px; height: 36px; background: var(--ink); border-radius: 9px; align-self: center; position: relative;">
+            <div style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 13px; height: 13px; background: var(--ha-blue); border-radius: 50%;"></div>
+          </div>
+          <span style="font-family: 'Instrument Serif', serif; font-size: 44px; color: var(--ink); letter-spacing: -0.5px;">Voix</span>
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 14px; color: var(--type-muted);">/vwa/</span>
+        </div>
+        <p style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--type-muted); letter-spacing: 2px;">GLYPH · WORDMARK · PRONUNCIATION</p>
+      </div>
+    </div>
+
+    <div class="rule-row" style="margin-top: 48px;">
+      <div class="rule-card do">
+        <div class="tag">DO</div>
+        <p>Always include the pronunciation glyph next to the wordmark in primary use. It's not optional.</p>
+      </div>
+      <div class="rule-card dont">
+        <div class="tag">DON'T</div>
+        <p>Don't write "voix (pronounced 'vwa')" in body copy. The glyph does that work, once, in the wordmark.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ---- SECTION 9 · MISTAKES TO AVOID ---- -->
+<section>
+  <div class="section-head">
+    <span class="section-num">N° 09 · NEVER</span>
+    <h2>The things <em>that would kill it.</em></h2>
+    <p class="intro">Slop is the enemy. These are the moves that look fine in isolation and ruin the brand in aggregate. They are easier to do than the right thing, which is why the rule has to be explicit.</p>
+  </div>
+
+  <div class="section-body">
+    <div class="grid-2" style="gap: 12px;">
+      <div class="rule-card dont">
+        <div class="tag">NEVER</div>
+        <p><strong style="font-weight: 500;">Em dashes in marketing copy.</strong> Use hyphens or full stops. Em dashes are an AI tell.</p>
+      </div>
+      <div class="rule-card dont">
+        <div class="tag">NEVER</div>
+        <p><strong style="font-weight: 500;">Purple gradients.</strong> Or any gradient. The palette is flat. Three solid colours, full stop.</p>
+      </div>
+      <div class="rule-card dont">
+        <div class="tag">NEVER</div>
+        <p><strong style="font-weight: 500;">Inter, Geist, Söhne, Manrope, Space Grotesk.</strong> They're the AI typography defaults. The whole point of choosing Instrument + Hanken is to not be one of those sites.</p>
+      </div>
+      <div class="rule-card dont">
+        <div class="tag">NEVER</div>
+        <p><strong style="font-weight: 500;">Nested cards inside cards.</strong> One layer of containment is plenty. Cardocalypse is over.</p>
+      </div>
+      <div class="rule-card dont">
+        <div class="tag">NEVER</div>
+        <p><strong style="font-weight: 500;">Big rounded outline icons above headings.</strong> The puck is the visual anchor, not a Lucide icon library.</p>
+      </div>
+      <div class="rule-card dont">
+        <div class="tag">NEVER</div>
+        <p><strong style="font-weight: 500;">Glassmorphism, neon glow, monospace-as-vibe.</strong> The mono is for system text, not for atmosphere.</p>
+      </div>
+      <div class="rule-card dont">
+        <div class="tag">NEVER</div>
+        <p><strong style="font-weight: 500;">"Harness," "seamlessly," "intelligent," "powerful," "robust."</strong> The copy is specific or it's nothing.</p>
+      </div>
+      <div class="rule-card dont">
+        <div class="tag">NEVER</div>
+        <p><strong style="font-weight: 500;">Selling cleverness.</strong> "Deal with it" tips into smug. The brand is confident, not aggressive.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ---- FOOTER ---- -->
+<footer>
+  <div class="wordmark" style="justify-content: center; margin-bottom: 24px;">
+    <div class="glyph"></div>
+    <span class="wm-text">Voix</span>
+    <span class="pronounce">/vwa/</span>
+  </div>
+  <p>A real brain for the puck.</p>
+  <p class="mono">BRAND GUIDE · v1.0 · MAY 2026</p>
+</footer>
+
+</body>
+</html>

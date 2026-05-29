@@ -17,5 +17,135 @@
     "abort": {
       "already_configured": "voix is already configured."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "voix configuration",
+        "description": "Edit defaults and modes. Per-device settings (which mode is currently active, wake words) live as entities on each Voice PE device.",
+        "menu_options": {
+          "defaults": "Defaults (API keys, default mode, idle timeout)",
+          "modes": "Modes (each one has its own prompt, voice, STT provider, color, and context)"
+        }
+      },
+      "defaults": {
+        "title": "Defaults",
+        "description": "Settings that apply when a mode doesn't override them. OpenAI key is required for realtime conversations and for streaming dictation transcription.",
+        "data": {
+          "openai_api_key": "OpenAI API key",
+          "default_mode": "Default mode for new devices",
+          "idle_timeout_s": "Idle timeout (seconds without activity → session closes)"
+        }
+      },
+      "modes": {
+        "title": "Modes",
+        "description": "Pick a mode to edit, or add a new one. Each mode bundles a behavior type (realtime / dictation), a system prompt, voice, model, and LED color.",
+        "data": {
+          "mode_id": "Mode"
+        }
+      },
+      "mode_form": {
+        "title": "Edit mode: {name}",
+        "description": "Each mode defines how the voix wake word behaves. Realtime modes hold a live OpenAI conversation; dictation modes transcribe speech to a file. Each mode has its own prompt + context, so \"Work\" and \"Home\" can be totally separate.",
+        "data": {
+          "name": "Display name",
+          "type": "Behavior type (realtime / dictation)",
+          "prompt": "System prompt (the model's instructions; realtime only)",
+          "voice": "Realtime voice (leave blank to use the default)",
+          "model": "Realtime model (leave blank to use the default)",
+          "stt_provider": "Dictation: STT provider",
+          "stt_model": "Dictation: STT model (provider-specific)",
+          "include_entities": "Always-include entities (model sees their state in every prompt)",
+          "include_persons": "Always-include people (pretty-rendered: 'Tom is home')",
+          "addendum": "Addendum (freeform text appended to the system prompt)",
+          "color_hex": "LED idle color (hex like #FF33CC)",
+          "brightness": "LED brightness (0.0–1.0)",
+          "effect": "LED effect (None / Pulse / etc.)",
+          "delete": "Delete this mode"
+        }
+      }
+    },
+    "abort": {
+      "cannot_delete_last": "Can't delete the last remaining mode. Add another one first."
+    },
+    "error": {
+      "invalid": "One or more fields are invalid. Check the values and try again."
+    }
+  },
+  "services": {
+    "cycle_mode": {
+      "name": "Cycle mode",
+      "description": "Advance the voix mode select to the next mode in the catalog. Wraps at the end.",
+      "fields": {
+        "device_id": {
+          "name": "Device ID",
+          "description": "Target a specific Voice PE if you have multiple. Omit for single-device installs."
+        }
+      }
+    },
+    "set_mode": {
+      "name": "Set mode",
+      "description": "Directly set the voix mode for a device.",
+      "fields": {
+        "mode": {
+          "name": "Mode ID",
+          "description": "ID of a mode from the catalog (e.g. 'default-realtime')."
+        },
+        "device_id": {
+          "name": "Device ID",
+          "description": "Target a specific Voice PE. Omit for single-device installs."
+        }
+      }
+    },
+    "create_mode": {
+      "name": "Create mode",
+      "description": "Add a new mode to the catalog. Mostly used by the Tauri app.",
+      "fields": {
+        "name": {"name": "Name", "description": "Display name for the mode."},
+        "type": {"name": "Type", "description": "Behavior type: realtime or dictation."},
+        "prompt": {"name": "Prompt", "description": "System prompt for the model."},
+        "voice": {"name": "Voice", "description": "OpenAI voice name (optional)."},
+        "model": {"name": "Model", "description": "OpenAI model name (optional)."},
+        "color": {"name": "Color", "description": "LED color as [R, G, B] (0–255 each)."},
+        "brightness": {"name": "Brightness", "description": "LED brightness (0.0–1.0)."},
+        "effect": {"name": "Effect", "description": "LED effect name."}
+      }
+    },
+    "update_mode": {
+      "name": "Update mode",
+      "description": "Modify an existing mode in the catalog.",
+      "fields": {
+        "mode_id": {"name": "Mode ID", "description": "ID of the mode to update."},
+        "name": {"name": "Name", "description": "Display name."},
+        "type": {"name": "Type", "description": "Behavior type."},
+        "prompt": {"name": "Prompt", "description": "System prompt."},
+        "voice": {"name": "Voice", "description": "OpenAI voice name."},
+        "model": {"name": "Model", "description": "OpenAI model name."},
+        "color": {"name": "Color", "description": "LED color [R, G, B]."},
+        "brightness": {"name": "Brightness", "description": "LED brightness."},
+        "effect": {"name": "Effect", "description": "LED effect name."}
+      }
+    },
+    "delete_mode": {
+      "name": "Delete mode",
+      "description": "Remove a mode from the catalog.",
+      "fields": {
+        "mode_id": {"name": "Mode ID", "description": "ID of the mode to delete."}
+      }
+    },
+    "get_transcript": {
+      "name": "Get transcript",
+      "description": "Read the contents of a transcript file. Pass the filepath from a transcript sensor's state.",
+      "fields": {
+        "filepath": {
+          "name": "Filepath",
+          "description": "Absolute path under /config/voix/transcripts/."
+        }
+      }
+    },
+    "list_modes": {
+      "name": "List modes",
+      "description": "Return the full mode catalog with prompt/voice/model/color/brightness/effect — for the desktop app's editor."
+    }
   }
 }

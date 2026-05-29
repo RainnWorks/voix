@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voix · Desktop App Brand Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Hanken+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #faf8f3;
+    --ink: #18181b;
+    --ha-blue: #03A9F4;
+    --type-body: #4a4640;
+    --type-muted: #8b8578;
+    --rule: #d4d0c4;
+    --dark-bg: #18181b;
+    --dark-card: #2a2a2e;
+    --dark-text: #f4f4f5;
+    --dark-text-muted: #a1a1aa;
+    --dark-text-quiet: #71717a;
+    --dark-rule: #3a3a3e;
+    --sys-blue-light: #007AFF;
+    --sys-blue-dark: #0A84FF;
+    --m-ha: #03A9F4;
+    --m-amber: #F59E0B;
+    --m-violet: #8B5CF6;
+    --m-green: #10B981;
+    --m-coral: #F97316;
+    --m-magenta: #EC4899;
+    --m-sky: #7DD3FC;
+    --m-lemon: #FDE047;
+    --m-lavender: #C4B5FD;
+    --m-mint: #6EE7B7;
+    --m-peach: #FDBA74;
+    --m-slate: #94A3B8;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Hanken Grotesk', sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.55;
+  }
+  .serif { font-family: 'Instrument Serif', serif; font-weight: 400; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+
+  .nav {
+    position: sticky; top: 0; z-index: 50;
+    background: var(--paper);
+    border-bottom: 0.5px solid var(--rule);
+    padding: 18px 32px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .wordmark { display: flex; align-items: baseline; gap: 8px; }
+  .glyph { width: 22px; height: 22px; background: var(--ink); border-radius: 6px; align-self: center; position: relative; }
+  .glyph::after { content: ''; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 9px; height: 9px; background: var(--ha-blue); border-radius: 50%; }
+  .wm-text { font-family: 'Instrument Serif', serif; font-size: 22px; letter-spacing: -0.3px; color: var(--ink); }
+  .pronounce { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--type-muted); }
+  .nav-meta { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--type-muted); letter-spacing: 1.5px; }
+  .nav-links { display: flex; gap: 28px; align-items: center; }
+  .nav-links a { color: var(--type-body); text-decoration: none; font-size: 13px; }
+
+  .hero { background: var(--paper); padding: 100px 32px 60px; text-align: center; }
+  .hero-tag { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 2px; color: var(--type-muted); margin-bottom: 24px; }
+  .hero h1 { font-family: 'Instrument Serif', serif; font-weight: 400; font-size: clamp(48px, 7vw, 88px); line-height: 0.96; letter-spacing: -0.04em; margin-bottom: 24px; }
+  .hero h1 em { font-style: italic; }
+  .hero-sub { font-size: 16px; color: var(--type-body); max-width: 560px; margin: 0 auto; line-height: 1.55; }
+
+  section { padding: 100px 32px; border-top: 0.5px solid var(--rule); }
+  section.first { border-top: none; padding-top: 60px; }
+  .section-head { max-width: 1136px; margin: 0 auto 56px; display: flex; align-items: baseline; justify-content: space-between; gap: 32px; flex-wrap: wrap; }
+  .section-num { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--type-muted); letter-spacing: 2px; }
+  .section-head h2 { font-family: 'Instrument Serif', serif; font-weight: 400; font-size: clamp(36px, 4.5vw, 56px); line-height: 0.98; letter-spacing: -0.03em; flex: 1; min-width: 280px; }
+  .section-head em { font-style: italic; }
+  .section-head .intro { max-width: 360px; font-size: 14px; color: var(--type-body); line-height: 1.55; }
+  .section-body { max-width: 1136px; margin: 0 auto; }
+  section.dark { background: var(--dark-bg); color: var(--dark-text); border-top: none; position: relative; }
+  section.dark::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: repeating-linear-gradient(90deg, var(--dark-bg) 0 60px, var(--ha-blue) 60px 62px, var(--dark-bg) 62px 120px); }
+  section.dark .section-num { color: var(--ha-blue); }
+  section.dark .section-head .intro { color: var(--dark-text-muted); }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  @media (max-width: 800px) { .grid-2 { grid-template-columns: 1fr; } }
+  .tone-tile { background: rgba(255,255,255,0.04); border: 0.5px solid var(--dark-rule); border-radius: 12px; padding: 24px; }
+  .tone-tile .tile-label { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--dark-text-quiet); letter-spacing: 1.5px; margin-bottom: 14px; }
+  .tone-tile h3 { font-family: 'Instrument Serif', serif; font-size: 26px; line-height: 1.1; margin-bottom: 8px; color: var(--dark-text); font-weight: 400; }
+  .tone-tile p { color: var(--dark-text-muted); font-size: 13px; line-height: 1.55; }
+
+  .compare { border: 0.5px solid var(--rule); border-radius: 12px; overflow: hidden; }
+  .compare-row { display: grid; grid-template-columns: 200px 1fr 1fr; border-bottom: 0.5px solid var(--rule); }
+  .compare-row:last-child { border-bottom: none; }
+  .compare-row.head { background: rgba(0,0,0,0.025); }
+  .compare-cell { padding: 14px 18px; border-right: 0.5px solid var(--rule); font-size: 13px; color: var(--type-body); line-height: 1.5; }
+  .compare-cell:last-child { border-right: none; }
+  .compare-cell.label { font-weight: 500; color: var(--ink); }
+  .compare-row.head .compare-cell { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--type-muted); letter-spacing: 1.5px; font-weight: 400; }
+  @media (max-width: 800px) { .compare-row { grid-template-columns: 1fr; } .compare-row.head { display: none; } }
+
+  /* APP MOCKUP */
+  .app { border-radius: 12px; overflow: hidden; box-shadow: 0 8px 32px rgba(0,0,0,0.08); border: 0.5px solid rgba(0,0,0,0.1); aspect-ratio: 16/10; display: grid; grid-template-columns: 200px 1fr; background: rgba(245,245,247,0.85); font-family: -apple-system, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif; }
+  .app.dark { background: rgba(30,30,32,0.95); border-color: rgba(255,255,255,0.08); color: #f0f0f3; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+  .titlebar { grid-column: 1 / -1; height: 38px; display: flex; align-items: center; padding: 0 12px; gap: 10px; border-bottom: 0.5px solid rgba(0,0,0,0.06); background: rgba(255,255,255,0.4); }
+  .app.dark .titlebar { background: rgba(255,255,255,0.02); border-bottom-color: rgba(255,255,255,0.06); }
+  .traffic { display: flex; gap: 6px; }
+  .traffic div { width: 11px; height: 11px; border-radius: 50%; }
+  .traffic .r { background: #ff5f57; } .traffic .y { background: #febc2e; } .traffic .g { background: #28c840; }
+  .titlebar-brand { display: flex; align-items: center; gap: 6px; margin-left: 8px; }
+  .titlebar-glyph { width: 14px; height: 14px; background: var(--ink); border-radius: 3px; position: relative; }
+  .app.dark .titlebar-glyph { background: var(--dark-text); }
+  .titlebar-glyph::after { content: ''; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 5px; height: 5px; background: var(--ha-blue); border-radius: 50%; }
+  .titlebar-wordmark { font-size: 13px; font-weight: 500; color: var(--ink); letter-spacing: -0.2px; }
+  .app.dark .titlebar-wordmark { color: var(--dark-text); }
+
+  .sidebar { background: rgba(255,255,255,0.5); border-right: 0.5px solid rgba(0,0,0,0.08); display: flex; flex-direction: column; padding-top: 8px; }
+  .app.dark .sidebar { background: rgba(0,0,0,0.25); border-right-color: rgba(255,255,255,0.06); }
+  .sb-button { margin: 0 10px 14px; background: rgba(0,0,0,0.04); border-radius: 6px; padding: 6px 10px; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink); }
+  .app.dark .sb-button { background: rgba(255,255,255,0.06); color: var(--dark-text); }
+  .kbd { margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #8b8b90; background: rgba(0,0,0,0.05); padding: 1px 5px; border-radius: 3px; }
+  .app.dark .kbd { background: rgba(255,255,255,0.05); }
+  .sb-section { padding: 0 12px; font-size: 11px; color: #8b8b90; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 6px; font-weight: 500; }
+  .sb-section.mt { padding-top: 16px; }
+  .sb-items { padding: 0 6px; }
+  .sb-item { padding: 6px 10px; border-radius: 5px; font-size: 13px; color: var(--ink); display: flex; flex-direction: column; gap: 2px; margin-top: 2px; }
+  .app.dark .sb-item { color: var(--dark-text); }
+  .sb-item.sel { background: var(--sys-blue-light); color: white; }
+  .app.dark .sb-item.sel { background: var(--sys-blue-dark); }
+  .sb-item.sel .sb-meta { color: rgba(255,255,255,0.85); }
+  .sb-meta { font-size: 11px; color: #8b8b90; }
+  .sb-bottom { margin-top: auto; border-top: 0.5px solid rgba(0,0,0,0.06); padding: 8px 6px; }
+  .app.dark .sb-bottom { border-top-color: rgba(255,255,255,0.06); }
+  .sb-flat-item { padding: 6px 10px; border-radius: 5px; font-size: 13px; color: var(--ink); display: flex; align-items: center; gap: 8px; }
+  .sb-flat-item.sel { background: var(--sys-blue-light); color: white; }
+  .app.dark .sb-flat-item { color: var(--dark-text); }
+  .app.dark .sb-flat-item.sel { background: var(--sys-blue-dark); }
+  .puck-mini { width: 10px; height: 10px; background: var(--ink); border-radius: 3px; position: relative; }
+  .sb-flat-item.sel .puck-mini { background: white; }
+  .app.dark .puck-mini { background: var(--dark-text); }
+  .puck-mini::after { content: ''; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 4px; height: 4px; background: var(--ha-blue); border-radius: 50%; }
+  .sb-count { margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #8b8b90; }
+  .sb-flat-item.sel .sb-count { color: rgba(255,255,255,0.85); }
+
+  .main { display: flex; flex-direction: column; position: relative; min-width: 0; }
+  .main-toolbar { height: 38px; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; border-bottom: 0.5px solid rgba(0,0,0,0.06); flex-shrink: 0; }
+  .app.dark .main-toolbar { border-bottom-color: rgba(255,255,255,0.06); }
+  .main-title { display: flex; align-items: center; gap: 10px; }
+  .main-title-text { font-size: 13px; font-weight: 500; color: var(--ink); }
+  .app.dark .main-title-text { color: var(--dark-text); }
+  .main-title-tag { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #8b8b90; background: rgba(0,0,0,0.04); padding: 2px 6px; border-radius: 3px; letter-spacing: 0.5px; }
+  .app.dark .main-title-tag { background: rgba(255,255,255,0.06); }
+  .status-live { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--ha-blue); letter-spacing: 0.5px; }
+
+  .puck-app { background: var(--ink); border-radius: 24px; position: relative; }
+  .puck-app::after { content: ''; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); background: var(--ha-blue); border-radius: 50%; }
+  .puck-app.size-110 { width: 110px; height: 110px; }
+  .puck-app.size-110::after { width: 40px; height: 40px; }
+  .puck-app.size-44 { width: 44px; height: 44px; border-radius: 10px; }
+  .puck-app.size-44::after { width: 16px; height: 16px; }
+  .puck-app.size-28 { width: 28px; height: 28px; border-radius: 7px; }
+  .puck-app.size-28::after { width: 10px; height: 10px; }
+  .app.dark .puck-app { background: var(--dark-card); }
+  .puck-app.amber::after { background: var(--m-amber); }
+  .puck-app.violet::after { background: var(--m-violet); }
+  .puck-app.green::after { background: var(--m-green); }
+  .puck-app.coral::after { background: var(--m-coral); }
+
+  .colour-demo { background: rgba(255,255,255,0.6); border: 0.5px solid var(--rule); border-radius: 12px; padding: 28px; display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+  @media (max-width: 800px) { .colour-demo { grid-template-columns: 1fr; } }
+  .colour-block-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 16px; }
+  .colour-block-head strong { font-size: 14px; font-weight: 500; }
+  .colour-block-head span { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--type-muted); }
+  .colour-block ul { list-style: none; padding: 0; }
+  .colour-block li { font-size: 13px; color: var(--type-body); padding: 6px 0; border-bottom: 0.5px dashed var(--rule); display: flex; align-items: center; gap: 10px; }
+  .colour-block li::before { content: ''; display: block; width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .colour-block.sys li::before { background: var(--sys-blue-light); }
+  .colour-block.ha li::before { background: var(--ha-blue); }
+  .colour-block li:last-child { border-bottom: none; }
+
+  /* 12-COLOUR PALETTE */
+  .palette-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; }
+  @media (max-width: 800px) { .palette-grid { grid-template-columns: repeat(3, 1fr); } }
+  .palette-tile { background: rgba(255,255,255,0.7); border: 0.5px solid var(--rule); border-radius: 10px; padding: 16px 12px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .palette-puck { width: 36px; height: 36px; background: var(--ink); border-radius: 9px; position: relative; }
+  .palette-puck::after { content: ''; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 14px; height: 14px; border-radius: 50%; background: var(--swatch); }
+  .palette-tile .name { font-size: 11px; font-weight: 500; color: var(--ink); }
+  .palette-tile .hex { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--type-muted); letter-spacing: 0.5px; }
+  .palette-band { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--type-muted); letter-spacing: 1.5px; }
+  .palette-band::after { content: ''; flex: 1; height: 0; border-bottom: 0.5px solid var(--rule); }
+
+  .rule-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 12px; }
+  @media (max-width: 800px) { .rule-row { grid-template-columns: 1fr; } }
+  .rule-card { border: 0.5px solid var(--rule); border-radius: 12px; padding: 18px 20px; background: rgba(255,255,255,0.5); }
+  .rule-card.do { border-left: 2px solid var(--ha-blue); border-radius: 12px; }
+  .rule-card.dont { border-left: 2px solid #c4302b; border-radius: 12px; }
+  .rule-card .tag { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 1.5px; margin-bottom: 6px; }
+  .rule-card.do .tag { color: var(--ha-blue); }
+  .rule-card.dont .tag { color: #c4302b; }
+  .rule-card p { font-size: 13px; color: var(--ink); line-height: 1.5; }
+
+  /* SCREEN BLOCK */
+  .screen-block { margin-bottom: 72px; }
+  .screen-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 18px; gap: 16px; flex-wrap: wrap; }
+  .screen-num { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--type-muted); letter-spacing: 1.5px; }
+  .screen-title { font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 32px; letter-spacing: -0.5px; color: var(--ink); line-height: 1.1; flex: 1; min-width: 240px; }
+  .screen-title em { font-style: italic; }
+  .screen-rationale { margin-top: 20px; background: rgba(255,255,255,0.5); border: 0.5px solid var(--rule); border-radius: 10px; padding: 18px 22px; }
+  .screen-rationale .why-label { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--type-muted); letter-spacing: 1.5px; margin-bottom: 10px; }
+  .screen-rationale p { font-size: 13px; color: var(--type-body); line-height: 1.6; margin-bottom: 8px; }
+  .screen-rationale p:last-child { margin-bottom: 0; }
+  .screen-rationale strong { color: var(--ink); font-weight: 500; }
+
+  /* SETTINGS ROWS for mockups */
+  .setting-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 0.5px solid rgba(0,0,0,0.06); }
+  .setting-row:last-child { border-bottom: none; }
+  .setting-label { font-size: 13px; color: var(--ink); }
+  .setting-desc { font-size: 11px; color: #8b8b90; margin-top: 2px; }
+  .setting-select { font-size: 12px; background: rgba(0,0,0,0.04); border-radius: 5px; padding: 4px 10px; border: 0.5px solid rgba(0,0,0,0.1); color: var(--ink); }
+  .app.dark .setting-row { border-bottom-color: rgba(255,255,255,0.06); }
+  .app.dark .setting-label { color: var(--dark-text); }
+  .app.dark .setting-select { background: rgba(255,255,255,0.08); color: var(--dark-text); border-color: rgba(255,255,255,0.1); }
+  .toggle { width: 30px; height: 18px; background: var(--sys-blue-light); border-radius: 10px; position: relative; }
+  .app.dark .toggle { background: var(--sys-blue-dark); }
+  .toggle::after { content: ''; position: absolute; right: 2px; top: 2px; width: 14px; height: 14px; background: white; border-radius: 50%; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+  .toggle.off { background: rgba(0,0,0,0.15); }
+  .app.dark .toggle.off { background: rgba(255,255,255,0.15); }
+  .toggle.off::after { right: auto; left: 2px; }
+
+  .mode-card { background: rgba(255,255,255,0.7); border: 0.5px solid rgba(0,0,0,0.08); border-radius: 10px; padding: 14px; display: flex; gap: 12px; align-items: flex-start; }
+  .mode-card.active { border-color: var(--ha-blue); box-shadow: 0 0 0 1px var(--ha-blue); }
+  .mode-name-card { font-size: 13px; font-weight: 500; color: var(--ink); margin-bottom: 2px; }
+  .mode-desc-card { font-size: 11px; color: #8b8b90; line-height: 1.4; }
+  .mode-active-tag { display: inline-block; margin-top: 6px; font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--ha-blue); background: rgba(3,169,244,0.08); padding: 2px 6px; border-radius: 3px; letter-spacing: 0.5px; }
+
+  .device-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 0.5px solid rgba(0,0,0,0.06); }
+  .device-row:last-child { border-bottom: none; }
+  .device-meta { flex: 1; }
+  .device-name { font-size: 13px; color: var(--ink); font-weight: 500; }
+  .device-sub { font-size: 11px; color: #8b8b90; margin-top: 2px; }
+  .device-status { font-family: 'JetBrains Mono', monospace; font-size: 10px; padding: 2px 7px; border-radius: 3px; letter-spacing: 0.5px; }
+  .device-status.live { color: var(--ha-blue); background: rgba(3,169,244,0.1); }
+  .device-status.idle { color: #8b8b90; background: rgba(0,0,0,0.05); }
+  .device-status.off { color: #999; background: rgba(0,0,0,0.04); }
+
+  footer { padding: 60px 32px 80px; border-top: 0.5px solid var(--rule); text-align: center; }
+  footer p { font-size: 13px; color: var(--type-muted); margin-bottom: 8px; }
+  footer .mono { font-size: 11px; color: var(--type-muted); }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="wordmark"><div class="glyph"></div><span class="wm-text">Voix</span><span class="pronounce">/vwa/</span></div>
+  <div class="nav-links">
+    <a href="#philosophy">Philosophy</a>
+    <a href="#chrome">Chrome</a>
+    <a href="#colour">Colour</a>
+    <a href="#palette">Palette</a>
+    <a href="#screens">Screens</a>
+    <a href="#never">Never</a>
+    <span class="nav-meta">DESKTOP GUIDE · v1.1</span>
+  </div>
+</nav>
+
+<header class="hero">
+  <p class="hero-tag">VOIX · BRAND GUIDE · BOOK 02</p>
+  <h1>The desktop app <em>gets out of the way.</em></h1>
+  <p class="hero-sub">The marketing brand promises personality. The product brand delivers it by being a quiet, well-made tool. Native chrome. System fonts. The puck is the one place character lives.</p>
+</header>
+
+<section class="first" id="philosophy">
+  <div class="section-head">
+    <span class="section-num">N° 01 · PHILOSOPHY</span>
+    <h2>Two brands. <em>One product.</em></h2>
+    <p class="intro">The marketing brand and the product brand share DNA — the puck, HA blue, the wordmark — but they speak different dialects. Treat them as a parent-child relationship.</p>
+  </div>
+  <div class="section-body">
+    <div class="compare">
+      <div class="compare-row head">
+        <div class="compare-cell"></div>
+        <div class="compare-cell">MARKETING BRAND</div>
+        <div class="compare-cell">DESKTOP APP BRAND</div>
+      </div>
+      <div class="compare-row">
+        <div class="compare-cell label">Tone</div>
+        <div class="compare-cell">Confident, irreverent, has opinions. "A real brain for the puck."</div>
+        <div class="compare-cell">Sober, quiet, gets out of the way. The app doesn't talk — the conversation does.</div>
+      </div>
+      <div class="compare-row">
+        <div class="compare-cell label">Typography</div>
+        <div class="compare-cell">Instrument Serif (display) + Hanken Grotesk (body) + JetBrains Mono.</div>
+        <div class="compare-cell">System fonts. SF Pro on Mac. Segoe on Windows. JetBrains Mono only for technical labels.</div>
+      </div>
+      <div class="compare-row">
+        <div class="compare-cell label">Colour</div>
+        <div class="compare-cell">Cream paper, ink, HA blue. Three colours, no exceptions.</div>
+        <div class="compare-cell">System chrome + HA blue for Voix moments + a 12-colour mode palette.</div>
+      </div>
+      <div class="compare-row">
+        <div class="compare-cell label">Layout</div>
+        <div class="compare-cell">Editorial. Puck cropped at the bottom. Headlines float above.</div>
+        <div class="compare-cell">Native window. Sidebar + main view + toolbar. Puck centred in the main view.</div>
+      </div>
+      <div class="compare-row">
+        <div class="compare-cell label">Where it appears</div>
+        <div class="compare-cell">Website, README, social, OG images.</div>
+        <div class="compare-cell">The Mac and Windows app. Menu bar tray. Notifications.</div>
+      </div>
+    </div>
+    <p style="margin-top: 32px; font-size: 14px; color: var(--type-body); line-height: 1.65; max-width: 720px;">The mental model: the marketing brand is the <em style="font-style: italic;">advert</em>. The desktop brand is the <em style="font-style: italic;">device</em>. An advert can shout. A device should not.</p>
+  </div>
+</section>
+
+<section class="dark" id="chrome">
+  <div class="section-head">
+    <span class="section-num">N° 02 · CHROME</span>
+    <h2>Native, always. <em>No exceptions.</em></h2>
+    <p class="intro">Window chrome, sidebar materials, form controls, focus rings, scrollbars, context menus — all platform-native. Don't reinvent any of it.</p>
+  </div>
+  <div class="section-body">
+    <div class="grid-2">
+      <div class="tone-tile">
+        <div class="tile-label">macOS</div>
+        <h3>Liquid Glass.</h3>
+        <p>Translucent sidebar materials. SF Pro Text for all UI. Native traffic-light controls. Use <code style="font-family: 'JetBrains Mono', monospace; font-size: 12px; background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 3px;">NSVisualEffectView</code> for sidebar and toolbar surfaces.</p>
+      </div>
+      <div class="tone-tile">
+        <div class="tile-label">WINDOWS</div>
+        <h3><em>Mica.</em></h3>
+        <p>Mica material for window backgrounds, opaque for sidebar. Segoe UI Variable. Fluent design controls. WinUI 3 widgets where possible. System accent respected on selection, focus, links.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="colour">
+  <div class="section-head">
+    <span class="section-num">N° 03 · TWO BLUES</span>
+    <h2>System accent and HA blue. <em>Different jobs.</em></h2>
+    <p class="intro">Two blues that look similar and do different things. The split is what keeps the app feeling native while still being Voix.</p>
+  </div>
+  <div class="section-body">
+    <div class="colour-demo">
+      <div class="colour-block sys">
+        <div class="colour-block-head"><strong>System accent</strong><span>#007AFF / #0A84FF</span></div>
+        <ul>
+          <li>Sidebar selection highlights</li>
+          <li>Text input focus rings</li>
+          <li>Hyperlinks and secondary actions</li>
+          <li>Selected list items, dropdown values</li>
+          <li>Form button defaults</li>
+          <li>Anything that should respect the user's OS accent setting</li>
+        </ul>
+      </div>
+      <div class="colour-block ha">
+        <div class="colour-block-head"><strong>HA blue</strong><span>#03A9F4</span></div>
+        <ul>
+          <li>The puck's inner circle (default Conversation mode)</li>
+          <li>"● NOW HEARING" / "● LIVE" status pills</li>
+          <li>"VOIX" speaker prefix in transcripts</li>
+          <li>Active-mode tag on the modes list</li>
+          <li>Pulsing rings emanating from the puck</li>
+          <li>Brand-owned moments only — never chrome</li>
+        </ul>
+      </div>
+    </div>
+    <p style="margin-top: 32px; font-size: 14px; color: var(--type-body); line-height: 1.65; max-width: 720px;">In dark mode the system accent shifts to its brighter sibling. HA blue does not — it's a brand colour, not a system colour. That means HA blue must be tested against both light and dark backgrounds and rejected if it doesn't read on one.</p>
+    <div class="rule-row" style="margin-top: 40px;">
+      <div class="rule-card do"><div class="tag">DO</div><p>Let the user's system accent appear in the sidebar, focus rings, and links. The app should feel like it belongs on their machine.</p></div>
+      <div class="rule-card dont"><div class="tag">DON'T</div><p>Override system accent with HA blue. The user picked purple for a reason — they want purple selection highlights. Voix is not bigger than that choice.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="palette">
+  <div class="section-head">
+    <span class="section-num">N° 04 · MODE PALETTE</span>
+    <h2>Twelve colours <em>for modes.</em></h2>
+    <p class="intro">Modes get their own colour. The desktop brand's exception to "three colours full stop" — but constrained to a curated palette so users can't break the system.</p>
+  </div>
+  <div class="section-body">
+
+    <div class="palette-band">SATURATED · FOR PRIMARY MODES</div>
+    <div class="palette-grid">
+      <div class="palette-tile"><div class="palette-puck" style="--swatch: var(--m-ha);"></div><span class="name">HA blue</span><span class="hex">#03A9F4</span></div>
+      <div class="palette-tile"><div class="palette-puck" style="--swatch: var(--m-amber);"></div><span class="name">Amber</span><span class="hex">#F59E0B</span></div>
+      <div class="palette-tile"><div class="palette-puck" style="--swatch: var(--m-violet);"></div><span class="name">Violet</span><span class="hex">#8B5CF6</span></div>
+      <div class="palette-tile"><div class="palette-puck" style="--swatch: var(--m-green);"></div><span class="name">Green</span><span class="hex">#10B981</span></div>
+      <div class="palette-tile"><div class="palette-puck" style="--swatch: var(--m-coral);"></div><span class="name">Coral</span><span class="hex">#F97316</span></div>
+      <div class="palette-tile"><div class="palette-puck" style="--swatch: var(--m-magenta);"></div><span class="name">Magenta</span><span class="hex">#EC4899</span></div>
+    </div>
+
+    <div class="palette-band" style="margin-top: 28px;">SOFT · FOR SECONDARY OR CALMER MODES</div>
+    <div class="palette-grid">
+      <div class="palette-tile"><div class="palette-puck" style="--swatch: var(--m-sky);"></div><span class="name">Sky</span><span class="hex">#7DD3FC</span></div>
+      <div class="palette-tile"><div class="palette-puck" style="--swatch: var(--m-lemon);"></div><span class="name">Lemon</span><span class="hex">#FDE047</span></div>
+      <div class="palette-tile"><div class="palette-puck" style="--swatch: var(--m-lavender);"></div><span class="name">Lavender</span><span class="hex">#C4B5FD</span></div>
+      <div class="palette-tile"><div class="palette-puck" style="--swatch: var(--m-mint);"></div><span class="name">Mint</span><span class="hex">#6EE7B7</span></div>
+      <div class="palette-tile"><div class="palette-puck" style="--swatch: var(--m-peach);"></div><span class="name">Peach</span><span class="hex">#FDBA74</span></div>
+      <div class="palette-tile"><div class="palette-puck" style="--swatch: var(--m-slate);"></div><span class="name">Slate</span><span class="hex">#94A3B8</span></div>
+    </div>
+
+    <div style="margin-top: 40px; background: rgba(255,255,255,0.5); border: 0.5px solid var(--rule); border-radius: 12px; padding: 24px 28px;">
+      <div style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--type-muted); letter-spacing: 1.5px; margin-bottom: 14px;">WHY 12, WHY THESE</div>
+      <p style="font-size: 14px; color: var(--type-body); line-height: 1.65; margin-bottom: 12px;"><strong style="color: var(--ink); font-weight: 500;">Twelve is enough to feel free, few enough to feel curated.</strong> Five (where this guide started) makes users hit the wall the first time they create a mode that isn't Conversation, Dictation, Code, or Thinking. Twelve covers genuine personal expression without devolving into a colour picker.</p>
+      <p style="font-size: 14px; color: var(--type-body); line-height: 1.65; margin-bottom: 12px;"><strong style="color: var(--ink); font-weight: 500;">Six saturated, six soft.</strong> The saturated row is for work modes — bold colours for things you do often. The soft row is for gentler modes — bedtime check-ins, meditation prompts, anything that doesn't want to shout from the menu bar.</p>
+      <p style="font-size: 14px; color: var(--type-body); line-height: 1.65; margin-bottom: 12px;"><strong style="color: var(--ink); font-weight: 500;">Evenly distributed across the hue wheel.</strong> Two blues (HA + sky), two oranges (amber + peach), one red-orange (coral), two greens, two purples, one pink, one yellow, one neutral. No colour is too close to another — every mode looks distinct in the sidebar.</p>
+      <p style="font-size: 14px; color: var(--type-body); line-height: 1.65;"><strong style="color: var(--ink); font-weight: 500;">No gradient. No saturation control. No hex input.</strong> Users pick from twelve. That's the whole UI. The discipline is the brand.</p>
+    </div>
+
+    <div class="rule-row" style="margin-top: 40px;">
+      <div class="rule-card do"><div class="tag">DO</div><p>Use the mode colour everywhere that mode appears: sidebar pip, mode card preview, status pill when active, the puck's inner circle during the session.</p></div>
+      <div class="rule-card dont"><div class="tag">DON'T</div><p>Bring mode colours into chrome. The lavender for "Bedtime mode" never recolours a button or a focus ring — only the puck and direct mode-referencing UI.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="screens">
+  <div class="section-head">
+    <span class="section-num">N° 05 · SCREEN ATLAS</span>
+    <h2>Five screens, <em>one system.</em></h2>
+    <p class="intro">The full set, all built out. Read in order: conversation (the protagonist), modes list (the variety), mode editor (the depth), devices (the hardware), settings (the plumbing).</p>
+  </div>
+  <div class="section-body">
+
+    <!-- 01 CONVERSATION -->
+    <div class="screen-block">
+      <div class="screen-head">
+        <span class="screen-num">SCREEN · 01</span>
+        <h3 class="screen-title">Conversation <em>— the protagonist view.</em></h3>
+      </div>
+      <div class="app">
+        <div class="titlebar">
+          <div class="traffic"><div class="r"></div><div class="y"></div><div class="g"></div></div>
+          <div class="titlebar-brand"><div class="titlebar-glyph"></div><span class="titlebar-wordmark">Voix</span></div>
+          <div style="margin-left: auto;"><span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--ha-blue); letter-spacing: 0.5px;">● LIVE</span></div>
+        </div>
+        <div class="sidebar">
+          <div class="sb-button"><span style="font-size: 13px; opacity: 0.6;">＋</span><span>New conversation</span><span class="kbd">⌘N</span></div>
+          <div class="sb-section">Today</div>
+          <div class="sb-items">
+            <div class="sb-item sel"><span style="font-weight: 500;">Kitchen quick chat</span><span class="sb-meta">2 min ago · Conversation</span></div>
+            <div class="sb-item"><span>Email draft</span><span class="sb-meta">14:32 · Dictation</span></div>
+            <div class="sb-item"><span>Slow cooker check</span><span class="sb-meta">11:18 · Conversation</span></div>
+          </div>
+          <div class="sb-section mt">Yesterday</div>
+          <div class="sb-items"><div class="sb-item"><span>Code review notes</span><span class="sb-meta">18:04 · Code mode</span></div></div>
+          <div class="sb-bottom">
+            <div class="sb-flat-item"><div class="puck-mini"></div><span>Modes</span><span class="sb-count">4</span></div>
+            <div class="sb-flat-item"><span style="opacity: 0.6;">⚙</span><span>Devices &amp; settings</span></div>
+          </div>
+        </div>
+        <div class="main">
+          <div class="main-toolbar">
+            <div class="main-title"><span class="main-title-text">Kitchen quick chat</span><span class="main-title-tag">CONVERSATION</span></div>
+            <span class="status-live">● NOW HEARING</span>
+          </div>
+          <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; padding: 24px;">
+            <div style="position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%); pointer-events: none;">
+              <div style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 260px; height: 260px; border: 1px solid var(--ha-blue); border-radius: 50%; opacity: 0.06;"></div>
+              <div style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 200px; height: 200px; border: 1px solid var(--ha-blue); border-radius: 50%; opacity: 0.12;"></div>
+              <div style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 150px; height: 150px; border: 1px solid var(--ha-blue); border-radius: 50%; opacity: 0.22;"></div>
+            </div>
+            <div class="puck-app size-110" style="z-index: 2;"></div>
+            <p style="margin-top: 24px; font-size: 13px; color: #4a4a4f; z-index: 2;">Living room puck · Conversation mode</p>
+          </div>
+          <div style="border-top: 0.5px solid rgba(0,0,0,0.06); padding: 14px 18px 18px;">
+            <div style="display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px;">
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #8b8b90; padding-top: 2px; min-width: 36px;">14:34</span>
+              <p style="font-size: 13px; color: var(--ink); margin: 0; line-height: 1.45;">What's left on the shopping list and is it raining at the cottage?</p>
+            </div>
+            <div style="display: flex; align-items: flex-start; gap: 10px;">
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--ha-blue); padding-top: 2px; min-width: 36px;">VOIX</span>
+              <p style="font-size: 13px; color: #4a4a4f; margin: 0; line-height: 1.45;">Three items: milk, sourdough, bay leaves. And no, the cottage is sunny — 18°C, light wind from the southwest. You should go.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="screen-rationale">
+        <div class="why-label">WHY THIS WAY</div>
+        <p><strong>The puck is the protagonist, but it's modest.</strong> 110px in a default window — large enough to be the focal point, small enough that you remember it's a small device on a shelf. Anything bigger and the metaphor falls apart.</p>
+        <p><strong>Rings emanate only when audio is detected.</strong> Idle pucks are still. The animation is information, not decoration. Three rings at descending opacity so the most distant fades into the background — implies voice carrying through the room.</p>
+        <p><strong>Transcript is mono timestamps, sans body.</strong> Timestamps are metadata in the system mono. Speech is body text in the system sans. The "VOIX" prefix is in HA blue — the one place the brand colour appears in the transcript, branding the response without colouring the words.</p>
+        <p><strong>Sidebar shows sessions, not modes.</strong> The user opens the app to read what was said or keep talking — sessions are the most-touched thing. Modes are pinned at the bottom because they change less often.</p>
+      </div>
+    </div>
+
+    <!-- 02 MODES LIST -->
+    <div class="screen-block">
+      <div class="screen-head">
+        <span class="screen-num">SCREEN · 02</span>
+        <h3 class="screen-title">Modes list <em>— the variety.</em></h3>
+      </div>
+      <div class="app">
+        <div class="titlebar">
+          <div class="traffic"><div class="r"></div><div class="y"></div><div class="g"></div></div>
+          <div class="titlebar-brand"><div class="titlebar-glyph"></div><span class="titlebar-wordmark">Voix</span></div>
+        </div>
+        <div class="sidebar">
+          <div class="sb-button"><span style="font-size: 13px; opacity: 0.6;">＋</span><span>New conversation</span><span class="kbd">⌘N</span></div>
+          <div class="sb-section">Today</div>
+          <div class="sb-items">
+            <div class="sb-item"><span>Kitchen quick chat</span><span class="sb-meta">2 min ago</span></div>
+            <div class="sb-item"><span>Email draft</span><span class="sb-meta">14:32</span></div>
+          </div>
+          <div class="sb-bottom">
+            <div class="sb-flat-item sel"><div class="puck-mini"></div><span>Modes</span><span class="sb-count">4</span></div>
+            <div class="sb-flat-item"><span style="opacity: 0.6;">⚙</span><span>Devices &amp; settings</span></div>
+          </div>
+        </div>
+        <div class="main">
+          <div class="main-toolbar">
+            <div class="main-title"><span class="main-title-text">Modes</span></div>
+            <div style="font-size: 12px; color: var(--sys-blue-light); cursor: pointer;">＋ New mode</div>
+          </div>
+          <div style="padding: 18px; overflow-y: auto;">
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
+              <div class="mode-card active">
+                <div class="puck-app size-44"></div>
+                <div style="flex: 1; min-width: 0;">
+                  <div class="mode-name-card">Conversation</div>
+                  <div class="mode-desc-card">Real-time back and forth. Streams transcript live.</div>
+                  <span class="mode-active-tag">ACTIVE</span>
+                </div>
+              </div>
+              <div class="mode-card">
+                <div class="puck-app size-44 amber"></div>
+                <div style="flex: 1; min-width: 0;">
+                  <div class="mode-name-card">Dictation</div>
+                  <div class="mode-desc-card">Press, speak, paste. No assistant response.</div>
+                </div>
+              </div>
+              <div class="mode-card">
+                <div class="puck-app size-44 violet"></div>
+                <div style="flex: 1; min-width: 0;">
+                  <div class="mode-name-card">Code review</div>
+                  <div class="mode-desc-card">Concise, terse, technical. No filler.</div>
+                </div>
+              </div>
+              <div class="mode-card">
+                <div class="puck-app size-44 green"></div>
+                <div style="flex: 1; min-width: 0;">
+                  <div class="mode-name-card">Thinking out loud</div>
+                  <div class="mode-desc-card">Lets you ramble, summarises at the end.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="screen-rationale">
+        <div class="why-label">WHY THIS WAY</div>
+        <p><strong>Grid, not list.</strong> Modes are visual objects with colour identity — a vertical list would waste the most distinguishing feature (the coloured puck). Two columns gives each card breathing room, scales to four-by-three at wider widths.</p>
+        <p><strong>Active mode is a tag, not a checkbox.</strong> The "ACTIVE" pill in HA blue is the single bit of brand colour intruding on the chrome — because this is a brand statement ("Voix is doing this now"), not a system state. Distinct treatment from sidebar selection on purpose.</p>
+        <p><strong>Card border thickens when active.</strong> 2px HA blue border on the active card, plus a 1px shadow. A 1px border would compete with system selection-highlight. The 2px treatment matches the marketing brand's "featured card" pattern — a deliberate exception to the 0.5px rule.</p>
+      </div>
+    </div>
+
+    <!-- 03 MODE EDITOR -->
+    <div class="screen-block">
+      <div class="screen-head">
+        <span class="screen-num">SCREEN · 03</span>
+        <h3 class="screen-title">Mode editor <em>— the depth.</em></h3>
+      </div>
+      <div class="app">
+        <div class="titlebar">
+          <div class="traffic"><div class="r"></div><div class="y"></div><div class="g"></div></div>
+          <div class="titlebar-brand"><div class="titlebar-glyph"></div><span class="titlebar-wordmark">Voix</span></div>
+        </div>
+        <div class="sidebar">
+          <div class="sb-button"><span style="font-size: 13px; opacity: 0.6;">＋</span><span>New conversation</span><span class="kbd">⌘N</span></div>
+          <div class="sb-section">Today</div>
+          <div class="sb-items"><div class="sb-item"><span>Kitchen quick chat</span><span class="sb-meta">2 min ago</span></div></div>
+          <div class="sb-bottom">
+            <div class="sb-flat-item sel"><div class="puck-mini"></div><span>Modes</span><span class="sb-count">4</span></div>
+            <div class="sb-flat-item"><span style="opacity: 0.6;">⚙</span><span>Devices &amp; settings</span></div>
+          </div>
+        </div>
+        <div class="main">
+          <div class="main-toolbar">
+            <div class="main-title">
+              <span style="font-size: 12px; color: var(--sys-blue-light); cursor: pointer;">← Modes</span>
+              <span class="main-title-text" style="margin-left: 6px;">Code review</span>
+            </div>
+            <div style="font-size: 12px; color: #8b8b90;">Saved</div>
+          </div>
+          <div style="padding: 20px 24px; overflow-y: auto;">
+            <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 24px;">
+              <div class="puck-app size-44 violet"></div>
+              <div style="flex: 1;">
+                <input type="text" value="Code review" style="font-family: inherit; font-size: 17px; font-weight: 500; color: var(--ink); background: transparent; border: none; outline: none; padding: 2px 0; width: 100%;" />
+                <input type="text" value="Concise, terse, technical. No filler." style="font-family: inherit; font-size: 12px; color: #8b8b90; background: transparent; border: none; outline: none; padding: 2px 0; width: 100%;" />
+              </div>
+            </div>
+
+            <div style="margin-bottom: 18px;">
+              <div style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #8b8b90; letter-spacing: 1.5px; margin-bottom: 8px;">PUCK COLOUR</div>
+              <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                <div style="width: 22px; height: 22px; background: var(--m-ha); border-radius: 50%;"></div>
+                <div style="width: 22px; height: 22px; background: var(--m-amber); border-radius: 50%;"></div>
+                <div style="width: 22px; height: 22px; background: var(--m-violet); border-radius: 50%; box-shadow: 0 0 0 2px white, 0 0 0 3.5px var(--m-violet);"></div>
+                <div style="width: 22px; height: 22px; background: var(--m-green); border-radius: 50%;"></div>
+                <div style="width: 22px; height: 22px; background: var(--m-coral); border-radius: 50%;"></div>
+                <div style="width: 22px; height: 22px; background: var(--m-magenta); border-radius: 50%;"></div>
+                <div style="width: 22px; height: 22px; background: var(--m-sky); border-radius: 50%;"></div>
+                <div style="width: 22px; height: 22px; background: var(--m-lemon); border-radius: 50%;"></div>
+                <div style="width: 22px; height: 22px; background: var(--m-lavender); border-radius: 50%;"></div>
+                <div style="width: 22px; height: 22px; background: var(--m-mint); border-radius: 50%;"></div>
+                <div style="width: 22px; height: 22px; background: var(--m-peach); border-radius: 50%;"></div>
+                <div style="width: 22px; height: 22px; background: var(--m-slate); border-radius: 50%;"></div>
+              </div>
+            </div>
+
+            <div class="setting-row">
+              <div><div class="setting-label">Voice</div><div class="setting-desc">The voice this mode speaks back in.</div></div>
+              <select class="setting-select"><option>Onyx · OpenAI</option></select>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Model</div><div class="setting-desc">The brain.</div></div>
+              <select class="setting-select"><option>Claude Opus 4.7</option></select>
+            </div>
+            <div class="setting-row" style="align-items: flex-start;">
+              <div><div class="setting-label">System prompt</div><div class="setting-desc">How this mode behaves.</div></div>
+              <div style="flex: 1; max-width: 340px; margin-left: 24px;">
+                <textarea style="width: 100%; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink); background: rgba(0,0,0,0.03); border: 0.5px solid rgba(0,0,0,0.08); border-radius: 6px; padding: 10px; resize: none; height: 56px; line-height: 1.5;">You are a code reviewer. Be terse. Skip pleasantries. Flag bugs, edge cases, perf issues.</textarea>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Auto-paste dictation</div><div class="setting-desc">Paste transcription into the active app.</div></div>
+              <div class="toggle off"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="screen-rationale">
+        <div class="why-label">WHY THIS WAY</div>
+        <p><strong>Editable name and description as raw input fields.</strong> No "edit pencil" icon, no modal. Click the text, type. The styling matches the read-only view exactly. This is a Things / Notion pattern — the cheapest path to the most natural interaction.</p>
+        <p><strong>Inline 12-swatch colour picker.</strong> One row, twelve circles, selected one ringed by its own colour. No HSL slider, no hex input, no "advanced" affordance. The constraint <em>is</em> the affordance.</p>
+        <p><strong>System prompt is mono.</strong> The textarea uses JetBrains Mono — this is the one place users write code-like text into the app, and the mono treatment signals "this is configuration, not prose."</p>
+        <p><strong>Auto-save, not save button.</strong> "Saved" badge top-right indicates state. Form changes commit on blur. No undo stack here — a product decision worth making explicitly later.</p>
+      </div>
+    </div>
+
+    <!-- 04 DEVICES -->
+    <div class="screen-block">
+      <div class="screen-head">
+        <span class="screen-num">SCREEN · 04</span>
+        <h3 class="screen-title">Devices <em>— the hardware.</em></h3>
+      </div>
+      <div class="app">
+        <div class="titlebar">
+          <div class="traffic"><div class="r"></div><div class="y"></div><div class="g"></div></div>
+          <div class="titlebar-brand"><div class="titlebar-glyph"></div><span class="titlebar-wordmark">Voix</span></div>
+        </div>
+        <div class="sidebar">
+          <div class="sb-button"><span style="font-size: 13px; opacity: 0.6;">＋</span><span>New conversation</span><span class="kbd">⌘N</span></div>
+          <div class="sb-section">Today</div>
+          <div class="sb-items"><div class="sb-item"><span>Kitchen quick chat</span><span class="sb-meta">2 min ago</span></div></div>
+          <div class="sb-bottom">
+            <div class="sb-flat-item"><div class="puck-mini"></div><span>Modes</span><span class="sb-count">4</span></div>
+            <div class="sb-flat-item sel"><span>⚙</span><span>Devices &amp; settings</span></div>
+          </div>
+        </div>
+        <div class="main">
+          <div class="main-toolbar"><div class="main-title"><span class="main-title-text">Devices &amp; settings</span></div></div>
+          <div style="padding: 20px 24px; overflow-y: auto;">
+            <div style="font-size: 12px; color: #8b8b90; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 10px;">Connected pucks</div>
+            <div style="background: rgba(255,255,255,0.6); border: 0.5px solid rgba(0,0,0,0.08); border-radius: 10px; padding: 4px 16px; margin-bottom: 20px;">
+              <div class="device-row">
+                <div class="puck-app size-28"></div>
+                <div class="device-meta"><div class="device-name">Living room puck</div><div class="device-sub">192.168.1.42 · firmware 1.4.2</div></div>
+                <span class="device-status live">● LIVE</span>
+              </div>
+              <div class="device-row">
+                <div class="puck-app size-28"></div>
+                <div class="device-meta"><div class="device-name">Kitchen puck</div><div class="device-sub">192.168.1.43 · firmware 1.4.2</div></div>
+                <span class="device-status idle">IDLE</span>
+              </div>
+              <div class="device-row">
+                <div class="puck-app size-28"></div>
+                <div class="device-meta"><div class="device-name">Office puck</div><div class="device-sub">192.168.1.44 · firmware 1.3.9 · update available</div></div>
+                <span class="device-status off">OFFLINE</span>
+              </div>
+            </div>
+            <div style="font-size: 12px; color: #8b8b90; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 10px;">Discovery</div>
+            <div style="background: rgba(255,255,255,0.6); border: 0.5px solid rgba(0,0,0,0.08); border-radius: 10px; padding: 4px 16px;">
+              <div class="setting-row">
+                <div><div class="setting-label">Scan local network</div><div class="setting-desc">Find new HA Voice PE devices on .local</div></div>
+                <div style="background: rgba(0,0,0,0.05); border-radius: 5px; padding: 4px 12px; font-size: 12px; color: var(--ink);">Scan now</div>
+              </div>
+              <div class="setting-row">
+                <div><div class="setting-label">Auto-discover</div><div class="setting-desc">Watch for new pucks joining the network.</div></div>
+                <div class="toggle"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="screen-rationale">
+        <div class="why-label">WHY THIS WAY</div>
+        <p><strong>Three statuses, not five.</strong> LIVE (currently being used), IDLE (connected, ready), OFFLINE (not reachable). No "STANDBY," "CONNECTING," "READY" — the user doesn't need that granularity in a list view.</p>
+        <p><strong>Status colours follow the brand split.</strong> LIVE is HA blue (a Voix-specific state). IDLE and OFFLINE are neutral system grays — because "off" isn't a brand moment, it's just a fact. Resist the temptation to make IDLE green or OFFLINE red; those add noise.</p>
+        <p><strong>Devices and Settings share one screen.</strong> They're related setup tasks and the user enters them rarely. Splitting them into separate top-level views would inflate the sidebar for low-value navigation.</p>
+      </div>
+    </div>
+
+    <!-- 05 SETTINGS DARK -->
+    <div class="screen-block">
+      <div class="screen-head">
+        <span class="screen-num">SCREEN · 05 · DARK MODE</span>
+        <h3 class="screen-title">Settings <em>— the plumbing.</em></h3>
+      </div>
+      <div class="app dark">
+        <div class="titlebar">
+          <div class="traffic"><div class="r"></div><div class="y"></div><div class="g"></div></div>
+          <div class="titlebar-brand"><div class="titlebar-glyph"></div><span class="titlebar-wordmark">Voix</span></div>
+        </div>
+        <div class="sidebar">
+          <div class="sb-button"><span style="font-size: 13px; opacity: 0.5;">＋</span><span>New conversation</span><span class="kbd">⌘N</span></div>
+          <div class="sb-section">Today</div>
+          <div class="sb-items"><div class="sb-item"><span>Kitchen quick chat</span><span class="sb-meta">2 min ago</span></div></div>
+          <div class="sb-bottom">
+            <div class="sb-flat-item"><div class="puck-mini"></div><span>Modes</span></div>
+            <div class="sb-flat-item sel"><span>⚙</span><span>Devices &amp; settings</span></div>
+          </div>
+        </div>
+        <div class="main">
+          <div class="main-toolbar"><div class="main-title"><span class="main-title-text">Settings</span></div></div>
+          <div style="padding: 20px 24px; overflow-y: auto;">
+            <div style="font-size: 12px; color: #8b8b90; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 10px;">General</div>
+            <div style="background: rgba(255,255,255,0.04); border: 0.5px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 4px 16px; margin-bottom: 20px;">
+              <div class="setting-row">
+                <div><div class="setting-label">Launch at login</div><div class="setting-desc">Start Voix when you sign in.</div></div>
+                <div class="toggle"></div>
+              </div>
+              <div class="setting-row">
+                <div><div class="setting-label">Global hotkey</div><div class="setting-desc">Start a dictation from anywhere.</div></div>
+                <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--dark-text); background: rgba(255,255,255,0.08); padding: 4px 10px; border-radius: 5px; letter-spacing: 0.5px;">⌥ Space</span>
+              </div>
+              <div class="setting-row">
+                <div><div class="setting-label">Paste destination</div><div class="setting-desc">Where dictation lands by default.</div></div>
+                <select class="setting-select"><option>Active app</option></select>
+              </div>
+            </div>
+            <div style="font-size: 12px; color: #8b8b90; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 10px;">Model providers</div>
+            <div style="background: rgba(255,255,255,0.04); border: 0.5px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 4px 16px;">
+              <div class="setting-row">
+                <div><div class="setting-label">Anthropic API key</div><div class="setting-desc">sk-ant-•••••••••••••••2f</div></div>
+                <span style="font-size: 12px; color: var(--sys-blue-dark); cursor: pointer;">Edit</span>
+              </div>
+              <div class="setting-row">
+                <div><div class="setting-label">OpenAI API key</div><div class="setting-desc">For voice synthesis.</div></div>
+                <span style="font-size: 12px; color: var(--sys-blue-dark); cursor: pointer;">Add</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="screen-rationale">
+        <div class="why-label">WHY THIS WAY</div>
+        <p><strong>No puck visible.</strong> Settings is machine config, not a Voix moment. The brand sits in the titlebar wordmark; the body of the screen is pure system. Adding a puck would be ornament — the screen would be lying about its job.</p>
+        <p><strong>Dark mode shown to prove the system holds.</strong> Every screen must work in both appearances. HA blue stays exact (#03A9F4 in both); system accent shifts from #007AFF light to #0A84FF dark. Card backgrounds use a low-opacity white tint rather than a separate dark colour — how Mac Liquid Glass actually composites.</p>
+        <p><strong>API keys are masked.</strong> Standard practice, but worth saying: sensitive values never display in cleartext. "Edit" or "Add" launches a secure input modal. The masked preview pattern (<code style="font-family: 'JetBrains Mono', monospace; font-size: 11px;">sk-ant-•••2f</code>) is the standard.</p>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<section id="never">
+  <div class="section-head">
+    <span class="section-num">N° 06 · NEVER</span>
+    <h2>The desktop-specific <em>traps.</em></h2>
+    <p class="intro">Every desktop app brand fails the same way: it borrows web habits that don't survive on a window with real chrome.</p>
+  </div>
+  <div class="section-body">
+    <div class="grid-2" style="gap: 12px;">
+      <div class="rule-card dont"><div class="tag">NEVER</div><p><strong style="font-weight: 500;">Use Instrument Serif in the app.</strong> The serif is the marketing voice. The app is system fonts only.</p></div>
+      <div class="rule-card dont"><div class="tag">NEVER</div><p><strong style="font-weight: 500;">Custom traffic light controls.</strong> No "designed" close/minimise buttons. The OS owns these.</p></div>
+      <div class="rule-card dont"><div class="tag">NEVER</div><p><strong style="font-weight: 500;">Override the system scrollbar, context menu, or text-selection colour.</strong> These belong to the user.</p></div>
+      <div class="rule-card dont"><div class="tag">NEVER</div><p><strong style="font-weight: 500;">Onboard with marketing copy.</strong> First-run is sober: connect a puck, confirm API key, go.</p></div>
+      <div class="rule-card dont"><div class="tag">NEVER</div><p><strong style="font-weight: 500;">Show the /vwa/ glyph in the app.</strong> Pronunciation is a marketing concern. People who installed it already know how to say it.</p></div>
+      <div class="rule-card dont"><div class="tag">NEVER</div><p><strong style="font-weight: 500;">Animate the rings on idle.</strong> Pulsing is reserved for actual audio input. Decoration animation is what bad voice UIs do.</p></div>
+      <div class="rule-card dont"><div class="tag">NEVER</div><p><strong style="font-weight: 500;">Ship a light-themed app on a dark macOS.</strong> The window must follow system appearance.</p></div>
+      <div class="rule-card dont"><div class="tag">NEVER</div><p><strong style="font-weight: 500;">Open the palette to a hex picker.</strong> Twelve colours, fixed. The discipline holds the system together.</p></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wordmark" style="justify-content: center; margin-bottom: 24px;">
+    <div class="glyph"></div>
+    <span class="wm-text">Voix</span>
+    <span class="pronounce">/vwa/</span>
+  </div>
+  <p>The desktop app gets out of the way.</p>
+  <p class="mono">DESKTOP BRAND GUIDE · v1.1 · MAY 2026 · BOOK 02</p>
+</footer>
+
+</body>
+</html>

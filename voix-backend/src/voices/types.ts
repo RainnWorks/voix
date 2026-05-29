@@ -114,6 +114,25 @@ export type Voice = {
    *  distinctive the routing hint, the better the routing accuracy. */
   routingHint: string;
 
+  /** M14: which engine drives the discuss path for this voice.
+   *  - `"realtime"` (default): the existing OpenAI Realtime pipeline.
+   *    Streaming, low-latency, model speaks back via its own audio
+   *    output. Higher per-minute cost.
+   *  - `"traditional"`: STT → LLM (talkingPrompt) → TTS turn loop.
+   *    Cheaper, BYO-providers, slightly more turn-based feel.
+   *  Empty / missing is normalised to `"realtime"` for back-compat —
+   *  every voice that existed before M14 keeps its old behaviour. */
+  discussEngine?: "realtime" | "traditional";
+
+  /** M14: TTS provider name for the traditional discuss + future TTS
+   *  playback. Today: "aura" (Deepgram) is the only impl. Empty =
+   *  not set; the orchestrator falls back to the default once
+   *  configured. */
+  ttsProvider?: string;
+  /** Provider-specific voice id for the TTS, e.g. "aura-asteria-en"
+   *  for Aura. Empty = provider default. */
+  ttsVoice?: string;
+
   /** Built-in voices are seeded on first boot. The flag lets us
    *  distinguish "user created" from "shipped with the daemon" — the
    *  UI may surface this as a reset button, and migrations only

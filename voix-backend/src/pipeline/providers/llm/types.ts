@@ -13,20 +13,34 @@
  * rather than fattening this one.
  */
 
+/** One message in a chat history. Mirrors the OpenAI chat-completions
+ *  schema 1:1 so providers can pass it straight through. */
+export type LlmMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
 export type LlmRequest = {
   /** System role message — the voice's `talkingPrompt` or `donePrompt`. */
   systemPrompt: string;
   /** Optional context block (rendered by the context layer). When
-   *  non-empty, the facade prepends it to the user message with a
-   *  `---` separator. */
+   *  non-empty, the facade prepends it to the user message (or the
+   *  first user message when `messages` is used) with a `---`
+   *  separator. */
   contextBlock?: string;
-  /** User role message body. For the done phase: the raw transcript. */
-  userText: string;
+  /** Single-shot user content. Used by the dictation done-phase. For
+   *  multi-turn discuss, use `messages` instead — when both are set,
+   *  `messages` wins. */
+  userText?: string;
+  /** Conversation history for multi-turn use (M14 traditional discuss
+   *  path). Mutually exclusive with `userText` semantically; both can
+   *  be passed but `messages` takes precedence. */
+  messages?: LlmMessage[];
   /** Provider-specific model name, e.g. "gpt-4o-mini",
    *  "anthropic/claude-haiku-4". */
   model: string;
-  /** 0-1. Defaults to 0.2 — these prompts are transforms, not
-   *  creative writing. Override for voices that want more flair. */
+  /** 0-1. Defaults to 0.2 — done-phase calls are transforms, not
+   *  creative writing. Discuss turns should typically pass ~0.7. */
   temperature?: number;
 };
 

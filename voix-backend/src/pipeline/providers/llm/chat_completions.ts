@@ -60,21 +60,44 @@ export class ChatCompletionsProvider implements LlmProvider {
     if (!system) {
       throw new Error(`${this.name}: empty systemPrompt`);
     }
-    const userText = (req.userText ?? "").trim();
-    if (!userText) {
-      throw new Error(`${this.name}: empty userText`);
-    }
 
-    const userContent = req.contextBlock?.trim()
-      ? `${req.contextBlock.trim()}\n\n---\n\n${userText}`
-      : userText;
+    // Two input shapes:
+    //   • single-shot (done phase): `userText` → one user message
+    //   • multi-turn (discuss):     `messages` → full history
+    // When both are passed, messages wins. Either way the system
+    // prompt prepends, and a non-empty contextBlock attaches to the
+    // FIRST user message (so the model sees context before any
+    // history).
+    const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
+      { role: "system", content: system },
+    ];
+    const ctx = req.contextBlock?.trim();
+    const attachCtx = (s: string) => (ctx ? `${ctx}\n\n---\n\n${s}` : s);
+
+    if (req.messages && req.messages.length > 0) {
+      let firstUserApplied = false;
+      for (const m of req.messages) {
+        if (!firstUserApplied && m.role === "user") {
+          messages.push({ role: "user", content: attachCtx(m.content) });
+          firstUserApplied = true;
+        } else {
+          messages.push({ role: m.role, content: m.content });
+        }
+      }
+      if (messages.length === 1) {
+        throw new Error(`${this.name}: empty messages list`);
+      }
+    } else {
+      const userText = (req.userText ?? "").trim();
+      if (!userText) {
+        throw new Error(`${this.name}: empty userText`);
+      }
+      messages.push({ role: "user", content: attachCtx(userText) });
+    }
 
     const body = {
       model: req.model || this.defaultModel,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: userContent },
-      ],
+      messages,
       temperature: req.temperature ?? 0.2,
     };
 

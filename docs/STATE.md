@@ -2,24 +2,51 @@
 
 ## Latest status (read this first)
 
+**Phase 1 + Phase 2 complete** (tagged `v0.phase-1`, `v0.phase-2`).
+Five milestones merged in this session. Next phase (Audio I/O port,
+M06-M08) is unblocked.
+
 - **M01 merged** on main (`30d1768`). -2,425 LOC of pre-pivot HA
-  bridge code gone. **Deploy still pending** — homelab `192.168.96.15`
-  unreachable from current dev network; daemon-side path unaffected.
-- **M02 merged** on main (`e3e80af`). Mode → Voice rename across
-  daemon + UI. File moves + symbol renames + persistence migrations
-  (modes.json → voices.json, devices.json modeId → voiceId,
-  recordings meta.json legacy field fallback). 4 unit tests, biome +
-  typecheck clean, UI builds. Daemon dev_mode auto-pull picks this up
-  in ~30s.
-- **M03 in progress**: Voice schema two-phase prompts (talkingPrompt
-  + donePrompt). Schema migration; daemon realtime path consumes new
-  field when present.
-- **Workflow doc** (`docs/build-workflow.md`) codifies: merge to
-  main per milestone without asking; test coverage required per
-  milestone; UI/UX audit agents (with personalities) spun up before
-  any UI merge. Five-persona starting cast: Marina, Sven, Priya,
-  Wren, Caleb.
-- **Active tasks**: M03 (in_progress), M04-M05 (queued). M01-M02 closed.
+  bridge code gone. **Deploy still pending** — homelab
+  `192.168.96.15` unreachable from current dev network. Daemon path
+  unaffected; HA integration delete is the only thing waiting on a
+  homelab `rsync`.
+- **M02 merged** (`e3e80af`). Mode → Voice rename. File moves +
+  symbol renames + persistence migrations (modes.json → voices.json,
+  devices.json modeId → voiceId, recordings meta.json legacy field
+  fallback). 4 unit tests.
+- **M03 merged** (`dd4e186`). Voice schema two-phase prompts:
+  `talkingPrompt` + `donePrompt` are canonical, legacy
+  `prompt`/`postProcessPrompt` are kept in sync as deprecated aliases.
+  `normalisePhasePrompts()` handles every on-disk shape on read; PATCH
+  alias rules keep UI writes consistent. Daemon's realtime path reads
+  the new fields directly. 5 unit tests.
+- **M04 merged** (`c6203ff`). Voice editor rewritten to two-panel
+  shape. Numbered HA-blue pips for phase 1 + 2 with a rail line
+  connecting them visually. "Skipped" tags when a phase is empty.
+  Provider/model knobs behind Advanced disclosure. Segmented control
+  for the OpenAI/OpenRouter picker (no more silent coerce). Audit
+  agents Marina + Wren spun up before merge per workflow rule,
+  briefs at `docs/agents/m04-{marina,wren}.md`.
+- **M05 merged** (`5323e71`). Protocol shift: hello has new
+  canonical `intent` (dictate/discuss) + `voice_id` fields; legacy
+  `mode` + `mode_id` accepted via `resolveCapture()` mapping
+  (realtime→discuss, dictation→dictate). 7 unit tests.
+- **M05b queued** (task #120). Firmware-side hello extension —
+  needs homelab to compile + upload + verify.
+
+Three queued homelab tasks: M01 deploy (rsync HA integration), M05b
+firmware deploy. Both can land back-to-back next time the homelab is
+reachable.
+
+**Active tasks**: #120 M05b (queued, needs homelab). Phase 3
+(M06-M08, Audio I/O port) not yet spun up as tasks — see
+`docs/build-workflow.md` for the roadmap.
+
+**Workflow doc** (`docs/build-workflow.md`) codifies: merge to main
+per milestone without asking; test coverage required per milestone;
+UI/UX audit agents (with personalities) spun up before any UI
+merge. Five-persona starting cast: Marina, Sven, Priya, Wren, Caleb.
 
 ## Pre-M01 snapshot follows
 

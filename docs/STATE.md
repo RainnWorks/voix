@@ -6,11 +6,12 @@
 Five milestones merged in this session. Next phase (Audio I/O port,
 M06-M08) is unblocked.
 
-- **M01 merged** on main (`30d1768`). -2,425 LOC of pre-pivot HA
-  bridge code gone. **Deploy still pending** — homelab
-  `192.168.96.15` unreachable from current dev network. Daemon path
-  unaffected; HA integration delete is the only thing waiting on a
-  homelab `rsync`.
+- **M01 deployed + verified** (commit `30d1768`). -2,425 LOC of
+  pre-pivot HA bridge code gone. `scripts/deploy-ha-integration.sh`
+  ran clean; `ha core check` passes; 26 voix entities loaded after
+  restart. The earlier "homelab unreachable" reading was wrong — it
+  was the `rsync` command missing on HAOS, not a network issue. The
+  new script uses a tar pipe so no remote `rsync` is needed.
 - **M02 merged** (`e3e80af`). Mode → Voice rename. File moves +
   symbol renames + persistence migrations (modes.json → voices.json,
   devices.json modeId → voiceId, recordings meta.json legacy field

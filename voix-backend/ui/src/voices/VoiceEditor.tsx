@@ -55,8 +55,6 @@ export function VoiceEditor({ voiceId, onClose }: Props) {
       setError(null);
       setSaved(true);
     } catch (e) {
-      // Wren (audit): a save failure used to nuke the whole editor.
-      // Surface as a banner above the editor, keep typing live.
       setError(e instanceof Error ? e.message : String(e));
       setSaved(true);
     }
@@ -69,7 +67,6 @@ export function VoiceEditor({ voiceId, onClose }: Props) {
       </View>
     );
   }
-  // Hard error before any voice loaded — give the user something to do.
   if (!voice) {
     return (
       <View style={styles.errorBox}>
@@ -83,8 +80,9 @@ export function VoiceEditor({ voiceId, onClose }: Props) {
   }
 
   const swatch = nearestSwatch(voice.color);
-  const talkingEmpty = voice.talkingPrompt.trim().length === 0;
-  const doneEmpty = voice.donePrompt.trim().length === 0;
+  const isRealtime = voice.type === "realtime";
+  const isDictation = voice.type === "dictation";
+  const donePromptFilled = voice.donePrompt.trim().length > 0;
 
   return (
     <ScrollView contentContainerStyle={styles.scroll}>
@@ -149,45 +147,96 @@ export function VoiceEditor({ voiceId, onClose }: Props) {
         })}
       </View>
 
-      {/* Sequential two-phase block. The numbered HA-blue pips read
-          as a flow, the connector line between them ties them
-          together — Wren (audit) flagged that the editor needs to
-          *show* the discuss→output arc, not just label it. */}
-      <PhaseBlock
-        number={1}
-        label="When we're talking"
-        hint="What the model is told during the conversation. Leave empty to skip straight to the output."
-        empty={talkingEmpty}
-        connector="below"
-      >
-        <TextInput
-          value={voice.talkingPrompt}
-          onChangeText={(t) => setVoice({ ...voice, talkingPrompt: t })}
-          onBlur={() => save({ talkingPrompt: voice.talkingPrompt })}
-          multiline
-          placeholder="You are me, having a quick voice chat about what to write."
-          placeholderTextColor={colors.textQuiet}
-          style={styles.textarea}
+      {/* Voice type — the primary axis. Realtime is conversational
+          and can optionally produce an output by tool-call; Dictation
+          is plain mic-to-LLM. Surfacing this as the first decision
+          stops the rest of the editor from looking like four equally
+          valid prompt combinations. */}
+      <SectionLabel>Voice type</SectionLabel>
+      <View style={styles.typeRow}>
+        <TypeOption
+          selected={isRealtime}
+          title="Realtime"
+          subtitle="Back-and-forth voice chat. The model speaks back."
+          onPress={() => {
+            if (!isRealtime) {
+              setVoice({ ...voice, type: "realtime" });
+              void save({ type: "realtime" });
+            }
+          }}
         />
-      </PhaseBlock>
+        <TypeOption
+          selected={isDictation}
+          title="Dictation"
+          subtitle="One-shot. You talk, the model writes it down."
+          onPress={() => {
+            if (!isDictation) {
+              setVoice({ ...voice, type: "dictation" });
+              void save({ type: "dictation" });
+            }
+          }}
+        />
+      </View>
 
-      <PhaseBlock
-        number={2}
-        label="When I'm done"
-        hint="What the model is told when producing the polished output. Leave empty to skip the output, just have a conversation."
-        empty={doneEmpty}
-        connector="above"
-      >
-        <TextInput
-          value={voice.donePrompt}
-          onChangeText={(t) => setVoice({ ...voice, donePrompt: t })}
-          onBlur={() => save({ donePrompt: voice.donePrompt })}
-          multiline
-          placeholder="Write this as me emailing a vendor I'm annoyed with but still want to work with."
-          placeholderTextColor={colors.textQuiet}
-          style={styles.textarea}
-        />
-      </PhaseBlock>
+      {/* ─── Realtime layout: talking required, done optional ───────── */}
+      {isRealtime && (
+        <>
+          <PhaseBlock
+            number={1}
+            label="When we're talking"
+            requiredTag="Needed"
+            hint="How the model behaves during the conversation — its persona, its rules, its register."
+            connector="below"
+          >
+            <TextInput
+              value={voice.talkingPrompt}
+              onChangeText={(t) => setVoice({ ...voice, talkingPrompt: t })}
+              onBlur={() => save({ talkingPrompt: voice.talkingPrompt })}
+              multiline
+              placeholder="You are me, having a quick voice chat about what to write."
+              placeholderTextColor={colors.textQuiet}
+              style={styles.textarea}
+            />
+          </PhaseBlock>
+
+          <PhaseBlock
+            number={2}
+            label="When I'm done"
+            requiredTag="If you want one"
+            hint="If the conversation reaches a point where you want a written result, the model writes it using this prompt. Otherwise it's just a chat."
+            connector="above"
+          >
+            <TextInput
+              value={voice.donePrompt}
+              onChangeText={(t) => setVoice({ ...voice, donePrompt: t })}
+              onBlur={() => save({ donePrompt: voice.donePrompt })}
+              multiline
+              placeholder="Write this as me emailing a vendor I'm annoyed with but still want to work with."
+              placeholderTextColor={colors.textQuiet}
+              style={styles.textarea}
+            />
+          </PhaseBlock>
+        </>
+      )}
+
+      {/* ─── Dictation layout: a single LLM-polish phase ─────────────── */}
+      {isDictation && (
+        <SimplePhase
+          label="What the model does with your dictation"
+          requiredTag="Needed"
+          hint="You speak. We transcribe. The model shapes the result with this prompt. Leave empty for raw transcription, no rewrite."
+        >
+          <TextInput
+            value={voice.donePrompt}
+            onChangeText={(t) => setVoice({ ...voice, donePrompt: t })}
+            onBlur={() => save({ donePrompt: voice.donePrompt })}
+            multiline
+            placeholder="Rewrite the transcript as a polished email…"
+            placeholderTextColor={colors.textQuiet}
+            style={styles.textarea}
+          />
+        </SimplePhase>
+      )}
 
       <Pressable onPress={() => setAdvancedOpen((v) => !v)} style={styles.advancedToggle}>
         <Text style={styles.advancedToggleText}>
@@ -195,7 +244,7 @@ export function VoiceEditor({ voiceId, onClose }: Props) {
         </Text>
       </Pressable>
 
-      {advancedOpen && (
+      {advancedOpen && isRealtime && (
         <>
           <SectionLabel>Talking phase plumbing</SectionLabel>
           <SettingRow
@@ -228,38 +277,56 @@ export function VoiceEditor({ voiceId, onClose }: Props) {
           />
 
           <SectionLabel>Output phase plumbing</SectionLabel>
+          {!donePromptFilled && (
+            <Text style={styles.sectionHint}>
+              Disabled — this voice has no "When I'm done" prompt, so
+              the model never produces a written result. Add one above
+              to enable the output provider + model.
+            </Text>
+          )}
+          <View style={!donePromptFilled && styles.disabled}>
+            <OutputProviderRows voice={voice} setVoice={setVoice} save={save} />
+          </View>
+        </>
+      )}
+
+      {advancedOpen && isDictation && (
+        <>
+          <SectionLabel>STT pipeline</SectionLabel>
           <SettingRow
-            label="Provider"
-            desc="Where the output-phase model runs."
+            label="STT provider"
+            desc="Where mic audio gets transcribed."
             control={
               <Segmented
-                value={voice.postProcessProvider}
+                value={voice.sttProvider}
                 options={[
-                  { value: "openai", label: "OpenAI" },
-                  { value: "openrouter", label: "OpenRouter" },
+                  { value: "openai-realtime", label: "OpenAI" },
+                  { value: "deepgram", label: "Deepgram" },
                 ]}
                 onChange={(v) => {
-                  const next = v as Voice["postProcessProvider"];
-                  setVoice({ ...voice, postProcessProvider: next });
-                  void save({ postProcessProvider: next });
+                  setVoice({ ...voice, sttProvider: v });
+                  void save({ sttProvider: v });
                 }}
               />
             }
           />
           <SettingRow
-            label="Output model"
-            desc="The model used when producing the artifact."
+            label="STT model"
+            desc="Provider-specific model name. Empty = provider default."
             control={
               <TextInput
-                value={voice.postProcessModel}
-                onChangeText={(t) => setVoice({ ...voice, postProcessModel: t })}
-                onBlur={() => save({ postProcessModel: voice.postProcessModel })}
-                placeholder="gpt-4o-mini"
+                value={voice.sttModel}
+                onChangeText={(t) => setVoice({ ...voice, sttModel: t })}
+                onBlur={() => save({ sttModel: voice.sttModel })}
+                placeholder="gpt-4o-mini-transcribe"
                 placeholderTextColor={colors.textQuiet}
                 style={styles.input}
               />
             }
           />
+
+          <SectionLabel>Output phase plumbing</SectionLabel>
+          <OutputProviderRows voice={voice} setVoice={setVoice} save={save} />
         </>
       )}
     </ScrollView>
@@ -270,26 +337,54 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   return <Text style={styles.sectionLabel}>{children}</Text>;
 }
 
-/** A numbered phase block — the numbered HA-blue pip + the rule
- *  through the page is what makes the two phases read as one flow
- *  rather than two independent sections. When the phase is empty,
- *  we show a small "Skipped" tag in mono next to the label so the
- *  user can tell at a glance whether a phase is "off" vs
- *  "not-filled-in-yet" (Wren caught this). */
+/** The primary Realtime / Dictation chooser. Wider than a segmented
+ *  control because it also carries a subtitle that explains the
+ *  trade. */
+function TypeOption({
+  selected,
+  title,
+  subtitle,
+  onPress,
+}: {
+  selected: boolean;
+  title: string;
+  subtitle: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.typeOption,
+        selected && styles.typeOptionSelected,
+        pressed && !selected && styles.typeOptionPressed,
+      ]}
+    >
+      <Text style={[styles.typeOptionTitle, selected && styles.typeOptionTitleSelected]}>
+        {title}
+      </Text>
+      <Text style={styles.typeOptionSubtitle}>{subtitle}</Text>
+    </Pressable>
+  );
+}
+
+/** Numbered phase block — used for the two-phase Realtime layout.
+ *  The HA-blue pip + the rail line tie phase 1 and phase 2 into one
+ *  visual flow. `requiredTag` surfaces whether the phase is required
+ *  ("Required") or optional ("Optional"). Empty-state is no longer
+ *  shown — the type-driven layout already conveys what applies. */
 function PhaseBlock({
   number,
   label,
   hint,
-  empty,
+  requiredTag,
   connector,
   children,
 }: {
   number: number;
   label: string;
   hint: string;
-  empty: boolean;
-  /** Which side of the pip the vertical rule extends to, tying this
-   *  phase to its neighbour. */
+  requiredTag: "Needed" | "If you want one";
   connector: "above" | "below" | "both";
   children: React.ReactNode;
 }) {
@@ -310,12 +405,54 @@ function PhaseBlock({
         <View style={styles.phaseHeaderText}>
           <View style={styles.phaseLabelRow}>
             <Text style={styles.sectionLabel}>{label}</Text>
-            {empty && <Text style={styles.skippedTag}>Skipped</Text>}
+            <Text
+              style={[
+                styles.requiredTag,
+                requiredTag === "If you want one" && styles.requiredTagOptional,
+              ]}
+            >
+              {requiredTag}
+            </Text>
           </View>
           <Text style={styles.phaseHint}>{hint}</Text>
         </View>
       </View>
       <View style={styles.phaseBody}>{children}</View>
+    </View>
+  );
+}
+
+/** Single-phase variant for Dictation. No pip + no rail because
+ *  there's nothing to connect to. Same header shape as PhaseBlock
+ *  for visual consistency. */
+function SimplePhase({
+  label,
+  hint,
+  requiredTag,
+  children,
+}: {
+  label: string;
+  hint: string;
+  requiredTag: "Needed" | "If you want one";
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={styles.phaseBlock}>
+      <View style={styles.simplePhaseHeader}>
+        <View style={styles.phaseLabelRow}>
+          <Text style={styles.sectionLabel}>{label}</Text>
+          <Text
+            style={[
+              styles.requiredTag,
+              requiredTag === "If you want one" && styles.requiredTagOptional,
+            ]}
+          >
+            {requiredTag}
+          </Text>
+        </View>
+        <Text style={styles.phaseHint}>{hint}</Text>
+      </View>
+      <View style={styles.simplePhaseBody}>{children}</View>
     </View>
   );
 }
@@ -340,10 +477,6 @@ function SettingRow({
   );
 }
 
-/** Two-button segmented control. Replaces a free-text TextInput that
- *  was silently coercing unknown values to a default (Wren caught
- *  this; the editor shouldn't be the place a typo turns into a
- *  shrug). */
 function Segmented<T extends string>({
   value,
   options,
@@ -355,30 +488,71 @@ function Segmented<T extends string>({
 }) {
   return (
     <View style={styles.segmented}>
-      {options.map((opt, i) => {
+      {options.map((opt) => {
         const selected = opt.value === value;
-        const first = i === 0;
-        const last = i === options.length - 1;
         return (
           <Pressable
             key={opt.value}
             onPress={() => onChange(opt.value)}
-            style={[
-              styles.segmentedItem,
-              selected && styles.segmentedItemSelected,
-              first && styles.segmentedItemFirst,
-              last && styles.segmentedItemLast,
-            ]}
+            style={[styles.segmentedItem, selected && styles.segmentedItemSelected]}
           >
-            <Text
-              style={[styles.segmentedText, selected && styles.segmentedTextSelected]}
-            >
+            <Text style={[styles.segmentedText, selected && styles.segmentedTextSelected]}>
               {opt.label}
             </Text>
           </Pressable>
         );
       })}
     </View>
+  );
+}
+
+/** The provider + model rows for the output-phase LLM call. Used by
+ *  both Realtime (when donePrompt is non-empty) and Dictation (always)
+ *  so factored out. */
+function OutputProviderRows({
+  voice,
+  setVoice,
+  save,
+}: {
+  voice: Voice;
+  setVoice: (v: Voice) => void;
+  save: (patch: VoiceUpdate) => Promise<void>;
+}) {
+  return (
+    <>
+      <SettingRow
+        label="Provider"
+        desc="Where the output-phase model runs."
+        control={
+          <Segmented
+            value={voice.postProcessProvider}
+            options={[
+              { value: "openai", label: "OpenAI" },
+              { value: "openrouter", label: "OpenRouter" },
+            ]}
+            onChange={(v) => {
+              const next = v as Voice["postProcessProvider"];
+              setVoice({ ...voice, postProcessProvider: next });
+              void save({ postProcessProvider: next });
+            }}
+          />
+        }
+      />
+      <SettingRow
+        label="Output model"
+        desc="The model used when producing the artifact."
+        control={
+          <TextInput
+            value={voice.postProcessModel}
+            onChangeText={(t) => setVoice({ ...voice, postProcessModel: t })}
+            onBlur={() => save({ postProcessModel: voice.postProcessModel })}
+            placeholder="gpt-4o-mini"
+            placeholderTextColor={colors.textQuiet}
+            style={styles.input}
+          />
+        }
+      />
+    </>
   );
 }
 
@@ -409,9 +583,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   identityCol: { flex: 1, gap: spacing.xs },
-  // System-input pattern: a 0.5px bottom rule that thickens to the
-  // system accent on focus. Same affordance as Apple's "borderless"
-  // inputs that still feel like inputs.
   nameInput: {
     fontFamily: fontFamily.ui,
     fontSize: 17,
@@ -439,6 +610,13 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     marginTop: spacing.lg,
   },
+  sectionHint: {
+    fontFamily: fontFamily.ui,
+    fontSize: 12,
+    color: colors.textMuted,
+    lineHeight: 18,
+    marginTop: spacing.xs,
+  },
 
   swatchRow: {
     flexDirection: "row",
@@ -455,6 +633,50 @@ const styles = StyleSheet.create({
     borderColor: "transparent",
   },
   swatch: { width: 22, height: 22, borderRadius: 11 },
+
+  // ─── Voice type chooser ──────────────────────────────────────────
+  // Note on colour: Marina (audit) flagged that HA blue is the puck's
+  // brand colour and should be reserved for "voix moments" — the puck
+  // glyph, ACTIVE pills, the speaker tag. The type chooser is chrome,
+  // so it lives on the system accent. The selected-state background
+  // is a very soft tint of sysAccent (built inline below since the
+  // theme doesn't carry a sysAccent-with-alpha token yet).
+  typeRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  typeOption: {
+    flex: 1,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.bgSubtle,
+    borderWidth: 0.5,
+    borderColor: colors.rule,
+    gap: spacing.sm,
+  },
+  typeOptionPressed: { opacity: 0.7 },
+  typeOptionSelected: {
+    // Soft sysAccent tint — matches the macOS pattern of selection
+    // surfaces (NSTableView selection, control accent backgrounds).
+    backgroundColor: "rgba(0,122,255,0.08)",
+    borderColor: colors.sysAccent,
+  },
+  typeOptionTitle: {
+    fontFamily: fontFamily.ui,
+    fontSize: 15,
+    fontWeight: "600",
+    color: colors.ink,
+  },
+  typeOptionTitleSelected: {
+    color: colors.sysAccent,
+  },
+  typeOptionSubtitle: {
+    fontFamily: fontFamily.ui,
+    fontSize: 12,
+    color: colors.textMuted,
+    lineHeight: 18,
+  },
 
   // ─── Phase blocks ────────────────────────────────────────────────
   phaseBlock: {
@@ -507,14 +729,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.sm,
   },
-  skippedTag: {
-    fontFamily: fontFamily.mono,
-    fontSize: 11,
+  // Tag sits next to the section label. Smaller + sentence-case so
+  // it reads as metadata about the heading, not as a twin to it
+  // (Marina + Wren both flagged the competing mono-uppercase).
+  requiredTag: {
+    fontFamily: fontFamily.ui,
+    fontSize: 10,
+    color: colors.sysAccent,
+    backgroundColor: "rgba(0,122,255,0.08)",
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: radius.sm,
+  },
+  requiredTagOptional: {
     color: colors.textMuted,
     backgroundColor: colors.bgSubtle,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: radius.sm,
   },
   phaseHint: {
     fontFamily: fontFamily.ui,
@@ -523,9 +752,26 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   phaseBody: {
-    paddingLeft: 24 + spacing.md, // align with the header text column
+    paddingLeft: 24 + spacing.md,
     gap: spacing.md,
     marginTop: spacing.sm,
+  },
+  // SimplePhase keeps the same left gutter as PhaseBlock so the
+  // textarea column doesn't jump 36 px when toggling Realtime ↔
+  // Dictation. The header text aligns where the rail-anchored
+  // PhaseBlock header text would.
+  simplePhaseHeader: {
+    paddingLeft: 24 + spacing.md,
+    gap: spacing.xs,
+  },
+  simplePhaseBody: {
+    paddingLeft: 24 + spacing.md,
+    gap: spacing.md,
+    marginTop: spacing.sm,
+  },
+
+  disabled: {
+    opacity: 0.4,
   },
 
   advancedToggle: {
@@ -600,20 +846,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderRadius: radius.sm - 2,
   },
-  segmentedItemFirst: {},
-  segmentedItemLast: {},
-  segmentedItemSelected: {
-    backgroundColor: colors.bgElevated,
-  },
+  segmentedItemSelected: { backgroundColor: colors.bgElevated },
   segmentedText: {
     fontFamily: fontFamily.ui,
     fontSize: 12,
     color: colors.textMuted,
   },
-  segmentedTextSelected: {
-    color: colors.ink,
-    fontWeight: "500",
-  },
+  segmentedTextSelected: { color: colors.ink, fontWeight: "500" },
 
   loadingBox: { padding: spacing.xxl, alignItems: "center" },
   errorBox: {

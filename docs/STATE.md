@@ -1,11 +1,56 @@
-# voix · Current State (2026-05-29)
+# voix · Current State (2026-05-30, post-audit)
 
-## Latest status (read this first)
+## Read this first
 
-**Phases 1, 2, 3 + 5/7 of Phase 4 complete on source.** Thirteen
-milestones merged. Tags: `v0.phase-1`, `v0.phase-2`. (`v0.phase-3`
-and `v0.phase-4` not tagged yet — waiting for the puck OTA + a
-real dictate round-trip to verify before stamping them.)
+**Where to start, by intent:**
+
+- **Resuming after context compaction?** Read
+  `docs/session-handoff/2026-05-30-audit-pass.md` first — it captures
+  the volatile context (the audit pass, the 9 fixes, what's still
+  open). This file is the cold-read entry.
+- **Want to know what's broken?** `docs/audits/niggly-bits.md` (B2,
+  280 lines). The 9 most critical items shipped fixes in `9dc5c0b`.
+- **Want the brutal what-vs-what?** `docs/audits/goal-vs-reality.md`
+  (B1, 221 lines). Milestone-by-milestone scorecard.
+- **Want to start real automated tests?**
+  `docs/testing/ui-harness.md` (1474 lines, ready to implement),
+  `docs/testing/ha-integration-harness.md` (695 lines, verified
+  source).
+
+---
+
+## Status — Phases 1-5 source complete, audit pass landed
+
+**Phases 1-5 complete on source.** Eighteen milestones merged + an
+adversarial audit pass that shipped 9 fixes (`9dc5c0b`). Tags:
+`v0.phase-1`, `v0.phase-2`. (`v0.phase-3`, `-4`, `-5` not tagged —
+verification cliff at the Phase 3/4 boundary remains; see audit B1.)
+
+**The verification cliff** (B1's headline): only M01 + M02b/c/d ever
+ran against real systems. Everything M08+ has only ever run against
+stubs, synthetic audio, or a compiled-but-never-flashed binary. Two
+deploy blockers cascade everything:
+
+- **#124** puck OTA (firmware compiled `fa58375`, never flashed)
+- **#130** `DEEPGRAM_API_KEY` + real dictate round-trip
+
+Until either lands, the whole Phase 3/4/5 stack is "shape is right,"
+not "behaviour is right."
+
+**The audit pass (`9dc5c0b`) fixed 9 issues**, four of them shipped-
+to-main bugs that would crash or silently misbehave for users:
+
+1. ConversationList hooks-after-return — crashed Conversations page
+2. TalkButton press race — leaked mic + WS on quick tap
+3. Browser 2× speed audio — `sendSpeaker` missing the resample contract
+4. Discuss barge-in permanently muted assistant
+5. Orchestrator dead ternary `"deepgram":"deepgram"`
+6. Malformed v1 hello hung the WS
+7. `async_unload_entry` leaked hass.data / re-registered services
+8. `secrets.yaml.bak` not gitignored (Wi-Fi creds)
+9. Unbounded discuss history (quadratic token cost)
+
+**Tests: 115 daemon tests pass, biome + typecheck clean, UI builds.**
 
 **The Phase 4 wiring is hot but unverified end-to-end.** Daemon
 side has:

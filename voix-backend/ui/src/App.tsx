@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Text, View } from "react-native";
 import { AppShell, type Section } from "./components/AppShell";
-import { colors, fontFamily, spacing } from "./lib/theme";
+import { ConversationDetail } from "./conversations/ConversationDetail";
+import { ConversationList } from "./conversations/ConversationList";
 import { SurfaceList } from "./surfaces/SurfaceList";
 import { VoiceEditor } from "./voices/VoiceEditor";
 import { VoiceList } from "./voices/VoiceList";
@@ -9,9 +9,10 @@ import { VoiceList } from "./voices/VoiceList";
 export function App() {
   const [section, setSection] = useState<Section>("voices");
   const [editingVoiceId, setEditingVoiceId] = useState<string | null>(null);
+  const [openEntryId, setOpenEntryId] = useState<string | null>(null);
 
   let title: string;
-  let toolbarRight: React.ReactNode = null;
+  const toolbarRight: React.ReactNode = null;
   let content: React.ReactNode;
 
   if (section === "voices") {
@@ -23,8 +24,13 @@ export function App() {
       content = <VoiceEditor voiceId={editingVoiceId} onClose={() => setEditingVoiceId(null)} />;
     }
   } else if (section === "conversations") {
-    title = "Conversations";
-    content = <Placeholder text="Conversation history view coming soon." />;
+    if (openEntryId === null) {
+      title = "Conversations";
+      content = <ConversationList onPickEntry={setOpenEntryId} />;
+    } else {
+      title = "Conversation";
+      content = <ConversationDetail entryId={openEntryId} onClose={() => setOpenEntryId(null)} />;
+    }
   } else {
     title = "Surfaces";
     content = <SurfaceList />;
@@ -36,35 +42,12 @@ export function App() {
       onPickSection={(s) => {
         setSection(s);
         setEditingVoiceId(null);
+        setOpenEntryId(null);
       }}
       title={title}
       toolbarRight={toolbarRight}
     >
       {content}
     </AppShell>
-  );
-}
-
-function Placeholder({ text }: { text: string }) {
-  return (
-    <View
-      style={{
-        flex: 1,
-        alignItems: "center",
-        justifyContent: "center",
-        padding: spacing.xl,
-      }}
-    >
-      <Text
-        style={{
-          fontFamily: fontFamily.ui,
-          fontSize: 13,
-          color: colors.textMuted,
-          fontStyle: "italic",
-        }}
-      >
-        {text}
-      </Text>
-    </View>
   );
 }

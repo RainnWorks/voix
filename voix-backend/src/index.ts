@@ -11,6 +11,7 @@
 
 import { Elysia } from "elysia";
 import { devicesRoute } from "./api/devices.ts";
+import { historyRoute } from "./api/history.ts";
 import { voicesRoute } from "./api/voices.ts";
 import { audioIoRoute } from "./audio_io/route.ts";
 import { registerSource } from "./context/registry.ts";
@@ -59,6 +60,7 @@ const app = new Elysia()
   .use(audioIoRoute())
   .use(voicesRoute())
   .use(devicesRoute())
+  .use(historyRoute())
   .use(recordingsRoute())
   .use(uiRoute())
   .listen(config.port);

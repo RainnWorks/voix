@@ -119,3 +119,42 @@ export const devicesApi = {
 export const surfacesApi = {
   list: () => api<Surface[]>("api/surfaces"),
 };
+
+/** M17 history types — mirror voix-backend/src/history/types.ts. */
+export type HistoryContextEntry = {
+  source: string;
+  data: Record<string, unknown>;
+};
+
+export type HistoryEntry = {
+  id: string;
+  createdAt: string;
+  deviceId: string;
+  sessionId: string;
+  voiceId: string;
+  voiceName: string;
+  modeType: "realtime" | "dictation";
+  durationMs: number;
+  rawText: string;
+  processedText: string | null;
+  postProcessProvider: string | null;
+  postProcessModel: string | null;
+  contextSnapshot: HistoryContextEntry[];
+  transcriptPath: string | null;
+};
+
+export type TranscriptResponse = { content: string; source: string };
+
+export const historyApi = {
+  list: (opts?: { voiceId?: string; deviceId?: string; limit?: number }) => {
+    const params = new URLSearchParams();
+    if (opts?.voiceId) params.set("voiceId", opts.voiceId);
+    if (opts?.deviceId) params.set("deviceId", opts.deviceId);
+    if (opts?.limit) params.set("limit", String(opts.limit));
+    const qs = params.toString();
+    return api<HistoryEntry[]>(`api/history${qs ? `?${qs}` : ""}`);
+  },
+  get: (id: string) => api<HistoryEntry>(`api/history/${encodeURIComponent(id)}`),
+  transcript: (id: string) =>
+    api<TranscriptResponse>(`api/history/${encodeURIComponent(id)}/transcript`),
+};

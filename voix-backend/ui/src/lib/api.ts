@@ -82,12 +82,30 @@ export const voicesApi = {
     }),
 };
 
+/** Capability snapshot, mirroring `audio_io/protocol.ts` Capabilities. */
+export type SurfaceCapabilities = {
+  mic: { sample_rate_hz: number; channels: 1 | 2; codec?: "pcm16" | "opus" };
+  speaker?: { sample_rate_hz: number; codec?: "pcm16" };
+  half_duplex_on_chip?: boolean;
+  wake_words?: string[];
+  screen?: boolean;
+};
+
 export type Device = {
   deviceId: string;
   friendlyName?: string;
   voiceId: string;
   lastSeenMs: number;
+  /** M16 capability snapshot from the most recent hello. */
+  protocolVersion?: number;
+  clientKind?: string;
+  capabilities?: SurfaceCapabilities;
 };
+
+/** Devices and Surfaces are the same on the wire today — same
+ *  DeviceRecord payload, two URL paths. The UI labels them as
+ *  Surfaces; the daemon's internal naming is still Devices. */
+export type Surface = Device;
 
 export const devicesApi = {
   list: () => api<Device[]>("api/devices"),
@@ -96,4 +114,8 @@ export const devicesApi = {
       method: "PUT",
       body: JSON.stringify({ voiceId }),
     }),
+};
+
+export const surfacesApi = {
+  list: () => api<Surface[]>("api/surfaces"),
 };

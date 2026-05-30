@@ -16,7 +16,7 @@ import { Wordmark } from "./Wordmark";
  * browser tab.
  */
 
-export type Section = "conversations" | "modes" | "devices";
+export type Section = "conversations" | "voices" | "surfaces";
 
 type Props = {
   section: Section;
@@ -76,16 +76,16 @@ function Sidebar({
       <View style={styles.bottom}>
         <SidebarFlatItem
           icon={<Puck size={11} />}
-          label="Modes"
+          label="Voices"
           count={6}
-          selected={section === "modes"}
-          onPress={() => onPickSection("modes")}
+          selected={section === "voices"}
+          onPress={() => onPickSection("voices")}
         />
         <SidebarFlatItem
           icon={<Text style={styles.gearIcon}>⚙</Text>}
-          label="Devices & settings"
-          selected={section === "devices"}
-          onPress={() => onPickSection("devices")}
+          label="Surfaces"
+          selected={section === "surfaces"}
+          onPress={() => onPickSection("surfaces")}
         />
       </View>
     </View>

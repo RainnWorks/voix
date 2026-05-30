@@ -210,10 +210,15 @@ export class AudioIoConnection {
     );
 
     // Best-effort device "last seen" — write failure logged but
-    // doesn't gate the session.
-    void recordSeen(deviceId, { voiceId: voice.id }).catch((err) =>
-      log.debug(`audio_io ${deviceId}: recordSeen failed`, err),
-    );
+    // doesn't gate the session. M16: capabilities snapshot lets the
+    // Surfaces UI render device cards from persisted state when the
+    // WS is closed.
+    void recordSeen(deviceId, {
+      voiceId: voice.id,
+      protocolVersion: isV1 ? PROTOCOL_VERSION : undefined,
+      clientKind,
+      capabilities,
+    }).catch((err) => log.debug(`audio_io ${deviceId}: recordSeen failed`, err));
 
     // Build the pipeline with a callback bridge back to us.
     const callbacks: PipelineCallbacks = {

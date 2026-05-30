@@ -1,32 +1,33 @@
 import { useState } from "react";
 import { Text, View } from "react-native";
 import { AppShell, type Section } from "./components/AppShell";
+import { colors, fontFamily, spacing } from "./lib/theme";
+import { SurfaceList } from "./surfaces/SurfaceList";
 import { VoiceEditor } from "./voices/VoiceEditor";
 import { VoiceList } from "./voices/VoiceList";
-import { colors, fontFamily, spacing } from "./lib/theme";
 
 export function App() {
-  const [section, setSection] = useState<Section>("modes");
-  const [editingModeId, setEditingModeId] = useState<string | null>(null);
+  const [section, setSection] = useState<Section>("voices");
+  const [editingVoiceId, setEditingVoiceId] = useState<string | null>(null);
 
   let title: string;
   let toolbarRight: React.ReactNode = null;
   let content: React.ReactNode;
 
-  if (section === "modes") {
-    if (editingModeId === null) {
-      title = "Modes";
-      content = <VoiceList onPickVoice={setEditingModeId} />;
+  if (section === "voices") {
+    if (editingVoiceId === null) {
+      title = "Voices";
+      content = <VoiceList onPickVoice={setEditingVoiceId} />;
     } else {
-      title = "Edit mode";
-      content = <VoiceEditor voiceId={editingModeId} onClose={() => setEditingModeId(null)} />;
+      title = "Edit voice";
+      content = <VoiceEditor voiceId={editingVoiceId} onClose={() => setEditingVoiceId(null)} />;
     }
   } else if (section === "conversations") {
     title = "Conversations";
     content = <Placeholder text="Conversation history view coming soon." />;
   } else {
-    title = "Devices & settings";
-    content = <Placeholder text="Device + settings view coming soon." />;
+    title = "Surfaces";
+    content = <SurfaceList />;
   }
 
   return (
@@ -34,7 +35,7 @@ export function App() {
       section={section}
       onPickSection={(s) => {
         setSection(s);
-        setEditingModeId(null);
+        setEditingVoiceId(null);
       }}
       title={title}
       toolbarRight={toolbarRight}

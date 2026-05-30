@@ -20,6 +20,7 @@
  */
 
 import { readFile } from "node:fs/promises";
+import type { Capabilities } from "../audio_io/protocol.ts";
 import { log } from "../log.ts";
 import { atomicWrite } from "../storage/atomic.ts";
 import { dataPath } from "../storage/paths.ts";
@@ -35,6 +36,15 @@ export type DeviceRecord = {
   voiceId: string;
   /** Date.now() of the last connection we saw — refreshed on hello. */
   lastSeenMs: number;
+  /** M16: capabilities snapshot from the most recent hello. Lets the
+   *  Surfaces UI render what each endpoint can physically do without
+   *  the WS being live. Optional — pre-M16 records won't have it,
+   *  and endpoints that send the legacy puck shape get the daemon's
+   *  inferred defaults stamped here so the UI still has something
+   *  to show. */
+  protocolVersion?: number;
+  clientKind?: string;
+  capabilities?: Capabilities;
 };
 
 /** Shape on disk in pre-M02 records — accepted on read for migration. */
@@ -48,12 +58,23 @@ let loaded = false;
 function normalise(d: DeviceRecord | LegacyDeviceRecord): DeviceRecord {
   const voiceId =
     "voiceId" in d && d.voiceId ? d.voiceId : (d as LegacyDeviceRecord).modeId || DEFAULT_VOICE_ID;
-  return {
+  const rec: DeviceRecord = {
     deviceId: d.deviceId,
     friendlyName: d.friendlyName,
     voiceId,
     lastSeenMs: d.lastSeenMs,
   };
+  // Carry forward the M16 capability fields when present on disk.
+  if ("protocolVersion" in d && typeof d.protocolVersion === "number") {
+    rec.protocolVersion = d.protocolVersion;
+  }
+  if ("clientKind" in d && typeof d.clientKind === "string") {
+    rec.clientKind = d.clientKind;
+  }
+  if ("capabilities" in d && d.capabilities) {
+    rec.capabilities = d.capabilities;
+  }
+  return rec;
 }
 
 export async function loadDevices(): Promise<void> {
@@ -80,11 +101,19 @@ async function persist(): Promise<void> {
   await atomicWrite(FILE, JSON.stringify(arr, null, 2));
 }
 
-/** Called from PuckSession at hello time so we have an up-to-date
- *  "lastSeen". Records the voice id from the hello if present. */
+/** Called from the audio-io connection at hello time so we have an
+ *  up-to-date "lastSeen". Records the voice id + capability snapshot
+ *  from the hello so the Surfaces screen can render what each
+ *  endpoint can do without the WS being live. */
 export async function recordSeen(
   deviceId: string,
-  hint: { friendlyName?: string; voiceId?: string },
+  hint: {
+    friendlyName?: string;
+    voiceId?: string;
+    protocolVersion?: number;
+    clientKind?: string;
+    capabilities?: Capabilities;
+  },
 ): Promise<void> {
   const prev = cache.get(deviceId);
   const next: DeviceRecord = {
@@ -92,6 +121,9 @@ export async function recordSeen(
     friendlyName: hint.friendlyName ?? prev?.friendlyName,
     voiceId: hint.voiceId || prev?.voiceId || DEFAULT_VOICE_ID,
     lastSeenMs: Date.now(),
+    protocolVersion: hint.protocolVersion ?? prev?.protocolVersion,
+    clientKind: hint.clientKind ?? prev?.clientKind,
+    capabilities: hint.capabilities ?? prev?.capabilities,
   };
   cache.set(deviceId, next);
   await persist();
@@ -116,6 +148,9 @@ export async function setDeviceVoice(deviceId: string, voiceId: string): Promise
     friendlyName: prev?.friendlyName,
     voiceId,
     lastSeenMs: prev?.lastSeenMs ?? Date.now(),
+    protocolVersion: prev?.protocolVersion,
+    clientKind: prev?.clientKind,
+    capabilities: prev?.capabilities,
   };
   cache.set(deviceId, next);
   await persist();

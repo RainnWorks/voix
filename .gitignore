@@ -38,7 +38,13 @@ src-tauri/gen/
 .env.*
 !.env.example
 secrets.yaml
+# Editor / shell backup copies of secrets — caught by the niggly-bits
+# audit. `secrets.yaml.bak` had real Wi-Fi creds and was missing from
+# the ignore list.
+secrets.yaml.*
 *.local
+# Editor backup files in general — keep them out of the tree.
+*.bak
 
 # OS / log clutter
 *.log

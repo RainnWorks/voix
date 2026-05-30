@@ -349,7 +349,9 @@ export class RealtimePipeline implements Pipeline {
       const pcm24k = Buffer.from(event.delta, "base64");
       this.echoGate?.observeSpeaker(pcm24k);
       this.recorder.pushSpeaker(pcm24k);
-      this.cb.sendSpeaker(pcm24k);
+      // OpenAI Realtime emits 24 kHz PCM16 LE; the connection layer
+      // resamples to the endpoint's declared rate (M16 + B1 fix).
+      this.cb.sendSpeaker(pcm24k, OPENAI_RATE);
       this.watchdog.setAssistantSpeaking(true);
     });
 

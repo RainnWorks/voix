@@ -44,6 +44,18 @@ export function ConversationList({ onPickEntry }: Props) {
     refresh();
   }, [refresh]);
 
+  // Auto-refresh ~1.5 s after a session ends so the new entry shows up
+  // without a manual reload. The TalkButton fires `onSessionEnded`
+  // when the browser client tears down. NOTE: this hook MUST come
+  // before the early-return branches below — placing it after them
+  // changes the hook-call count between renders (returns early on
+  // first render, doesn't on second) and React throws "Rendered more
+  // hooks than during the previous render". The audit caught this
+  // crash before any user did.
+  const onSessionEnded = useCallback(() => {
+    setTimeout(refresh, 1500);
+  }, [refresh]);
+
   if (error) {
     return (
       <View style={styles.errorBox}>
@@ -59,14 +71,6 @@ export function ConversationList({ onPickEntry }: Props) {
       </View>
     );
   }
-  // Auto-refresh ~2 s after a session ends so the new entry shows up
-  // without a manual reload. The TalkButton fires `onSessionEnded`
-  // when the browser client tears down.
-  const onSessionEnded = useCallback(() => {
-    // Small delay because history.append is on the daemon side after
-    // the WS closes; we want the eventual-consistency to land.
-    setTimeout(refresh, 1500);
-  }, [refresh]);
 
   if (entries.length === 0) {
     return (

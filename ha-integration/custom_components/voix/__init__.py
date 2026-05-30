@@ -1236,4 +1236,50 @@ async def _push_led_then_refresh(
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    """Unload the integration cleanly so HA's reload doesn't leave
+    stale state in ``hass.data`` or duplicate-register the voix
+    services on the next setup.
+
+    The original implementation only unloaded platforms — the niggly-
+    bits audit (A3) flagged that reloading the integration would
+    leak the per-entry state stash and skip service deregistration
+    (the registration path early-returns when ``has_service`` is true,
+    so the second setup would silently reuse the first run's
+    handlers). This routine mirrors what async_setup_entry built.
+    """
+    ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if not ok:
+        return False
+
+    # Drop the per-entry slot under hass.data[DOMAIN]. Other entries
+    # (multi-instance — unusual but supported) keep theirs.
+    domain_data = hass.data.get(DOMAIN, {})
+    domain_data.pop(entry.entry_id, None)
+
+    # Unregister the voix.* services we registered idempotently in
+    # async_setup_entry. If a second voix entry is loaded these services
+    # belong to it too, so only unregister when this was the last entry.
+    remaining = [e for e in hass.config_entries.async_entries(DOMAIN) if e.entry_id != entry.entry_id]
+    if not remaining:
+        for service in (
+            SERVICE_CYCLE_MODE,
+            SERVICE_SET_MODE,
+            SERVICE_CREATE_MODE,
+            SERVICE_UPDATE_MODE,
+            SERVICE_DELETE_MODE,
+            SERVICE_LIST_MODES,
+            SERVICE_GET_TRANSCRIPT,
+            SERVICE_CYCLE_VOICE,
+            SERVICE_SET_VOICE,
+            SERVICE_CREATE_VOICE,
+            SERVICE_UPDATE_VOICE,
+            SERVICE_DELETE_VOICE,
+            SERVICE_LIST_VOICES,
+        ):
+            if hass.services.has_service(DOMAIN, service):
+                hass.services.async_remove(DOMAIN, service)
+        # Clear the whole domain bucket — the per-entry caches
+        # (mode_select, mode_light, wake_word_selects, active_ws, etc.)
+        # would otherwise survive a full reload as ghost references.
+        hass.data.pop(DOMAIN, None)
+    return True

@@ -184,7 +184,13 @@ class OrchestratedPipeline implements Pipeline {
     // intent === "discuss"
     const engine = voice.discussEngine || "realtime";
     if (engine === "traditional") {
-      const sttName = voice.sttProvider === "deepgram" ? "deepgram" : "deepgram";
+      // Dead-ternary fix (niggly-bits B3): the original
+      // `voice.sttProvider === "deepgram" ? "deepgram" : "deepgram"`
+      // silently forced Deepgram regardless of the voice's declared
+      // STT and crashed with no decline if DEEPGRAM_API_KEY was
+      // missing. Use the voice's choice; default to deepgram only
+      // when unset.
+      const sttName = voice.sttProvider || "deepgram";
       const llmName = voice.postProcessProvider || "openai";
       const ttsName = voice.ttsProvider || "aura";
       const [sttProvider, llmProvider, ttsProvider] = await Promise.all([

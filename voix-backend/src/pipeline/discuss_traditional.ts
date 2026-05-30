@@ -47,6 +47,13 @@ import { SessionWatchdog } from "./watchdog.ts";
 const DISCUSS_HARD_MAX_S = 300;
 const DISCUSS_IDLE_TIMEOUT_S = 12;
 const TTS_SPEAKER_RATE_HZ = 24000;
+/** Sliding window of conversation turns sent to the LLM each round.
+ *  Each LLM call ships system + last N turns; older turns drop off so
+ *  the prompt token count grows linearly with N, not with session
+ *  length. 16 messages ≈ 8 user/assistant pairs is enough context for
+ *  a normal conversation without the cost-quadratic problem the
+ *  niggly-bits audit flagged (L1). */
+const HISTORY_TURN_CAP = 16;
 
 /** Same `[Context] …` block as the realtime + dictate paths so the
  *  same prompt always sees the same rendered context. */
@@ -113,10 +120,18 @@ export class TraditionalDiscussPipeline implements Pipeline {
   private currentTurnFinals: string[] = [];
 
   /** Conversation history across the whole session — fed into every
-   *  talking-phase LLM call and (optionally) the done-phase call. */
+   *  talking-phase LLM call and (optionally) the done-phase call.
+   *  Bounded by HISTORY_TURN_CAP below before going on the wire. */
   private history: ConversationTurn[] = [];
   private contextSnapshot: ContextEntry[] = [];
   private lastError: string | null = null;
+  /** Set by bargeIn(); cleared at the start of the next assistant turn.
+   *  When true, incoming TTS audio frames are dropped without being
+   *  forwarded to the endpoint. The TTS session itself stays alive so
+   *  the next turn can speak (B2 from the niggly-bits audit: nulling
+   *  the session permanently muted the assistant for the rest of the
+   *  conversation). */
+  private assistantDropUntilNextTurn = false;
 
   constructor(
     private readonly s: PipelineStart,
@@ -237,14 +252,16 @@ export class TraditionalDiscussPipeline implements Pipeline {
 
   bargeIn(): void {
     if (this.closed || this.finalizing) return;
-    // Cancel the in-flight TTS playback so the user can take the floor
-    // immediately. The current LLM call (if any) is left to finish in
-    // the background — its output gets dropped because state moves to
-    // user_speaking and the TTS is closed.
-    if (this.state === "assistant_speaking" && this.tts) {
-      log.info(`discuss ${this.deviceId}: barge_in — closing TTS`);
-      this.tts.close();
-      this.tts = null;
+    // Stop forwarding the in-flight TTS audio to the endpoint so the
+    // user can take the floor. The TTS session itself stays alive —
+    // closing + nulling it would permanently mute the assistant
+    // because there is no re-open path; the next runAssistantTurn
+    // would see `this.tts === null` and drop every reply (B2 in the
+    // niggly-bits audit). Aura's wire protocol has no `cancel`, so
+    // we drop incoming audio chunks until the next turn opens fresh.
+    if (this.state === "assistant_speaking") {
+      log.info(`discuss ${this.deviceId}: barge_in — dropping in-flight TTS audio`);
+      this.assistantDropUntilNextTurn = true;
       this.cb.sendEvent({ type: "audio_end" });
     }
     this.state = "waiting_for_user";
@@ -298,8 +315,12 @@ export class TraditionalDiscussPipeline implements Pipeline {
   private handleTtsEvent(event: import("./providers/tts/types.ts").TtsEvent): void {
     if (this.closed) return;
     if (event.type === "audio") {
+      // The TTS session was opened at TTS_SPEAKER_RATE_HZ; pair the
+      // frame with that so the connection can resample to the
+      // endpoint's declared rate.
+      if (this.assistantDropUntilNextTurn) return;
       this.recorder.pushSpeaker(event.pcm);
-      this.cb.sendSpeaker(event.pcm);
+      this.cb.sendSpeaker(event.pcm, TTS_SPEAKER_RATE_HZ);
       this.watchdog.setAssistantSpeaking(true);
       return;
     }
@@ -326,6 +347,10 @@ export class TraditionalDiscussPipeline implements Pipeline {
     if (this.closed || this.finalizing) return;
     if (this.state !== "thinking") return;
 
+    // A fresh turn opens audio forwarding again — bargeIn() may have
+    // muted the previous reply mid-stream.
+    this.assistantDropUntilNextTurn = false;
+
     const userText = this.currentTurnFinals.join(" ").trim();
     this.currentTurnFinals = [];
 
@@ -342,16 +367,24 @@ export class TraditionalDiscussPipeline implements Pipeline {
     this.history.push({ role: "user", content: userText });
     this.cb.sendEvent({ type: "transcript", role: "user", text: userText });
 
+    // Send only the recent window — full history grows unbounded and
+    // ramps token cost quadratically (niggly-bits L1). Older turns
+    // drop off; if the conversation actually needs deeper context we
+    // can move to a summary-of-older approach later.
+    const messagesForCall = this.history.slice(-HISTORY_TURN_CAP);
+    if (this.history.length > HISTORY_TURN_CAP) {
+      log.debug(
+        `discuss ${this.deviceId}: history sliced to last ${HISTORY_TURN_CAP} ` +
+          `(full=${this.history.length})`,
+      );
+    }
+
     let assistantText: string;
     try {
       const resp = await this.deps.llmProvider.complete({
         systemPrompt: this.voice.talkingPrompt,
         contextBlock: renderContextBlock(this.contextSnapshot),
-        // Clone so we don't leak our internal history array to the
-        // provider — if the provider tested it asynchronously it would
-        // see post-call mutations (we push the assistant message right
-        // below).
-        messages: [...this.history],
+        messages: messagesForCall,
         model: this.voice.model || "",
         // Discuss turns lean on the warm end of the spectrum — a flat
         // 0.7 is the cheap-shot default until per-voice tuning lands.

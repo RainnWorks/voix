@@ -19,6 +19,7 @@
  */
 
 import { randomBytes } from "node:crypto";
+import { createResampler, resampleChunk } from "../audio/resample.ts";
 import { recordSeen } from "../devices/store.ts";
 import { log } from "../log.ts";
 import type { Pipeline, PipelineCallbacks, PipelineFactory } from "../pipeline/types.ts";
@@ -72,6 +73,18 @@ export class AudioIoConnection {
   private intent: Intent = "discuss";
   private closed = false;
   private readonly sessionId = randomBytes(8).toString("hex");
+  /** Endpoint's declared speaker rate from the M16 capability
+   *  handshake. The pipeline sends speaker PCM at the upstream
+   *  provider's native rate (24 kHz for both Realtime + Aura); we
+   *  resample here before forwarding so the endpoint hears the
+   *  audio at the right pitch. The browser declares 48 kHz and was
+   *  hearing 24 kHz audio at 2× speed before this resample landed
+   *  (B1 from the niggly-bits audit). */
+  private speakerSampleRateHz = 0;
+  /** Resampler state from upstream (currently 24 kHz) → endpoint
+   *  rate. Created lazily on first speaker frame when the rates
+   *  differ; null if no resample is needed (rates match). */
+  private speakerResampleState: ReturnType<typeof createResampler> | null = null;
 
   constructor(
     private readonly ws: WSLike,
@@ -187,9 +200,25 @@ export class AudioIoConnection {
       return;
     }
 
-    const capabilities: Capabilities = isV1
-      ? (r["capabilities"] as Capabilities)
-      : LEGACY_PUCK_DEFAULT_CAPS;
+    // Validate capabilities before touching them. The original
+    // unchecked cast at this site let a malformed v1 hello — empty
+    // capabilities, or capabilities with no `mic` — throw a
+    // TypeError out of handleHello, leaving the WS hung with neither
+    // ready nor decline (niggly-bits B4).
+    let capabilities: Capabilities;
+    if (isV1) {
+      const raw = r["capabilities"] as Record<string, unknown> | undefined;
+      const mic = (raw?.["mic"] ?? null) as { sample_rate_hz?: unknown } | null;
+      if (!raw || !mic || typeof mic.sample_rate_hz !== "number" || mic.sample_rate_hz <= 0) {
+        log.warn(`audio_io ${deviceId}: v1 hello with bad/missing capabilities.mic`);
+        this.sendDecline("internal", "capabilities.mic.sample_rate_hz required");
+        this.ws.close(CLOSE_CODES.DECLINE, "capabilities");
+        return;
+      }
+      capabilities = raw as unknown as Capabilities;
+    } else {
+      capabilities = LEGACY_PUCK_DEFAULT_CAPS;
+    }
 
     const voice = getVoice(voiceId);
     this.intent = intent;
@@ -220,10 +249,14 @@ export class AudioIoConnection {
       capabilities,
     }).catch((err) => log.debug(`audio_io ${deviceId}: recordSeen failed`, err));
 
+    // Stash the endpoint's declared speaker rate so the sendSpeaker
+    // callback can resample upstream PCM to it.
+    this.speakerSampleRateHz = capabilities.speaker?.sample_rate_hz ?? 0;
+
     // Build the pipeline with a callback bridge back to us.
     const callbacks: PipelineCallbacks = {
       sendEvent: (event) => this.sendDaemonEvent(event),
-      sendSpeaker: (pcm) => this.sendBinaryToEndpoint(pcm),
+      sendSpeaker: (pcm, rate) => this.sendSpeakerFrame(pcm, rate),
       close: () => this.close(),
     };
     const pipeline = this.deps.pipelineFactory({
@@ -233,6 +266,7 @@ export class AudioIoConnection {
       intent,
       openaiApiKey: this.deps.openaiApiKey,
       micSampleRateHz: capabilities.mic.sample_rate_hz,
+      speakerSampleRateHz: this.speakerSampleRateHz || undefined,
       halfDuplexOnChip: !needsDaemonEchoGate(capabilities),
       callbacks,
     });
@@ -283,6 +317,36 @@ export class AudioIoConnection {
     } catch (e) {
       log.debug(`audio_io ${this.deviceId}: sendBinary failed`, e);
     }
+  }
+
+  /**
+   * Resample upstream PCM to the endpoint's declared speaker rate
+   * and forward. Created lazily on first frame.
+   *
+   * If the endpoint declared no speaker, drop the frame — the
+   * pipeline shouldn't be sending audio to a speaker-less endpoint
+   * anyway, but we don't want to forward 24 kHz raw if so. If the
+   * pipeline's source rate matches the endpoint's rate (puck case)
+   * forward without resampling.
+   */
+  private sendSpeakerFrame(pcm: Buffer, sourceRateHz: number): void {
+    if (this.closed) return;
+    if (this.speakerSampleRateHz === 0) {
+      // Endpoint never declared a speaker; nothing to play through.
+      return;
+    }
+    if (this.speakerSampleRateHz === sourceRateHz) {
+      this.sendBinaryToEndpoint(pcm);
+      return;
+    }
+    if (!this.speakerResampleState) {
+      this.speakerResampleState = createResampler(sourceRateHz, this.speakerSampleRateHz);
+      log.debug(
+        `audio_io ${this.deviceId}: speaker resample ${sourceRateHz} → ${this.speakerSampleRateHz}`,
+      );
+    }
+    const resampled = resampleChunk(pcm, this.speakerResampleState);
+    this.sendBinaryToEndpoint(resampled);
   }
 
   private sendDecline(reason: string, detail: string): void {

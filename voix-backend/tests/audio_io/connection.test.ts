@@ -331,7 +331,42 @@ describe("AudioIoConnection", () => {
       device_id: "puck-1",
       mode: "realtime",
     });
-    calls.last?.callbacks.sendSpeaker(Buffer.alloc(960)); // 20ms @ 24kHz
+    // sendSpeaker now takes a sample-rate argument so the connection
+    // can resample to the endpoint's declared speaker rate. The legacy
+    // puck case declares 24 kHz speaker, so a 24 kHz source frame is
+    // forwarded verbatim — no resample, byte-identical out.
+    calls.last?.callbacks.sendSpeaker(Buffer.alloc(960), 24000); // 20ms @ 24kHz
     expect(binSent).toEqual([960]);
+  });
+
+  test("speaker frame at a different rate than the endpoint is resampled", async () => {
+    // After the niggly-bits B1 fix: when the endpoint declares a
+    // speaker rate that doesn't match the pipeline's source rate,
+    // the connection resamples before forwarding. Browser declares
+    // 48 kHz; pipeline emits 24 kHz; the wire frame must double in
+    // sample count (approximately — resample interpolates).
+    const { ws, binSent } = stubWs();
+    const conn = new AudioIoConnection(ws, {
+      wsToken: validToken,
+      openaiApiKey: "k",
+      pipelineFactory: stubPipelineFactory(calls),
+    });
+    await conn.handleText({
+      type: "hello",
+      protocol_version: PROTOCOL_VERSION,
+      token: validToken,
+      device_id: "browser-x",
+      intent: "discuss",
+      capabilities: {
+        mic: { sample_rate_hz: 48000, channels: 1 },
+        speaker: { sample_rate_hz: 48000 },
+        half_duplex_on_chip: true,
+      },
+    });
+    // Source PCM = 480 samples (= 960 bytes) at 24 kHz = 20 ms.
+    calls.last?.callbacks.sendSpeaker(Buffer.alloc(960), 24000);
+    // Resampled to 48 kHz = ~960 samples = ~1920 bytes.
+    expect(binSent.length).toBe(1);
+    expect(binSent[0]).toBeGreaterThan(960);
   });
 });

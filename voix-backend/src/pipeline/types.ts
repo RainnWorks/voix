@@ -46,10 +46,12 @@ export type PipelineToConnection =
 export type PipelineCallbacks = {
   /** Send a typed daemon event to the endpoint. */
   sendEvent(event: PipelineToConnection): void;
-  /** Send a binary speaker frame. PCM16 LE, mono, at the pipeline's
-   *  native rate (24 kHz for OpenAI Realtime today). The connection
-   *  resamples to the endpoint's declared `speaker.sample_rate_hz`. */
-  sendSpeaker(pcm: Buffer): void;
+  /** Send a binary speaker frame. The pipeline pairs the buffer with
+   *  its native PCM16 LE rate (24 kHz for OpenAI Realtime + Aura
+   *  today); the connection layer resamples to the endpoint's
+   *  declared `speaker.sample_rate_hz` from the M16 capability
+   *  handshake. Mono only. */
+  sendSpeaker(pcm: Buffer, sampleRateHz: number): void;
   /** Pipeline-initiated close (idle timeout, hard ceiling, upstream
    *  error). Connection should tear down the WS. */
   close(): void;
@@ -76,6 +78,13 @@ export type PipelineStart = {
    *  pipeline does its own resample if it needs a different rate
    *  upstream. */
   micSampleRateHz: number;
+  /** Sample rate the endpoint declared on its `capabilities.speaker`.
+   *  The pipeline emits at its native upstream rate (typically
+   *  24 kHz); the connection layer resamples to this rate before
+   *  forwarding to the endpoint. Undefined for endpoints with no
+   *  speaker (CLI / iOS keyboard); the pipeline drops audio in that
+   *  case. */
+  speakerSampleRateHz?: number;
   /** When true, the endpoint declares it handles AEC + half-duplex
    *  on chip; pipeline skips its software echo gate. */
   halfDuplexOnChip: boolean;

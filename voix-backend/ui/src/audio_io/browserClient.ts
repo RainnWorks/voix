@@ -175,7 +175,7 @@ export class BrowserAudioIoClient {
 
   private sendHello(): void {
     if (!this.audioContext || !this.ws) return;
-    const rate = this.audioContext.sampleRate;
+    const micRate = this.audioContext.sampleRate;
     const hello = {
       type: "hello",
       protocol_version: 1,
@@ -184,8 +184,14 @@ export class BrowserAudioIoClient {
       intent: this.opts.intent ?? "discuss",
       voice_id: this.opts.voiceId,
       capabilities: {
-        mic: { sample_rate_hz: rate, channels: 1 },
-        speaker: { sample_rate_hz: rate },
+        mic: { sample_rate_hz: micRate, channels: 1 },
+        // Speaker is locked to 24 kHz to match the upstream provider's
+        // native rate (OpenAI Realtime + Aura both ship 24 kHz PCM16).
+        // The daemon side now resamples speaker frames to whatever we
+        // declare (B1 fix), but declaring 24 kHz lets us avoid the
+        // extra resample on the daemon's hot path and play exactly
+        // what the model produced — pitch-correct.
+        speaker: { sample_rate_hz: 24000 },
         // getUserMedia's echoCancellation gives us hardware-ish AEC
         // on the browser side; daemon skips its software gate.
         half_duplex_on_chip: true,
@@ -259,7 +265,11 @@ export class BrowserAudioIoClient {
    *  consecutive chunks queue end-to-end without gaps. */
   private playSpeaker(pcm: Int16Array): void {
     if (!this.audioContext) return;
-    const buf = this.audioContext.createBuffer(1, pcm.length, this.audioContext.sampleRate);
+    // The hello declares speaker.sample_rate_hz = 24000; the daemon
+    // forwards 24 kHz PCM untouched. We tag the buffer at 24 kHz so
+    // the AudioContext (typically 48 kHz native) resamples on the
+    // way to the output device — pitch-correct.
+    const buf = this.audioContext.createBuffer(1, pcm.length, 24000);
     // copyToChannel expects Float32Array<ArrayBuffer>. The helper
     // returns a generic Float32Array; assigning the converted values
     // into the buffer's channel-0 view sidesteps the type narrowing.

@@ -321,7 +321,12 @@ describe("TraditionalDiscussPipeline — assistant gating", () => {
     pipe.close();
   });
 
-  test("barge_in during assistant_speaking closes TTS and resets state", async () => {
+  test("barge_in drops in-flight TTS audio without nulling the session", async () => {
+    // After the niggly-bits B2 fix: bargeIn() must NOT close + null
+    // the TTS session — that permanently muted the assistant for the
+    // rest of the discussion. Instead it sets a drop-flag so the
+    // *current* utterance's incoming audio stops being forwarded,
+    // and the session stays alive for the next turn to use.
     const { pipe, stt, tts, llm, captured } = buildPipeline();
     llm.responses.push("Some long reply.");
     await pipe.start();
@@ -331,9 +336,20 @@ describe("TraditionalDiscussPipeline — assistant gating", () => {
     for (let i = 0; i < 30; i++) pipe.pushMic(silenceFrame());
     await new Promise((r) => setTimeout(r, 5));
     tts.emit({ type: "audio", pcm: Buffer.alloc(960) });
+    // Capture how many speaker frames have arrived before the barge.
+    const speakerBefore = captured.speaker.length;
 
     pipe.bargeIn();
-    expect(tts.closed).toBe(true);
+
+    // Subsequent TTS audio frames are dropped (the drop-flag is set).
+    tts.emit({ type: "audio", pcm: Buffer.alloc(960) });
+    tts.emit({ type: "audio", pcm: Buffer.alloc(960) });
+    expect(captured.speaker.length).toBe(speakerBefore);
+
+    // TTS session is alive (not closed, not nulled).
+    expect(tts.closed).toBe(false);
+
+    // The endpoint hears the audio cut off.
     const audioEnd = captured.events.find((e) => e.type === "audio_end");
     expect(audioEnd).toBeDefined();
     pipe.close();

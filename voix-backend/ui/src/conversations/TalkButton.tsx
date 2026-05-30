@@ -25,6 +25,14 @@ export function TalkButton({ onSessionEnded }: { onSessionEnded?: () => void }) 
   const [status, setStatus] = useState<BrowserClientStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const clientRef = useRef<BrowserAudioIoClient | null>(null);
+  // Track the user's *intent* to be holding the button. handlePressIn is
+  // async (auth fetch + AudioContext open + getUserMedia + WS connect)
+  // and on a fast tap the user releases before the client exists.
+  // Without this flag the sync handlePressOut sees clientRef.current ===
+  // null, no-ops, and the in-flight handlePressIn finishes opening a
+  // live mic + WS that nothing ever closes. We mirror "holding" in a
+  // ref and check it again after the async work completes.
+  const holdingRef = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -34,11 +42,14 @@ export function TalkButton({ onSessionEnded }: { onSessionEnded?: () => void }) 
 
   const handlePressIn = async () => {
     if (clientRef.current) return;
+    holdingRef.current = true;
     setError(null);
     try {
       const tokenResp = await fetch(WS_TOKEN_URL);
       if (!tokenResp.ok) throw new Error(`auth fetch ${tokenResp.status}`);
       const { token } = (await tokenResp.json()) as { token: string };
+      // The user could have released by now — if so, don't even open.
+      if (!holdingRef.current) return;
       const client = new BrowserAudioIoClient({
         wsToken: token,
         intent: "discuss",
@@ -56,12 +67,17 @@ export function TalkButton({ onSessionEnded }: { onSessionEnded?: () => void }) 
       });
       clientRef.current = client;
       await client.start();
+      // Final check: a release that arrived while client.start() was
+      // resolving needs to be honoured now that the client exists.
+      if (!holdingRef.current) client.stop();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      holdingRef.current = false;
     }
   };
 
   const handlePressOut = () => {
+    holdingRef.current = false;
     clientRef.current?.stop();
   };
 

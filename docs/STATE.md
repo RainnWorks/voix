@@ -168,6 +168,31 @@ audio_io home-assistant-voice-095e4e: hello v1 kind=puck intent=discuss
   RealtimeProvider types-only interface (full refactor of
   RealtimePipeline behind it is M16+ work; not needed today since
   the discussEngine routing already lives in the orchestrator).
+- **M16 merged** (`14cec52`). Phase 5 begins. Sidebar Modes →
+  Voices, Devices → Surfaces. New Surfaces screen lists every
+  Audio I/O endpoint with capability chips from the M06/M08
+  handshake (mic rate, speaker rate, AEC on chip, wake words,
+  codec). Kind-aware glyph (Puck for puck; 📱/🌐/💻 placeholders
+  for other kinds). Audit briefs at
+  `docs/agents/m16-{marina,wren}.md`.
+- **M17 merged** (a Conversations screen + entry detail). Sessions
+  list with kind-tinted Puck glyph + voice name + (optional)
+  "shaped" tag + when + duration + 2-line raw transcript preview.
+  Detail view: Transcript → Entry → What voix knew (humanised
+  context receipt) → Listen back ("What I said" / "What voix said"
+  inline audio players). Audit briefs at
+  `docs/agents/m17-{marina,wren}.md`.
+- **M18 merged**. Browser becomes an Audio I/O endpoint —
+  press-to-talk button on Conversations opens a WS to /ws with v1
+  capability handshake (client_info.kind="browser-tab"), streams
+  getUserMedia PCM16 LE up, plays back PCM16 LE through WebAudio.
+  Speaking state inverts the pill so the floor-taken state is
+  unambiguous. Per-tab device_id in localStorage. Audit briefs at
+  `docs/agents/m18-{marina,wren}.md`.
+
+**Phase 5 complete on source.** Phases 6–8 (Tauri shell + iOS app
++ HA connector trim) are the natural next chunks per the build
+plan. v0.phase-4 + v0.phase-5 tags pending real-puck verification.
 
 **Phase 4 complete on source** (M09-M15 + M13b). Waiting on
 deploy-side acceptance (#124 puck OTA + #130 dictate round-trip,

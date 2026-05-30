@@ -11,11 +11,12 @@
  * Surfaces uses, tinted with the voice's colour).
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Puck } from "../components/Puck";
 import { historyApi, type HistoryEntry, type Voice, voicesApi } from "../lib/api";
 import { colors, fontFamily, nearestSwatch, radius, spacing } from "../lib/theme";
+import { TalkButton } from "./TalkButton";
 
 type Props = {
   onPickEntry: (entryId: string) => void;
@@ -26,23 +27,22 @@ export function ConversationList({ onPickEntry }: Props) {
   const [voiceById, setVoiceById] = useState<Record<string, Voice>>({});
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
+  const refresh = useCallback(() => {
     Promise.all([historyApi.list({ limit: 200 }), voicesApi.list()])
       .then(([h, v]) => {
-        if (cancelled) return;
         setEntries(h);
         const idx: Record<string, Voice> = {};
         for (const voice of v) idx[voice.id] = voice;
         setVoiceById(idx);
       })
       .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+        setError(e instanceof Error ? e.message : String(e));
       });
-    return () => {
-      cancelled = true;
-    };
   }, []);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
 
   if (error) {
     return (
@@ -59,19 +59,32 @@ export function ConversationList({ onPickEntry }: Props) {
       </View>
     );
   }
+  // Auto-refresh ~2 s after a session ends so the new entry shows up
+  // without a manual reload. The TalkButton fires `onSessionEnded`
+  // when the browser client tears down.
+  const onSessionEnded = useCallback(() => {
+    // Small delay because history.append is on the daemon side after
+    // the WS closes; we want the eventual-consistency to land.
+    setTimeout(refresh, 1500);
+  }, [refresh]);
+
   if (entries.length === 0) {
     return (
-      <View style={styles.emptyBox}>
-        <Text style={styles.emptyTitle}>No conversations yet</Text>
-        <Text style={styles.emptyHint}>
-          Next time you talk to voix, it'll show up here.
-        </Text>
+      <View style={styles.scroll}>
+        <TalkButton onSessionEnded={onSessionEnded} />
+        <View style={styles.emptyBox}>
+          <Text style={styles.emptyTitle}>No conversations yet</Text>
+          <Text style={styles.emptyHint}>
+            Hold the button above and say something. Or talk to your puck.
+          </Text>
+        </View>
       </View>
     );
   }
 
   return (
     <ScrollView contentContainerStyle={styles.scroll}>
+      <TalkButton onSessionEnded={onSessionEnded} />
       {entries.map((entry) => (
         <Row
           key={entry.id}

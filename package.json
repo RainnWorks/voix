@@ -22,6 +22,9 @@
   "dependencies": {
     "react-native-macos": "0.81.7"
   },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  },
   "overrides": {
     "@sinclair/typebox": "^0.34.49"
   }

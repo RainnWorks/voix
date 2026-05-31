@@ -7,6 +7,9 @@
       "dependencies": {
         "react-native-macos": "0.81.7",
       },
+      "devDependencies": {
+        "typescript": "5.9.3",
+      },
     },
     "clients/app": {
       "name": "voix-app",

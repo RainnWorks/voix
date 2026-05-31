@@ -108,9 +108,26 @@ export function VoiceEditor({ voiceId, onClose }: Props) {
             onBlur={() => save({ name: voice.name })}
             style={styles.nameInput}
           />
+          {/* M23 — tone is the italic personality one-liner shown
+              under the voice's name on every card. Sits between name
+              and routingHint because tone is the *user-facing*
+              identity copy; routingHint is the auto-router cue (M14)
+              and reads as a different kind of metadata. 80-char cap
+              keeps cards from wrapping (Marina line-height rule). */}
+          <TextInput
+            value={voice.tone ?? ""}
+            placeholder="A one-line personality snippet."
+            placeholderTextColor={colors.textQuiet}
+            maxLength={80}
+            onChangeText={(t) => setVoice({ ...voice, tone: t })}
+            onBlur={() =>
+              save({ tone: (voice.tone ?? "").trim() || null })
+            }
+            style={styles.toneInput}
+          />
           <TextInput
             value={voice.routingHint}
-            placeholder="A one-line introduction to this voice."
+            placeholder="A one-line routing cue for auto-pick."
             placeholderTextColor={colors.textQuiet}
             onChangeText={(t) => setVoice({ ...voice, routingHint: t })}
             onBlur={() => save({ routingHint: voice.routingHint })}
@@ -682,6 +699,19 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.ui,
     fontSize: 12,
     color: colors.textMuted,
+    borderBottomWidth: 0.5,
+    borderBottomColor: colors.ruleSoft,
+    paddingVertical: spacing.xs,
+    backgroundColor: "transparent",
+  },
+  // M23 — tone input. Italic 11pt HA-blue mirrors the consumer
+  // styling on VoiceList / SurfaceList / ConversationList cards so
+  // the user sees what their snippet will look like as they type.
+  toneInput: {
+    fontFamily: fontFamily.ui,
+    fontSize: 11,
+    fontStyle: "italic",
+    color: colors.haBlue,
     borderBottomWidth: 0.5,
     borderBottomColor: colors.ruleSoft,
     paddingVertical: spacing.xs,

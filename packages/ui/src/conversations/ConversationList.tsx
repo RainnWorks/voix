@@ -13,8 +13,16 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import type { Intent } from "@voix/protocol";
 import { Puck } from "../components/Puck";
-import { historyApi, type HistoryEntry, type Voice, voicesApi } from "../lib/api";
+import {
+  type Device,
+  type HistoryEntry,
+  type Voice,
+  devicesApi,
+  historyApi,
+  voicesApi,
+} from "../lib/api";
 import { colors, fontFamily, nearestSwatch, radius, spacing } from "../lib/theme";
 import { TalkButton } from "./TalkButton";
 
@@ -25,15 +33,27 @@ type Props = {
 export function ConversationList({ onPickEntry }: Props) {
   const [entries, setEntries] = useState<HistoryEntry[] | null>(null);
   const [voiceById, setVoiceById] = useState<Record<string, Voice>>({});
+  // M23 Decision 3 — active voice drives TalkButton.intent. We read
+  // the first device (single-puck household for now) + voices and
+  // compute intent from the active voice's type. Refreshed on the
+  // same heartbeat as entries so swapping the active voice on the
+  // Voices screen propagates back when the user returns here.
+  const [activeVoice, setActiveVoice] = useState<Voice | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
-    Promise.all([historyApi.list({ limit: 200 }), voicesApi.list()])
-      .then(([h, v]) => {
+    Promise.all([
+      historyApi.list({ limit: 200 }),
+      voicesApi.list(),
+      devicesApi.list(),
+    ])
+      .then(([h, v, d]: [HistoryEntry[], Voice[], Device[]]) => {
         setEntries(h);
         const idx: Record<string, Voice> = {};
         for (const voice of v) idx[voice.id] = voice;
         setVoiceById(idx);
+        const first = d[0];
+        setActiveVoice(first ? (idx[first.voiceId] ?? null) : null);
       })
       .catch((e) => {
         setError(e instanceof Error ? e.message : String(e));
@@ -72,10 +92,16 @@ export function ConversationList({ onPickEntry }: Props) {
     );
   }
 
+  // M23 Decision 3 — derive intent from active voice. Realtime → discuss,
+  // Dictation → dictate. No active voice (no device yet) falls back to
+  // discuss; the TalkButton hint will still read "Hold to talk to voix."
+  // until the first session lands a device record.
+  const intent: Intent = activeVoice?.type === "dictation" ? "dictate" : "discuss";
+
   if (entries.length === 0) {
     return (
       <View style={styles.scroll}>
-        <TalkButton onSessionEnded={onSessionEnded} />
+        <TalkButton intent={intent} onSessionEnded={onSessionEnded} />
         <View style={styles.emptyBox}>
           <Text style={styles.emptyTitle}>No conversations yet</Text>
           <Text style={styles.emptyHint}>
@@ -88,7 +114,7 @@ export function ConversationList({ onPickEntry }: Props) {
 
   return (
     <ScrollView contentContainerStyle={styles.scroll}>
-      <TalkButton onSessionEnded={onSessionEnded} />
+      <TalkButton intent={intent} onSessionEnded={onSessionEnded} />
       {entries.map((entry) => (
         <Row
           key={entry.id}

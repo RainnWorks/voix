@@ -16,6 +16,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import type { Intent } from "@voix/protocol";
 import {
   BrowserAudioIoClient,
   type BrowserClientErrorKind,
@@ -35,17 +36,21 @@ type ErrorState = {
 /**
  * TalkButton props.
  *
- * `intent` (default `"discuss"`) per M22 Decision 10. The in-app
- * big-button stays on "discuss" (preserves web + iOS behaviour); the
- * macOS hotkey overlay (MacOverlay.tsx) passes `"dictate"` because the
- * hotkey gesture's natural metaphor is "speak to type."
+ * `intent` is **required** (M23 Decision 3). Callers compute it from
+ * the active voice's `type` — Realtime → `"discuss"`, Dictation →
+ * `"dictate"` — so switching voices switches intent without a
+ * separate UI axis. ConversationList (web + iOS) computes from
+ * `devicesApi.list()[0].voiceId` + `voicesApi.list()`; MacOverlay
+ * passes `"dictate"` because the hotkey metaphor is "speak to type."
+ * Removing the default forces every caller to be explicit; a missing
+ * `intent` is a TS error rather than a silent regression to discuss.
  */
 export function TalkButton({
   onSessionEnded,
-  intent = "discuss",
+  intent,
 }: {
   onSessionEnded?: () => void;
-  intent?: "discuss" | "dictate";
+  intent: Intent;
 }) {
   const [status, setStatus] = useState<BrowserClientStatus>("idle");
   const [error, setError] = useState<ErrorState | null>(null);
@@ -128,6 +133,13 @@ export function TalkButton({
     status === "connecting";
   const speaking = status === "speaking";
 
+  // M23 Decision 3 — hint + speaking label both derive from intent.
+  // Picking a Dictation voice surfaces "Hold to dictate." + the
+  // "transcribing…" mid-session state; picking a Realtime voice gets
+  // the discuss-flavoured copy.
+  const hintCopy =
+    intent === "dictate" ? "Hold to dictate." : "Hold to talk to voix.";
+
   return (
     <View style={styles.wrap}>
       <Pressable
@@ -142,10 +154,10 @@ export function TalkButton({
       >
         <Text style={styles.glyph}>🎙</Text>
         <Text style={[styles.label, active && styles.labelActive, speaking && styles.labelSpeaking]}>
-          {labelFor(status)}
+          {labelFor(status, intent)}
         </Text>
       </Pressable>
-      <Text style={styles.hint}>Hold to talk to voix.</Text>
+      <Text style={styles.hint}>{hintCopy}</Text>
       {/* Recovery state below the hint so a failure doesn't shove the
           button down on display (Marina audit). Wren FINDING-1: tailor
           copy per error.kind instead of one undifferentiated red blob. */}
@@ -257,10 +269,10 @@ function copyFor(error: ErrorState): {
   }
 }
 
-function labelFor(status: BrowserClientStatus): string {
+function labelFor(status: BrowserClientStatus, intent: Intent): string {
   switch (status) {
     case "idle":
-      return "Talk to voix";
+      return intent === "dictate" ? "Hold to dictate" : "Talk to voix";
     case "connecting":
       return "Connecting…";
     // Fold "ready" into "listening" — once the WS is ready the mic is
@@ -270,7 +282,11 @@ function labelFor(status: BrowserClientStatus): string {
     case "listening":
       return "Listening";
     case "speaking":
-      return "voix is replying";
+      // M23: dictation doesn't have an assistant audio reply — the
+      // "speaking" status fires when the daemon is producing the
+      // transcript. Surface as "transcribing…" so the user isn't
+      // told voix is "replying" when they pressed for dictation.
+      return intent === "dictate" ? "Transcribing…" : "voix is replying";
     case "closing":
       return "Wrapping up…";
   }

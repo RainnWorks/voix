@@ -21,8 +21,10 @@ bun install
 
 **2. Install iOS pods** — expect `NN ≈ 80-95 pods`:
 ```bash
-cd /Users/tom/Projects/voix/clients/app/ios
-bundle install && bundle exec pod install
+# NOTE: Gemfile lives at clients/app/, NOT clients/app/ios/. Run
+# `bundle install` from clients/app/, then cd into ios/ for pod install.
+cd /Users/tom/Projects/voix/clients/app && bundle install
+cd ios && bundle exec pod install
 ```
 Recovery: `hermes-engine` missing → `--repo-update`;
 `react-native not found` → add `"react-native": "0.81.6"` to root
@@ -39,10 +41,13 @@ cd /Users/tom/Projects/voix/clients/app/macos && bundle exec pod install
 `packages/ui/src/lib/apiBase.native.ts`'s `DEV_DAEMON_URL`.
 
 **5. Start Metro + run iOS** — Terminal A:
-`cd clients/app && bun run start` (wait for `info Dev server ready`).
+`cd clients/app && bun run start` (wait for `Welcome to Metro` then
+`Dev server ready`; Metro v0.83.7 prints "Welcome to Metro" before
+the ready signal — both lines appear).
 Terminal B: `bunx react-native run-ios --simulator="iPhone 16 Pro"`.
-Expected (first build ≈ 2-5 min): simulator opens; Metro logs
-`Running "voix"`; sidebar with six built-in voices renders.
+Expected (first build ≈ 2-5 min, smoke confirmed 97s): simulator
+opens; Metro logs `Running "voix"`; sidebar with six built-in voices
+renders.
 Recovery: missing sim → `xcrun simctl list devices available`;
 bundle fail → restart Metro; voices empty + red overlay → check
 daemon (`cd voix-backend && bun src/index.ts` → `listening on :8765`)
@@ -52,7 +57,18 @@ daemon (`cd voix-backend && bun src/index.ts` → `listening on :8765`)
 `cd clients/app && bunx react-native run-macos`. Recovery:
 no provisioning profile → Xcode → voix-macOS target → Signing &
 Capabilities → "Sign to Run Locally"; `react-native-macos not found`
-→ Decision 4 hoist fix.
+→ Decision 4 hoist fix; **`macOS project folder not found`** →
+`bun install` (the `cli-platform-apple` devDep added in M20
+fix-pass-3 surfaces it correctly under bun workspaces).
+
+**6a. Known M20 limitation — macOS hot-reload** — `bun run start`
+launches Metro on port 8081 (iOS-default). `start:macos` script is
+written for port 8082 but neither the macOS scheme nor the bundle
+URL is plumbed to use it; macOS runs off its build-time bundle and
+won't hot-reload. To get hot-reload on macOS during M21+ work, start
+a second Metro: `cd clients/app && bun run start:macos` in a third
+terminal, and edit the macOS scheme's `RCT_METRO_PORT` env var to
+8082. Fix queued — see `docs/build-workflow.md` M21 carry-forwards.
 
 **7. Acceptance** — Both iOS sim and macOS app show sidebar +
 populated Voices list. Conversations + Surfaces may warn; M21's job.

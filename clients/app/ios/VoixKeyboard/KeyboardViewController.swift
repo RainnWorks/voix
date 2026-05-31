@@ -10,12 +10,16 @@
 //  fine; no third-party libs; no heavy async chains. Apple's hard
 //  limit for keyboard extensions is ~48 MB before iOS terminates.
 //
-//  Step 5 (this commit): SwiftUI root, pill bounces via
-//  extensionContext.open, Full Access onboarding when off, Settings
-//  deep-link, globe key switches input mode. The actual return flow
-//  (read shared container + insertText) lands in step 7 alongside
-//  the polling timer and timeout — for now, viewDidAppear logs the
-//  bounce result so step 5's smoke can confirm the URL handler fires.
+//  Step 7 (this commit): closes the return loop.
+//   - viewDidAppear reads <session_id>.json from the shared container;
+//     on status=done, inserts the transcript via textDocumentProxy
+//     and clears both files.
+//   - 500ms poll timer covers the rare "user re-foregrounded the text
+//     field while the host is still capturing" race.
+//   - 60s hard timeout fires from bounce start — if the host crashed
+//     mid-capture or never returned, the pill returns to idle with a
+//     "voix couldn't record" toast.
+//   - Orphan sweep on launch removes >5min-old session files.
 //
 import SwiftUI
 import UIKit
@@ -28,8 +32,22 @@ final class KeyboardViewController: UIInputViewController {
         category: "lifecycle"
     )
 
+    /// 60 seconds from bounce-out (Architect Decision 6). Long enough
+    /// to cover daemon spin-up + ~30s capture + return-trip latency;
+    /// short enough that a crashed host doesn't strand the user.
+    private static let bounceTimeout: TimeInterval = 60.0
+
+    /// Re-poll cadence while bounced. Cheap — single file stat per
+    /// tick — and only runs during an active bounce. viewDidAppear
+    /// is the primary signal; the poll exists for the
+    /// `status: capturing` race where the user re-foregrounded the
+    /// host field before the host finished writing `done`.
+    private static let pollInterval: TimeInterval = 0.5
+
     private let state = KeyboardState()
     private var hostingController: UIHostingController<KeyboardRootView>?
+    private var pollTimer: Timer?
+    private var timeoutTimer: Timer?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -55,15 +73,12 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        // Step 5: if we're mid-bounce, log it; step 7 implements the
-        // actual readState → insertText flow.
-        if case let .bounced(sessionId, _) = state.phase {
-            os_log(
-                "voix kbd: viewDidAppear during bounce session=%{public}@ (read flow lands in step 7)",
-                log: Self.log,
-                type: .info,
-                sessionId
-            )
+        // Decision 6 primary signal: iOS just brought the keyboard
+        // back to a text field. If we were mid-bounce, the host
+        // either finished and wrote `done`, or it's still working —
+        // we look at the file to decide which.
+        if case .bounced = state.phase {
+            consumeBouncedSession()
         }
     }
 
@@ -161,18 +176,155 @@ final class KeyboardViewController: UIInputViewController {
                log: Self.log, type: .info, sessionId)
         state.phase = .bounced(sessionId: sessionId, startedAt: Date())
         refreshHostingController()
+        startTimers()
         extensionContext?.open(url) { [weak self] success in
             guard let self else { return }
             if !success {
                 os_log("voix kbd: extensionContext.open returned false",
                        log: Self.log, type: .error)
                 DispatchQueue.main.async {
+                    self.cancelTimers()
                     self.state.phase = .idle
                     self.state.showToast("voix host app not found")
                     self.refreshHostingController()
                 }
             }
         }
+    }
+
+    // MARK: - Return-flow consumer
+
+    private func consumeBouncedSession() {
+        guard case let .bounced(sessionId, startedAt) = state.phase else {
+            return
+        }
+        // If we've blown past the timeout the timer will pick it up
+        // shortly; check synchronously here too in case the timer
+        // fired and the view came back before the run-loop tick.
+        if Date().timeIntervalSince(startedAt) > Self.bounceTimeout {
+            handleTimeout(sessionId: sessionId)
+            return
+        }
+        do {
+            guard let session = try SharedContainer.readState(sessionId) else {
+                // Host hasn't written anything yet — start polling.
+                startPollIfNeeded()
+                return
+            }
+            switch session.status {
+            case .pending, .capturing:
+                startPollIfNeeded()
+            case .done:
+                applyDone(sessionId: sessionId)
+            case .failed:
+                applyFailed(sessionId: sessionId, error: session.error)
+            case .cancelled:
+                applyCancelled(sessionId: sessionId)
+            }
+        } catch {
+            os_log(
+                "voix kbd: readState failed: %{public}@",
+                log: Self.log,
+                type: .error,
+                String(describing: error)
+            )
+            applyFailed(sessionId: sessionId, error: "read_error")
+        }
+    }
+
+    private func applyDone(sessionId: String) {
+        let transcript = (try? SharedContainer.readTranscript(sessionId)) ?? ""
+        SharedContainer.deleteSession(sessionId)
+        cancelTimers()
+        state.phase = .inserting
+        refreshHostingController()
+        let proxy = textDocumentProxy
+        DispatchQueue.main.async { [weak self] in
+            if !transcript.isEmpty {
+                proxy.insertText(transcript)
+            }
+            self?.state.phase = .idle
+            self?.refreshHostingController()
+        }
+    }
+
+    private func applyFailed(sessionId: String, error: String?) {
+        SharedContainer.deleteSession(sessionId)
+        cancelTimers()
+        state.phase = .idle
+        let message: String
+        switch error {
+        case "mic_denied":
+            message = "Mic permission denied"
+        case "daemon_unreachable":
+            message = "voix daemon offline"
+        case "timeout":
+            message = "voix couldn't record"
+        case "no_speech":
+            message = "Didn't catch anything"
+        default:
+            message = "voix couldn't record"
+        }
+        state.showToast(message)
+        refreshHostingController()
+    }
+
+    private func applyCancelled(sessionId: String) {
+        SharedContainer.deleteSession(sessionId)
+        cancelTimers()
+        state.phase = .idle
+        state.showToast("Cancelled")
+        refreshHostingController()
+    }
+
+    private func handleTimeout(sessionId: String) {
+        // Mark session cancelled so a slow host that wakes up later
+        // doesn't write `done` onto a screen we already moved past.
+        var cancelled = (try? SharedContainer.readState(sessionId))
+            ?? KeyboardSessionState(sessionId: sessionId)
+        cancelled.status = .cancelled
+        try? SharedContainer.writeState(cancelled)
+        SharedContainer.deleteSession(sessionId)
+        cancelTimers()
+        state.phase = .idle
+        state.showToast("voix couldn't record")
+        refreshHostingController()
+    }
+
+    // MARK: - Timers
+
+    private func startTimers() {
+        cancelTimers()
+        timeoutTimer = Timer.scheduledTimer(
+            withTimeInterval: Self.bounceTimeout, repeats: false
+        ) { [weak self] _ in
+            guard let self else { return }
+            if case let .bounced(sessionId, _) = self.state.phase {
+                self.handleTimeout(sessionId: sessionId)
+            }
+        }
+    }
+
+    private func startPollIfNeeded() {
+        if pollTimer != nil { return }
+        pollTimer = Timer.scheduledTimer(
+            withTimeInterval: Self.pollInterval, repeats: true
+        ) { [weak self] _ in
+            guard let self else { return }
+            if case .bounced = self.state.phase {
+                self.consumeBouncedSession()
+            } else {
+                self.pollTimer?.invalidate()
+                self.pollTimer = nil
+            }
+        }
+    }
+
+    private func cancelTimers() {
+        pollTimer?.invalidate()
+        pollTimer = nil
+        timeoutTimer?.invalidate()
+        timeoutTimer = nil
     }
 
     private func openSettings() {

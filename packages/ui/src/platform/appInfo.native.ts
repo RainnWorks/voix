@@ -17,10 +17,10 @@
  *   append `/ws`. Native ignores the document-location trick the web
  *   impl uses because RN has no document.
  *
- * - `clientKind = "phone-sat"` per the protocol's `ClientKind` union.
- *   macOS at this iOS-only stage uses the same value; M22 lands a
- *   `Platform.OS === "macos"` branch returning `"laptop-mic"` when
- *   that target gets real audio.
+ * - `clientKind` per the protocol's `ClientKind` union:
+ *     iOS    → "phone-sat"
+ *     macOS  → "laptop-mic" (M22 — once macOS gets real audio it's the
+ *              right taxonomy bucket; closes Sasha M21 finding M2).
  */
 
 import { Platform } from "react-native";
@@ -67,5 +67,5 @@ export const appInfo: AppInfo = {
     return `${wsBase}/ws`;
   },
 
-  clientKind: "phone-sat",
+  clientKind: Platform.OS === "macos" ? "laptop-mic" : "phone-sat",
 };

@@ -60,6 +60,12 @@ export type Voice = {
   /** M14 — provider-specific voice id for the TTS. */
   ttsVoice?: string;
   isBuiltin: boolean;
+  /** M23 — one-line personality snippet shown italic HA-blue under
+   *  the voice's name on every card (VoiceList, SurfaceList,
+   *  ConversationList). ≤80 chars; daemon trims + clamps on write.
+   *  Null or empty hides the row. Mirrors
+   *  voix-backend/src/voices/types.ts. */
+  tone: string | null;
 };
 
 export type VoiceUpdate = Partial<Omit<Voice, "id" | "isBuiltin">>;

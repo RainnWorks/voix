@@ -2,6 +2,7 @@ import { useState } from "react";
 import { AppShell, type Section } from "./components/AppShell";
 import { ConversationDetail } from "./conversations/ConversationDetail";
 import { ConversationList } from "./conversations/ConversationList";
+import { MacOverlay } from "./macos/MacOverlay";
 import { SurfaceList } from "./surfaces/SurfaceList";
 import { VoiceEditor } from "./voices/VoiceEditor";
 import { VoiceList } from "./voices/VoiceList";
@@ -37,17 +38,23 @@ export function App() {
   }
 
   return (
-    <AppShell
-      section={section}
-      onPickSection={(s) => {
-        setSection(s);
-        setEditingVoiceId(null);
-        setOpenEntryId(null);
-      }}
-      title={title}
-      toolbarRight={toolbarRight}
-    >
-      {content}
-    </AppShell>
+    <>
+      {/* macOS hotkey overlay — no-op on web + iOS via the platform
+          sibling pattern; on macOS it renders a borderless NSPanel HUD
+          on ⌃⌥Space and dictates into the focused app. M22 Decision 4. */}
+      <MacOverlay />
+      <AppShell
+        section={section}
+        onPickSection={(s) => {
+          setSection(s);
+          setEditingVoiceId(null);
+          setOpenEntryId(null);
+        }}
+        title={title}
+        toolbarRight={toolbarRight}
+      >
+        {content}
+      </AppShell>
+    </>
   );
 }

@@ -32,7 +32,21 @@ type ErrorState = {
   detail?: string;
 };
 
-export function TalkButton({ onSessionEnded }: { onSessionEnded?: () => void }) {
+/**
+ * TalkButton props.
+ *
+ * `intent` (default `"discuss"`) per M22 Decision 10. The in-app
+ * big-button stays on "discuss" (preserves web + iOS behaviour); the
+ * macOS hotkey overlay (MacOverlay.tsx) passes `"dictate"` because the
+ * hotkey gesture's natural metaphor is "speak to type."
+ */
+export function TalkButton({
+  onSessionEnded,
+  intent = "discuss",
+}: {
+  onSessionEnded?: () => void;
+  intent?: "discuss" | "dictate";
+}) {
   const [status, setStatus] = useState<BrowserClientStatus>("idle");
   const [error, setError] = useState<ErrorState | null>(null);
   const clientRef = useRef<BrowserAudioIoClient | null>(null);
@@ -64,7 +78,7 @@ export function TalkButton({ onSessionEnded }: { onSessionEnded?: () => void }) 
       if (!holdingRef.current) return;
       const client = new BrowserAudioIoClient({
         wsToken: token,
-        intent: "discuss",
+        intent,
         onEvent: (ev) => {
           if (ev.type === "status") {
             setStatus(ev.status);

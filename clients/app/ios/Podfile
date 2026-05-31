@@ -31,6 +31,14 @@ target 'voix' do
     :app_path => "#{Pod::Config.instance.installation_root}/.."
   )
 
+  # voix-iOS native modules (M24): host-side TurboModule bridge for
+  # the keyboard bounce protocol. Implements writeSession / readSession
+  # against the App Group container + returnToKeyboard for the
+  # voix-keyboard:// URL bounce. Lives in-tree like the macOS sibling
+  # because the Swift sources reference RN headers and the schema is
+  # voix-specific glue.
+  pod 'VoixIOSNative', :path => './VoixIOSNative'
+
   post_install do |installer|
     # https://github.com/facebook/react-native/blob/main/packages/react-native/scripts/react_native_pods.rb#L197-L202
     react_native_post_install(

@@ -2609,6 +2609,8 @@ PODS:
     - SocketRocket
     - Yoga
   - SocketRocket (0.7.1)
+  - VoixIOSNative (0.1.0):
+    - React-Core
   - Yoga (0.0.0)
 
 DEPENDENCIES:
@@ -2689,6 +2691,7 @@ DEPENDENCIES:
   - RNDeviceInfo (from `../node_modules/react-native-device-info`)
   - RNWorklets (from `../node_modules/react-native-worklets`)
   - SocketRocket (~> 0.7.1)
+  - VoixIOSNative (from `./VoixIOSNative`)
   - Yoga (from `../node_modules/react-native/ReactCommon/yoga`)
 
 SPEC REPOS:
@@ -2847,6 +2850,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native-device-info"
   RNWorklets:
     :path: "../node_modules/react-native-worklets"
+  VoixIOSNative:
+    :path: "./VoixIOSNative"
   Yoga:
     :path: "../node_modules/react-native/ReactCommon/yoga"
 
@@ -2927,8 +2932,9 @@ SPEC CHECKSUMS:
   RNDeviceInfo: 4c852998208b60dc192ae3529e5867817719ad1e
   RNWorklets: b198e96cb33d1837bf169e6aa1c46e9f29c7a627
   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
+  VoixIOSNative: b1c7e1cd09099c2299aacb65c40ef7e659f13ca2
   Yoga: 3196a843cc5f4bc433f1a41cf17cdf804a01a529
 
-PODFILE CHECKSUM: 88cb7675542382cb3b443e797d7d87b3e4e993ba
+PODFILE CHECKSUM: d40474686c290ad20df8dde10819287e88bc380f
 
 COCOAPODS: 1.16.2

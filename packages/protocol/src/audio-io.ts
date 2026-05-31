@@ -1,3 +1,9 @@
+// SYNC NOTE: this file's wire-protocol types must stay byte-identical
+// to voix-backend/src/audio_io/protocol.ts. If you edit one, edit the
+// other. Production HA Add-on Dockerfile can't see packages/, so the
+// daemon ships its own copy. `scripts/check-protocol-sync.sh` flags
+// drift.
+
 /**
  * Audio I/O port — wire protocol (v1).
  *

@@ -11,37 +11,27 @@
 # In dev mode the entrypoint clones the live repo into /data and runs
 # from there instead — including rebuilding the UI when commits land.
 #
-# M19 KNOWN-BROKEN note (flagged by Implementer, awaiting coordinator
-# decision): the repo is now a bun monorepo (root package.json with
-# workspaces). `voix-backend/package.json` declares a workspace dep on
-# `@voix/protocol` ("workspace:*"); `voix-backend/ui/package.json`
-# declares deps on `@voix/protocol` and `@voix/ui`. The HA Add-on build
-# context is fixed at `voix-backend/` and Docker COPY cannot reach
-# files outside the context — so `packages/protocol/` and
-# `packages/ui/` aren't visible inside this build. `bun install` here
-# will fail to resolve `workspace:*` and exit non-zero.
+# Monorepo note (M19 fix-pass): the repo is a bun workspace root. The
+# daemon's package.json deliberately declares NO workspace:* deps so
+# this image can build the daemon from the voix-backend/ context
+# alone. The wire-protocol types are parallel-copied at
+# voix-backend/src/audio_io/protocol.ts and
+# packages/protocol/src/audio-io.ts — see the SYNC NOTE headers in
+# both files; scripts/check-protocol-sync.sh enforces parity.
 #
-# Dev paths are unaffected:
-#   - local `bun --watch src/index.ts` works via the workspace symlink
-#   - HA Add-on dev_mode clones the whole repo to /data/voix-dev and
-#     runs `bun install` from the workspace root (see run.sh)
+# UI caveat: voix-backend/ui/package.json still has workspace:* deps
+# on @voix/ui + @voix/protocol. The `cd ui && bun install` step below
+# can't resolve those from inside this image (packages/ lives outside
+# the build context). For M19 the HA Add-on dev_mode path (run.sh
+# clones the whole repo + installs from the workspace root) is the
+# only supported install path. Production HA Add-on Store install
+# remains broken; M20 will land a pre-build vendoring step.
 #
-# Production HA Add-on image install will break until one of:
-#   (a) a CI pre-build step vendors packages/ into voix-backend/ before
-#       docker build runs (HA Add-on Store doesn't run such a step)
-#   (b) the daemon stops depending on @voix/protocol at runtime — keep
-#       voix-backend/src/audio_io/protocol.ts as the canonical types,
-#       drop the workspace dep, accept manual sync between it and
-#       packages/protocol/src/audio-io.ts
-#   (c) a tarball/bundle of @voix/protocol is committed under
-#       voix-backend/ and the Dockerfile COPYs that
-# M20+ will decide which path to take.
-#
-# Pre-existing comment: We drop `--frozen-lockfile` because the
-# canonical lockfile now lives at the repo root and isn't in this
-# build context. Trade-off: image builds are reproducible only up to
-# version-range resolution, not pinned-tree resolution. Acceptable
-# trade if AC8 is solved by (a)/(b)/(c) above.
+# `--frozen-lockfile` is dropped because the canonical lockfile lives
+# at the repo root and isn't in this build context. Image builds are
+# reproducible only up to version-range resolution, not pinned-tree
+# resolution. Acceptable trade-off given the daemon's dep surface is
+# small + well-pinned.
 
 FROM oven/bun:1-alpine
 

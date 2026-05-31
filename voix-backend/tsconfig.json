@@ -20,12 +20,7 @@
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
-    "types": ["bun-types"],
-    "baseUrl": ".",
-    "paths": {
-      "@voix/protocol": ["../packages/protocol/src/index.ts"],
-      "@voix/ui": ["../packages/ui/src/index.ts"]
-    }
+    "types": ["bun-types"]
   },
   "include": ["src/**/*"]
 }

@@ -38,6 +38,14 @@ drifted from the plan.
    path, delete the old path in that PR. No "we'll clean it up later."
 9. **STATE.md is the session handoff.** Update it at every milestone
    merge so the next Claude session can pick up cold.
+10. **Don't edit one `protocol.ts` without the other.** M19 fix-pass
+    left the daemon shipping its own copy of the wire-protocol types
+    (`voix-backend/src/audio_io/protocol.ts`) parallel to the
+    canonical `packages/protocol/src/audio-io.ts` so the HA Add-on
+    Docker build can install from the `voix-backend/` context alone.
+    The two files must stay byte-identical below the SYNC NOTE
+    headers. Run `scripts/check-protocol-sync.sh` before pushing any
+    change touching either; it flags drift.
 
 ## Test coverage rule
 

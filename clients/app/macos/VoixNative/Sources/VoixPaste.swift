@@ -120,6 +120,29 @@ final class VoixPaste: NSObject {
         resolve(trusted)
     }
 
+    /// User-triggered Accessibility re-prompt path (Yuki H6 + Marina
+    /// UX-3). Calls the PROMPTING variant of AXIsProcessTrustedWithOptions
+    /// which fires the official Apple system modal. This is the only
+    /// way to recover from "trust granted yesterday, signature changed,
+    /// trust silently invalidated" on debug rebuilds — toggling voix in
+    /// System Settings doesn't help because the entry there is stale.
+    ///
+    /// The prompting variant demands a quit + relaunch — hostile UX if
+    /// fired unprompted, which is why the boot-time check uses the
+    /// non-prompting variant. This method is wired to a JS-triggered
+    /// "Grant Accessibility" CTA, so the user is expecting the modal.
+    ///
+    /// Resolves with the post-prompt trust state.
+    @objc(requestAccessibility:rejecter:)
+    func requestAccessibility(
+        _ resolve: @escaping RCTPromiseResolveBlock,
+        rejecter reject: @escaping RCTPromiseRejectBlock
+    ) {
+        let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+        let trusted = AXIsProcessTrustedWithOptions([key: true] as CFDictionary)
+        resolve(trusted)
+    }
+
     // MARK: Cmd+V synthesis
 
     private func postCmdV() {

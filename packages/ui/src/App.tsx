@@ -2,6 +2,7 @@ import { useState } from "react";
 import { AppShell, type Section } from "./components/AppShell";
 import { ConversationDetail } from "./conversations/ConversationDetail";
 import { ConversationList } from "./conversations/ConversationList";
+import { MacAccessibilityBanner } from "./macos/MacAccessibilityBanner";
 import { MacOverlay } from "./macos/MacOverlay";
 import { SurfaceList } from "./surfaces/SurfaceList";
 import { VoiceEditor } from "./voices/VoiceEditor";
@@ -53,6 +54,10 @@ export function App() {
         title={title}
         toolbarRight={toolbarRight}
       >
+        {/* voix-considered pre-explanation for the macOS Accessibility
+            ask. Renders only on macOS when trust is missing; no-op
+            elsewhere. M22 fix — Yuki H6 + Marina UX-3. */}
+        <MacAccessibilityBanner />
         {content}
       </AppShell>
     </>

@@ -180,6 +180,24 @@ class IosAudioCapture implements AudioCapture {
     void this.audioContext?.close();
     this.audioContext = null;
     this.negotiatedSampleRate = undefined;
+
+    // Sasha medium fix: deactivate the iOS audio session so it doesn't
+    // stay in playAndRecord after the user releases TalkButton — an
+    // active playAndRecord session ducks other apps' audio routing
+    // (background music, system sounds) until the next category
+    // change. Per audio-api docs, setAudioSessionActivity(false) is
+    // the documented deactivation path; there's no separate
+    // "deactivate" API.
+    //
+    // audio-api docs:
+    // https://docs.swmansion.com/react-native-audio-api/docs/system/audio-manager
+    //
+    // Fire-and-forget — stop() is sync per the AudioCapture interface
+    // and the deactivation is not order-critical against further
+    // teardown.
+    void AudioManager.setAudioSessionActivity(false).catch(() => {
+      // best-effort
+    });
   }
 }
 

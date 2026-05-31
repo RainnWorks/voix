@@ -33,10 +33,11 @@ export const permissions: Permissions = {
       const status = await AudioManager.requestRecordingPermissions();
       if (status === "Granted") return { ok: true };
       if (status === "Denied") return { ok: false, reason: "denied" };
-      // 'Undetermined' — the user dismissed the dialog without
-      // choosing. Treat as denied for the session; next start() will
-      // re-prompt.
-      return { ok: false, reason: "unknown", detail: status };
+      // 'Undetermined' — pre-prompt on first call, or the user
+      // dismissed the dialog without choosing. The TalkButton renders
+      // a different "tap to allow" copy for this branch instead of
+      // leaking the verbatim status (Wren FINDING-1).
+      return { ok: false, reason: "undetermined", detail: status };
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       return { ok: false, reason: "unknown", detail };

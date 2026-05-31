@@ -134,7 +134,11 @@ export interface AppInfo {
 
 export type PermissionResult =
   | { ok: true }
-  | { ok: false; reason: "denied" | "restricted" | "unknown"; detail?: string };
+  | {
+      ok: false;
+      reason: "denied" | "restricted" | "undetermined" | "unknown";
+      detail?: string;
+    };
 
 /**
  * Permission gate before opening the mic. Web returns ok:true without

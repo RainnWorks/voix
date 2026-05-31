@@ -43,10 +43,33 @@ import {
   type AudioPlayback,
 } from "../platform";
 
+/** Typed error kinds so the TalkButton can render a tailored copy
+ *  block per failure surface rather than one undifferentiated red pill
+ *  (Wren FINDING-1). New kinds (network/decline/audio/etc.) can land
+ *  later — TalkButton has a generic fallback for unknown kinds. */
+export type BrowserClientErrorKind =
+  | "permission-denied"
+  | "permission-undetermined"
+  | "permission-unknown"
+  | "audio"
+  | "network"
+  | "decline"
+  | "unknown";
+
 export type BrowserClientEvent =
   | { type: "status"; status: BrowserClientStatus }
   | { type: "daemon"; event: Record<string, unknown> }
-  | { type: "error"; message: string };
+  | {
+      type: "error";
+      message: string;
+      /** Typed kind so the consumer can render product copy per failure
+       *  surface. Always set for errors emitted by the orchestrator;
+       *  legacy consumers reading `.message` keep working. */
+      kind: BrowserClientErrorKind;
+      /** Raw diagnostic detail (system status string, exception message,
+       *  etc.) — for a "developer detail" disclosure in the UI. */
+      detail?: string;
+    };
 
 export type BrowserClientStatus =
   | "idle"
@@ -106,9 +129,17 @@ export class BrowserAudioIoClient {
       // native (iOS) prompts via AudioManager.
       const perm = await permissions.requestMicrophone();
       if (!perm.ok) {
+        const kind: BrowserClientErrorKind =
+          perm.reason === "denied" || perm.reason === "restricted"
+            ? "permission-denied"
+            : perm.reason === "undetermined"
+              ? "permission-undetermined"
+              : "permission-unknown";
         this.opts.onEvent({
           type: "error",
+          kind,
           message: `microphone permission ${perm.reason}${perm.detail ? `: ${perm.detail}` : ""}`,
+          detail: perm.detail,
         });
         this.stop();
         return;
@@ -129,7 +160,11 @@ export class BrowserAudioIoClient {
         // so the TalkButton can render a real message rather than
         // sitting on "Listening" forever (Sasha H2).
         onError: (err) => {
-          this.opts.onEvent({ type: "error", message: err.message });
+          this.opts.onEvent({
+            type: "error",
+            kind: "audio",
+            message: err.message,
+          });
           this.stop();
         },
       });
@@ -137,7 +172,13 @@ export class BrowserAudioIoClient {
       this.openWs();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      this.opts.onEvent({ type: "error", message: msg });
+      // Generic-catch — could be the audio start (audio kind) or any
+      // other awaited step. Without a finer classifier we tag it as
+      // "audio" so the audio-start failures from Sasha H2 land in the
+      // right TalkButton branch; truly unknown failures will still
+      // render via the TalkButton's "unknown kind" fallback if we
+      // mis-tag.
+      this.opts.onEvent({ type: "error", kind: "audio", message: msg });
       this.stop();
     }
   }
@@ -178,7 +219,11 @@ export class BrowserAudioIoClient {
       this.stop();
     });
     ws.addEventListener("error", () => {
-      this.opts.onEvent({ type: "error", message: "WebSocket error" });
+      this.opts.onEvent({
+        type: "error",
+        kind: "network",
+        message: "WebSocket error",
+      });
     });
   }
 
@@ -240,7 +285,9 @@ export class BrowserAudioIoClient {
       } else if (parsed.type === "decline") {
         this.opts.onEvent({
           type: "error",
+          kind: "decline",
           message: `declined: ${String(parsed.reason)}${parsed.detail ? ` — ${parsed.detail}` : ""}`,
+          detail: parsed.detail ? String(parsed.detail) : undefined,
         });
       } else if (parsed.type === "audio_start") {
         this.setStatus("speaking");

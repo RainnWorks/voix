@@ -16,15 +16,25 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { BrowserAudioIoClient, type BrowserClientStatus } from "../audio_io/client";
+import {
+  BrowserAudioIoClient,
+  type BrowserClientErrorKind,
+  type BrowserClientStatus,
+} from "../audio_io/client";
 import { appInfo } from "../platform";
 import { colors, fontFamily, radius, spacing } from "../lib/theme";
 
 const WS_TOKEN_PATH = "api/auth/ws-token";
 
+type ErrorState = {
+  kind: BrowserClientErrorKind;
+  message: string;
+  detail?: string;
+};
+
 export function TalkButton({ onSessionEnded }: { onSessionEnded?: () => void }) {
   const [status, setStatus] = useState<BrowserClientStatus>("idle");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ErrorState | null>(null);
   const clientRef = useRef<BrowserAudioIoClient | null>(null);
   // Track the user's *intent* to be holding the button. handlePressIn is
   // async (auth fetch + AudioContext open + getUserMedia + WS connect)
@@ -63,7 +73,11 @@ export function TalkButton({ onSessionEnded }: { onSessionEnded?: () => void }) 
               onSessionEnded?.();
             }
           } else if (ev.type === "error") {
-            setError(ev.message);
+            setError({
+              kind: ev.kind,
+              message: ev.message,
+              detail: ev.detail,
+            });
           }
         },
       });
@@ -73,9 +87,19 @@ export function TalkButton({ onSessionEnded }: { onSessionEnded?: () => void }) 
       // resolving needs to be honoured now that the client exists.
       if (!holdingRef.current) client.stop();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      setError({ kind: "unknown", message: msg });
       holdingRef.current = false;
     }
+  };
+
+  // "Try again" action for the recovery state — re-runs the same start
+  // path. iOS won't re-prompt for permission after a hard deny (system
+  // behaviour), but it WILL pick up a Settings-toggle live, so this is
+  // the right affordance for the user who just toggled the switch.
+  const handleRetry = () => {
+    setError(null);
+    void handlePressIn();
   };
 
   const handlePressOut = () => {
@@ -108,11 +132,115 @@ export function TalkButton({ onSessionEnded }: { onSessionEnded?: () => void }) 
         </Text>
       </Pressable>
       <Text style={styles.hint}>Hold to talk to voix.</Text>
-      {/* Error below the hint so a failure doesn't shove the button
-          down on display (Marina audit). */}
-      {error && <Text style={styles.error}>{error}</Text>}
+      {/* Recovery state below the hint so a failure doesn't shove the
+          button down on display (Marina audit). Wren FINDING-1: tailor
+          copy per error.kind instead of one undifferentiated red blob. */}
+      {error && <RecoveryState error={error} onRetry={handleRetry} />}
     </View>
   );
+}
+
+/**
+ * Tailored recovery copy per error kind. Soft "info" surface (not the
+ * red danger pill) for permission paths — these aren't bugs, they're
+ * product nudges. Network / decline / audio / unknown all get a softer
+ * "something went wrong" + a developer-detail disclosure (Wren
+ * FINDING-1; the "every failure looks like a console blob" gap).
+ */
+function RecoveryState({
+  error,
+  onRetry,
+}: {
+  error: ErrorState;
+  onRetry: () => void;
+}) {
+  const copy = copyFor(error);
+  return (
+    <View style={styles.recovery}>
+      <Text style={styles.recoveryTitle}>{copy.title}</Text>
+      <Text style={styles.recoveryBody}>{copy.body}</Text>
+      {copy.showRetry && (
+        <Pressable
+          onPress={onRetry}
+          style={({ pressed }) => [
+            styles.retryButton,
+            pressed && styles.retryButtonPressed,
+          ]}
+        >
+          <Text style={styles.retryLabel}>{copy.retryLabel}</Text>
+        </Pressable>
+      )}
+      {copy.showDetail && error.detail && (
+        <Text style={styles.recoveryDetail}>{error.detail}</Text>
+      )}
+    </View>
+  );
+}
+
+function copyFor(error: ErrorState): {
+  title: string;
+  body: string;
+  retryLabel: string;
+  showRetry: boolean;
+  showDetail: boolean;
+} {
+  switch (error.kind) {
+    case "permission-denied":
+      // Decision 13 risk 2 spec: actionable recovery, not a stack trace.
+      return {
+        title: "Microphone access denied",
+        body: "Open Settings → voix → Microphone, turn it on, then try again.",
+        retryLabel: "Try again",
+        showRetry: true,
+        showDetail: false,
+      };
+    case "permission-undetermined":
+      // iOS pre-prompt — the user hasn't been shown the system dialog
+      // yet, or they dismissed it without choosing. A tap re-prompts.
+      return {
+        title: "Microphone access needed",
+        body: "Tap the button to allow voix to hear you.",
+        retryLabel: "Try again",
+        showRetry: true,
+        showDetail: false,
+      };
+    case "permission-unknown":
+      return {
+        title: "Microphone access blocked",
+        body: "Check your device's microphone settings, then try again.",
+        retryLabel: "Try again",
+        showRetry: true,
+        showDetail: true,
+      };
+    case "decline":
+      // Daemon-side rejection (auth, voice not found, etc.). The
+      // detail string carries the daemon's reason — surface it.
+      return {
+        title: "voix couldn't start this session",
+        body: "voix declined the request. Check your voice and try again.",
+        retryLabel: "Try again",
+        showRetry: true,
+        showDetail: true,
+      };
+    case "network":
+      return {
+        title: "voix is unreachable",
+        body: "Couldn't connect to voix. Check your network and try again.",
+        retryLabel: "Try again",
+        showRetry: true,
+        showDetail: false,
+      };
+    case "audio":
+    case "unknown":
+    default:
+      return {
+        title: "Something went wrong",
+        body: "voix couldn't open the microphone. Try again — if it keeps happening, restart the app.",
+        retryLabel: "Try again",
+        showRetry: true,
+        showDetail: true,
+      };
+  }
 }
 
 function labelFor(status: BrowserClientStatus): string {
@@ -179,13 +307,51 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.textMuted,
   },
-  error: {
+  // Recovery state — soft info surface, not the red danger pill. Mirrors
+  // the ConversationList errorBox treatment (Wren FINDING-1).
+  recovery: {
+    marginTop: spacing.md,
+    padding: spacing.md,
+    backgroundColor: colors.bgSubtle,
+    borderColor: colors.rule,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    gap: spacing.xs,
+    maxWidth: 360,
+  },
+  recoveryTitle: {
+    fontFamily: fontFamily.ui,
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.ink,
+  },
+  recoveryBody: {
+    fontFamily: fontFamily.ui,
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.textBody,
+  },
+  recoveryDetail: {
     fontFamily: fontFamily.mono,
-    fontSize: 11,
-    color: colors.danger,
-    backgroundColor: colors.dangerBg,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
+    fontSize: 10,
+    color: colors.textMuted,
+    marginTop: spacing.xs,
+  },
+  retryButton: {
+    alignSelf: "flex-start",
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
     borderRadius: radius.sm,
+    backgroundColor: colors.haBlueBg,
+    borderColor: colors.haBlue,
+    borderWidth: 0.5,
+  },
+  retryButtonPressed: { opacity: 0.85 },
+  retryLabel: {
+    fontFamily: fontFamily.ui,
+    fontSize: 12,
+    fontWeight: "600",
+    color: colors.haBlue,
   },
 });

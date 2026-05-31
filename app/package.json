@@ -1,0 +1,15 @@
+{
+  "name": "voix-app",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Voix companion app — receives transcripts from HA, puts them on the clipboard, optionally pastes.",
+  "type": "module",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.1.0"
+  }
+}

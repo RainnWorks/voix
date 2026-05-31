@@ -1,4 +1,4 @@
-# voix · Current State (2026-05-31, M20 closed)
+# voix · Current State (2026-05-31, M21 closed)
 
 ## Read this first
 
@@ -26,7 +26,86 @@
 
 ---
 
-## Status — Phase 6 (M20 closed); RN scaffold + Tauri archived
+## Status — Phase 6 (M21 closed); platform shims + iOS audio-api stack
+
+**M21 closed (2026-05-31)** — platform shim layer + iOS audio capture
+and playback via `react-native-audio-api`. Seven commits on main per
+Decision 8 of `docs/phase-6/architecture-m21.md`:
+
+- Step 1 (`48fa361`): interface skeleton — `packages/ui/src/platform/
+  types.ts` + barrel re-exporting types only.
+- Step 2 (`0ba9b60`): web impls of non-audio primitives
+  (`storage.ts`/`appInfo.ts`/`websocket.ts`/`permissions.ts`/
+  `inlineAudio.tsx`).
+- Step 3 (`c0d45cc`): native impls of non-audio primitives +
+  AsyncStorage + DeviceInfo pods. iOS gets 75 pods; macOS gets 74
+  (DeviceInfo iOS-only). 5 s pod install both targets.
+- Step 4 (`c3cde4e`): web audio capture + playback split into
+  `platform/audioCapture.ts` + `audioPlayback.ts`; `audio_io/client.ts`
+  becomes a thin orchestrator; `audio_io/client.native.ts` (M19 stub)
+  deleted.
+- Step 5 (`e08c1ba`): iOS audio capture + playback via
+  `react-native-audio-api@0.12.2` + `react-native-worklets@0.8.3`
+  (Delta C: brief originally pinned 0.9.0 but worklets 0.9.x asserts
+  RN 0.83+ at the pod level; 0.8.x supports our RN 0.81.6).
+  NSMicrophoneUsageDescription + UIBackgroundModes ["audio"] in iOS
+  Info.plist; NSMicrophoneUsageDescription in macOS for M22.
+  77 iOS pods; 75 macOS pods.
+- Step 6 (`f16babe`): wire consumers — `lib/api.ts` and TalkButton
+  switch to `appInfo.getApiBase()` (async); ConversationDetail's
+  inline audio uses `platform/inlineAudio`; `lib/apiBase.{ts,native.ts}`
+  + `conversations/InlineAudioPlayer.{tsx,native.tsx}` DELETED;
+  `@voix/ui.__dev__.setApiBase()` exposed for Tom's manual step 2 (b).
+- Step 7 (this commit): docs — `docs/phase-6/m21-manual.md` written +
+  this STATE update + `scripts/check-pin-bounds.sh` wired into
+  `bun run check`.
+
+**M21 smoke (every step, all green)**:
+```
+bun install                                       # workspace OK
+cd voix-backend/ui && bun run build               # web UI OK (334 modules)
+bun run check                                     # protocol + siblings + pin-bounds
+cd voix-backend && timeout 5 bun src/index.ts     # "listening on :8765"
+bunx tsc -p clients/app/tsconfig.json --noEmit    # exit 0
+bunx tsc -p packages/ui/tsconfig.json --noEmit    # exit 0
+```
+
+**Step 5 iOS visual verification**: build + launch + Voices list
+rendering confirmed in `/tmp/voix-smoke-screenshots/m21-step5.png` on
+iPhone 16 Pro sim. App imported `react-native-audio-api`,
+`react-native-async-storage/async-storage`, and
+`react-native-device-info` without red-box. Mic permission pre-granted
+via `xcrun simctl privacy booted grant microphone
+org.reactjs.native.example.voix` so Tom won't need to re-prompt on
+the first hold-to-talk. Actual PTT end-to-end (hold-button +
+"hello voix" + reply playback + new Conversations entry) requires
+human-hands UI interaction against the sim window and is deferred to
+Tom's `m21-manual.md` step 4 — Claude's sandbox can't drive sim taps
+without Accessibility grants that aren't on this Mac.
+
+**M21 deltas surfaced** (3 within Decision 13's hard ceiling):
+- Delta A (coordinator-set in brief): `react-native-audio-api@^0.12.2`
+  (npm registry latest 2026-05-31), brief originally said 0.13.0.
+- Delta B (coordinator-set in brief): `client_info.kind = "phone-sat"`
+  per `packages/protocol/src/audio-io.ts::ClientKind`; brief had
+  "phone" somewhere.
+- Delta C (M21 implementer): `react-native-worklets@0.8.3` (exact),
+  not the brief's `0.9.0 (exact)`. Worklets 0.9.x asserts RN 0.83+
+  in its podspec (`RNWorklets.podspec` line 6's
+  `worklets_assert_minimal_react_native_version`); our RN 0.81.6 pin
+  is incompatible. 0.8.3 (which supports RN 0.81-0.85 per the lib's
+  `compatibility.json`) is the highest compatible release. `bun run
+  check` gains `scripts/check-pin-bounds.sh` enforcing "stays in
+  0.8.x" so a future drift to 0.9.x is caught.
+
+**Phase 6 carry-forwards**:
+- M20a (HA Add-on Docker context shift) — still queued.
+- macOS audio (M22) — by design.
+- iOS settings screen for setApiBase (M23) — by design.
+
+---
+
+## Status — earlier Phase 6 history (M20 closed; M19 closed)
 
 **Phase 6 direction**: Drop the pre-pivot Tauri shell. The voix UI is
 already RN-shaped (9 files import from `react-native`, rendered today

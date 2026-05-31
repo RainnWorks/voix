@@ -88,7 +88,9 @@ function obPalette(scheme: ColorSchemeName) {
     onAccent: "#ffffff",
     // Inactive page dot: a light neutral that survives the dark canvas
     // (the old rgba(0,0,0,0.2) was invisible on black — Marina v3 #6).
-    dotInactive: dark ? "rgba(255,255,255,0.25)" : "rgba(0,0,0,0.2)",
+    // Light-mode tint is the `pageDotInactive` token; dark mode needs a
+    // light-on-dark neutral the light token can't express.
+    dotInactive: dark ? "rgba(255,255,255,0.25)" : colors.pageDotInactive,
     // Filled field treatment so the editable URL reads as an input,
     // not a label (Marina v3 #5).
     fieldBg: dark ? "rgba(255,255,255,0.08)" : colors.bgSubtle,
@@ -566,8 +568,10 @@ const styles = StyleSheet.create({
     borderRadius: 3.5,
     // Inactive dots were colors.rule (rgba(0,0,0,0.08)) — near-invisible,
     // so the group read as a single dot. A clearly-visible neutral makes
-    // the remaining steps legible.
-    backgroundColor: "rgba(0,0,0,0.2)",
+    // the remaining steps legible. This StyleSheet default is the
+    // light-mode tint; StepDots overrides it inline with the
+    // scheme-aware `ob.dotInactive` so dark mode stays legible.
+    backgroundColor: colors.pageDotInactive,
   },
   dotActive: {
     // Current step: a wider haBlue pill so position reads at a glance.

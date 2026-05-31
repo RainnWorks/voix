@@ -32,6 +32,14 @@ export const colors = {
   rule: "rgba(0,0,0,0.08)",
   ruleSoft: "rgba(0,0,0,0.06)",
 
+  // Inactive page-dot tint (light mode). A visible neutral so the
+  // 3-of-N onboarding indicator reads as three markers, not one.
+  // The dark-mode counterpart is a light-on-dark neutral resolved in
+  // the onboarding palette (theme.ts is light-only). Tokenised here so
+  // the magic `rgba(0,0,0,0.2)` literal no longer lives inline (Marina
+  // v4 — page-dot colour-discipline).
+  pageDotInactive: "rgba(0,0,0,0.2)",
+
   // System accent. On macOS this should track the user's accent;
   // we hard-code Apple's default blue here as a sensible fallback.
   // Used for selection highlights, focus rings, links, dropdowns,

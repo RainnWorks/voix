@@ -41,3 +41,10 @@ target 'voix' do
     )
   end
 end
+
+# voix keyboard extension (M24). Pure Swift/SwiftUI, NO React Native
+# runtime — keyboard extensions have a ~48 MB memory budget and Apple
+# rejects keyboards that ship a JS engine. Block exists so pod install
+# treats VoixKeyboard as a known target; no actual pods are linked.
+target 'VoixKeyboard' do
+end

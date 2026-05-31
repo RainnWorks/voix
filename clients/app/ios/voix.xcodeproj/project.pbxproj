@@ -9,12 +9,40 @@
 /* Begin PBXBuildFile section */
 		0C80B921A6F3F58F76C31292 /* libPods-voix.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5DCACB8F33CDC322A6C60F78 /* libPods-voix.a */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
+		44BDE36FF966B2D3DCCBED6E /* libPods-VoixKeyboard.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 6FB36A2999D4C13CEB4C55BC /* libPods-VoixKeyboard.a */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
 		D185BD0600DFA3D399072114 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
+		KEXT0001000000000000A006 /* KeyboardViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = KEXT0001000000000000A005 /* KeyboardViewController.swift */; };
+		KEXT0001000000000000A00F /* VoixKeyboard.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = KEXT0001000000000000A002 /* VoixKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		KEXT0001000000000000A011 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 83CBB9F71A601CBA00E9B192 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = KEXT0001000000000000A001;
+			remoteInfo = VoixKeyboard;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		KEXT0001000000000000A00E /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				KEXT0001000000000000A00F /* VoixKeyboard.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		041BA8CC775205120168C957 /* Pods-VoixKeyboard.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-VoixKeyboard.release.xcconfig"; path = "Target Support Files/Pods-VoixKeyboard/Pods-VoixKeyboard.release.xcconfig"; sourceTree = "<group>"; };
 		13B07F961A680F5B00A75B9A /* voix.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = voix.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = voix/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = voix/Info.plist; sourceTree = "<group>"; };
@@ -22,9 +50,15 @@
 		3B4392A12AC88292D35C810B /* Pods-voix.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-voix.debug.xcconfig"; path = "Target Support Files/Pods-voix/Pods-voix.debug.xcconfig"; sourceTree = "<group>"; };
 		5709B34CF0A7D63546082F79 /* Pods-voix.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-voix.release.xcconfig"; path = "Target Support Files/Pods-voix/Pods-voix.release.xcconfig"; sourceTree = "<group>"; };
 		5DCACB8F33CDC322A6C60F78 /* libPods-voix.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-voix.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		6C5BC35820777317ADE406CA /* Pods-VoixKeyboard.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-VoixKeyboard.debug.xcconfig"; path = "Target Support Files/Pods-VoixKeyboard/Pods-VoixKeyboard.debug.xcconfig"; sourceTree = "<group>"; };
+		6FB36A2999D4C13CEB4C55BC /* libPods-VoixKeyboard.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-VoixKeyboard.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = voix/AppDelegate.swift; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = voix/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
+		KEXT0001000000000000A002 /* VoixKeyboard.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = VoixKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		KEXT0001000000000000A003 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = Info.plist; path = VoixKeyboard/Info.plist; sourceTree = "<group>"; };
+		KEXT0001000000000000A004 /* VoixKeyboard.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = VoixKeyboard.entitlements; path = VoixKeyboard/VoixKeyboard.entitlements; sourceTree = "<group>"; };
+		KEXT0001000000000000A005 /* KeyboardViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = KeyboardViewController.swift; path = VoixKeyboard/KeyboardViewController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -33,6 +67,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				0C80B921A6F3F58F76C31292 /* libPods-voix.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		KEXT0001000000000000A008 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				44BDE36FF966B2D3DCCBED6E /* libPods-VoixKeyboard.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -56,6 +98,7 @@
 			children = (
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
 				5DCACB8F33CDC322A6C60F78 /* libPods-voix.a */,
+				6FB36A2999D4C13CEB4C55BC /* libPods-VoixKeyboard.a */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -71,6 +114,7 @@
 			isa = PBXGroup;
 			children = (
 				13B07FAE1A68108700A75B9A /* voix */,
+				KEXT0001000000000000A00D /* VoixKeyboard */,
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
@@ -85,6 +129,7 @@
 			isa = PBXGroup;
 			children = (
 				13B07F961A680F5B00A75B9A /* voix.app */,
+				KEXT0001000000000000A002 /* VoixKeyboard.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -94,8 +139,20 @@
 			children = (
 				3B4392A12AC88292D35C810B /* Pods-voix.debug.xcconfig */,
 				5709B34CF0A7D63546082F79 /* Pods-voix.release.xcconfig */,
+				6C5BC35820777317ADE406CA /* Pods-VoixKeyboard.debug.xcconfig */,
+				041BA8CC775205120168C957 /* Pods-VoixKeyboard.release.xcconfig */,
 			);
 			path = Pods;
+			sourceTree = "<group>";
+		};
+		KEXT0001000000000000A00D /* VoixKeyboard */ = {
+			isa = PBXGroup;
+			children = (
+				KEXT0001000000000000A005 /* KeyboardViewController.swift */,
+				KEXT0001000000000000A003 /* Info.plist */,
+				KEXT0001000000000000A004 /* VoixKeyboard.entitlements */,
+			);
+			name = VoixKeyboard;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -112,15 +169,35 @@
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
 				00EEFC60759A1932668264C0 /* [CP] Embed Pods Frameworks */,
 				E235C05ADACE081382539298 /* [CP] Copy Pods Resources */,
+				KEXT0001000000000000A00E /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				KEXT0001000000000000A010 /* PBXTargetDependency */,
 			);
 			name = voix;
 			productName = voix;
 			productReference = 13B07F961A680F5B00A75B9A /* voix.app */;
 			productType = "com.apple.product-type.application";
+		};
+		KEXT0001000000000000A001 /* VoixKeyboard */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = KEXT0001000000000000A00C /* Build configuration list for PBXNativeTarget "VoixKeyboard" */;
+			buildPhases = (
+				85FA789297F887CF1E41A875 /* [CP] Check Pods Manifest.lock */,
+				KEXT0001000000000000A007 /* Sources */,
+				KEXT0001000000000000A008 /* Frameworks */,
+				KEXT0001000000000000A009 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = VoixKeyboard;
+			productName = VoixKeyboard;
+			productReference = KEXT0001000000000000A002 /* VoixKeyboard.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -132,6 +209,10 @@
 				TargetAttributes = {
 					13B07F861A680F5B00A75B9A = {
 						LastSwiftMigration = 1120;
+					};
+					KEXT0001000000000000A001 = {
+						CreatedOnToolsVersion = 15.0;
+						LastSwiftMigration = 1500;
 					};
 				};
 			};
@@ -149,6 +230,7 @@
 			projectRoot = "";
 			targets = (
 				13B07F861A680F5B00A75B9A /* voix */,
+				KEXT0001000000000000A001 /* VoixKeyboard */,
 			);
 		};
 /* End PBXProject section */
@@ -161,6 +243,13 @@
 				81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				D185BD0600DFA3D399072114 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		KEXT0001000000000000A009 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -198,6 +287,28 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-voix/Pods-voix-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		85FA789297F887CF1E41A875 /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-VoixKeyboard-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
 		C38B50BA6285516D6DCD4F65 /* [CP] Check Pods Manifest.lock */ = {
@@ -250,7 +361,23 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		KEXT0001000000000000A007 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				KEXT0001000000000000A006 /* KeyboardViewController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		KEXT0001000000000000A010 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = KEXT0001000000000000A001 /* VoixKeyboard */;
+			targetProxy = KEXT0001000000000000A011 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
@@ -451,6 +578,84 @@
 			};
 			name = Release;
 		};
+		KEXT0001000000000000A00A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 6C5BC35820777317ADE406CA /* Pods-VoixKeyboard.debug.xcconfig */;
+			buildSettings = {
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CODE_SIGN_ENTITLEMENTS = VoixKeyboard/VoixKeyboard.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = VoixKeyboard/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = voix;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = co.rowm.voix.keyboard;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		KEXT0001000000000000A00B /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 041BA8CC775205120168C957 /* Pods-VoixKeyboard.release.xcconfig */;
+			buildSettings = {
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CODE_SIGN_ENTITLEMENTS = VoixKeyboard/VoixKeyboard.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = VoixKeyboard/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = voix;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = co.rowm.voix.keyboard;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -468,6 +673,15 @@
 			buildConfigurations = (
 				83CBBA201A601CBA00E9B192 /* Debug */,
 				83CBBA211A601CBA00E9B192 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		KEXT0001000000000000A00C /* Build configuration list for PBXNativeTarget "VoixKeyboard" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				KEXT0001000000000000A00A /* Debug */,
+				KEXT0001000000000000A00B /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

@@ -24,7 +24,10 @@ export function Wordmark({ size = 14, showPronunciation = true }: Props) {
   return (
     <View style={styles.row}>
       <Puck size={size} />
-      <Text style={[styles.name, { fontSize: size - 1 }]}>Voix</Text>
+      {/* Lowercase "voix" — matches every headline + the /vwa/ tag.
+          The chip used to render title-case "Voix", leaving the product
+          with two casings of its own name (Marina v3 #10 / Wren). */}
+      <Text style={[styles.name, { fontSize: size - 1 }]}>voix</Text>
       {showPronunciation && <Text style={styles.pron}>/vwa/</Text>}
     </View>
   );

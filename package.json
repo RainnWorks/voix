@@ -16,7 +16,8 @@
     "dev:app": "bun run --filter voix-app start",
     "build:ui": "bun run --filter voix-ui build",
     "typecheck": "bun run --filter '*' typecheck",
-    "test": "bun run --filter '*' test"
+    "test": "bun run --filter '*' test",
+    "check": "bun scripts/check-native-siblings.ts && bash scripts/check-protocol-sync.sh"
   },
   "dependencies": {
     "react-native-macos": "0.81.7"

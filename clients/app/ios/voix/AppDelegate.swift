@@ -31,6 +31,18 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     return true
   }
+
+  // M24 step 4: forward incoming URL opens (voix://capture?…) to RN's
+  // Linking module so JS can route to the KeyboardCaptureScreen.
+  // RCTLinkingManager handles emitting the `url` event, dispatching to
+  // any Linking.addEventListener subscribers in JS.
+  func application(
+    _ app: UIApplication,
+    open url: URL,
+    options: [UIApplication.OpenURLOptionsKey: Any] = [:]
+  ) -> Bool {
+    return RCTLinkingManager.application(app, open: url, options: options)
+  }
 }
 
 class ReactNativeDelegate: RCTDefaultReactNativeFactoryDelegate {

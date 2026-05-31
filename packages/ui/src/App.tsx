@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Platform } from "react-native";
+import { Linking, Platform } from "react-native";
 import { AppShell, type Section } from "./components/AppShell";
 import { ConversationDetail } from "./conversations/ConversationDetail";
 import { ConversationList } from "./conversations/ConversationList";
+import { KeyboardCaptureScreen } from "./conversations/KeyboardCaptureScreen";
 import { MacAccessibilityBanner } from "./macos/MacAccessibilityBanner";
 import { MacOverlay } from "./macos/MacOverlay";
 import { Onboarding, isOnboardingComplete } from "./onboarding/Onboarding";
@@ -11,10 +12,38 @@ import { SurfaceList } from "./surfaces/SurfaceList";
 import { VoiceEditor } from "./voices/VoiceEditor";
 import { VoiceList } from "./voices/VoiceList";
 
+// Parse `voix://capture?session_id=<uuid>&return=<encoded url>` into
+// our keyboard-bounce route shape. Returns null on a malformed URL or a
+// URL that isn't ours — callers should fall through to whatever
+// default the rest of the app does.
+type KeyboardCaptureRoute = { sessionId: string; returnUrl: string };
+
+function parseKeyboardCaptureUrl(raw: string): KeyboardCaptureRoute | null {
+  // Accept both `voix://capture?…` and the malformed-but-recoverable
+  // `voix:capture?…` (some keyboards drop the slashes). Anything else
+  // is foreign.
+  if (!raw.startsWith("voix:")) return null;
+  const qIdx = raw.indexOf("?");
+  if (qIdx === -1) return null;
+  const path = raw.slice(0, qIdx);
+  if (!/capture$/.test(path)) return null;
+  const params = new URLSearchParams(raw.slice(qIdx + 1));
+  const sessionId = params.get("session_id");
+  const returnUrl = params.get("return");
+  if (!sessionId || !returnUrl) return null;
+  return { sessionId, returnUrl };
+}
+
 export function App() {
   const [section, setSection] = useState<Section>("voices");
   const [editingVoiceId, setEditingVoiceId] = useState<string | null>(null);
   const [openEntryId, setOpenEntryId] = useState<string | null>(null);
+  // M24 step 4 — keyboard-bounce route. Set when the host receives
+  // `voix://capture?session_id=...&return=...` from the voix keyboard
+  // extension; cleared when capture finishes (step 6+ wires the
+  // close path).
+  const [keyboardCapture, setKeyboardCapture] =
+    useState<KeyboardCaptureRoute | null>(null);
   // M23 Decision 4 — onboarding gate. Web always skips (the daemon
   // serves the document + the browser handles mic prompts itself);
   // iOS + macOS gate on the AsyncStorage flag. `null` is the
@@ -28,10 +57,42 @@ export function App() {
     void isOnboardingComplete().then((done) => setOnboardingDone(done));
   }, []);
 
+  // M24 step 4 — subscribe to Linking URL events on iOS. Cold-launch
+  // case: getInitialURL returns the URL that started the process.
+  // Warm case: the `url` event fires while the app is already running.
+  // RN's Linking module relies on AppDelegate.application(_:open:)
+  // forwarding to RCTLinkingManager (wired in step 4's AppDelegate
+  // change). Web + macOS skip this hook — there's no keyboard
+  // extension on those platforms.
+  useEffect(() => {
+    if (Platform.OS !== "ios") return;
+    const handleUrl = (url: string | null) => {
+      if (!url) return;
+      const parsed = parseKeyboardCaptureUrl(url);
+      if (parsed) setKeyboardCapture(parsed);
+    };
+    void Linking.getInitialURL().then(handleUrl);
+    const sub = Linking.addEventListener("url", (e) => handleUrl(e.url));
+    return () => sub.remove();
+  }, []);
+
   if (onboardingDone === null) {
     // Brief pre-bootstrap moment; rendering nothing is preferable to
     // a flash of AppShell that then unmounts to show Onboarding.
     return null;
+  }
+  // M24 step 4 — keyboard-capture route preempts everything else,
+  // including onboarding. If the keyboard bounced the user here, the
+  // host app is acting purely as a recording surface — the user
+  // doesn't want to be asked to onboard mid-dictation. Onboarding
+  // resumes the next time they open voix from the home screen.
+  if (keyboardCapture) {
+    return (
+      <KeyboardCaptureScreen
+        sessionId={keyboardCapture.sessionId}
+        returnUrl={keyboardCapture.returnUrl}
+      />
+    );
   }
   if (!onboardingDone) {
     return <Onboarding onDone={() => setOnboardingDone(true)} />;

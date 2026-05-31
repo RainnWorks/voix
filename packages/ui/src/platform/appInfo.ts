@@ -20,6 +20,41 @@
 
 import type { AppInfo } from "./types";
 
+/**
+ * Typed error from `setApiBase` when the input isn't a valid daemon
+ * URL. Web's `setApiBase` is a no-op (daemon URL is wherever the
+ * document was served from) but consumers may still import the
+ * validator + error type for surface parity with native — keeps the
+ * import path uniform regardless of build target (Priya H3).
+ */
+export class InvalidDaemonUrlError extends Error {
+  readonly code = "invalid-daemon-url" as const;
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidDaemonUrlError";
+  }
+}
+
+/** Parity surface for web. Same shape as native. */
+export function validateDaemonUrl(url: string): string {
+  if (typeof url !== "string" || url.length === 0) {
+    throw new InvalidDaemonUrlError("Daemon URL is empty.");
+  }
+  if (!/^https?:\/\//i.test(url)) {
+    throw new InvalidDaemonUrlError("Daemon URL must start with http:// or https://.");
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new InvalidDaemonUrlError("Daemon URL couldn't be parsed.");
+  }
+  if (!parsed.host) {
+    throw new InvalidDaemonUrlError("Daemon URL has no host.");
+  }
+  return url;
+}
+
 export const appInfo: AppInfo = {
   async getFriendlyName(): Promise<string> {
     if (typeof document !== "undefined" && document.title) {

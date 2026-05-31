@@ -47,11 +47,13 @@ type Props = {
 
 type Step = 1 | 2 | 3;
 
+type DaemonStatus = "idle" | "probing" | "reachable" | "unreachable" | "malformed";
+
 export function Onboarding({ onDone }: Props) {
   const [step, setStep] = useState<Step>(1);
   const [micResult, setMicResult] = useState<PermissionResult | null>(null);
   const [daemonUrl, setDaemonUrl] = useState<string>("");
-  const [daemonStatus, setDaemonStatus] = useState<"idle" | "probing" | "reachable" | "unreachable">("idle");
+  const [daemonStatus, setDaemonStatus] = useState<DaemonStatus>("idle");
 
   // Bootstrap the daemon URL from storage so the input starts on the
   // persisted value (or default-dev URL) the first time we land on
@@ -250,15 +252,17 @@ function DaemonStep({
   onDone,
 }: {
   url: string;
-  status: "idle" | "probing" | "reachable" | "unreachable";
-  onUrlChange: (url: string, status: "idle" | "probing" | "reachable" | "unreachable") => void;
+  status: DaemonStatus;
+  onUrlChange: (url: string, status: DaemonStatus) => void;
   onDone: () => void;
 }) {
-  // The Done CTA is always enabled on a non-empty URL; an unreachable
-  // daemon emits a soft warning instead of blocking. Reasoning:
-  // a user on a flaky network shouldn't be trapped on this screen;
-  // the daemon URL is editable later in Settings.
-  const canDone = url.length > 0 && status !== "probing";
+  // The Done CTA is enabled on a non-empty URL; an unreachable daemon
+  // emits a soft warning instead of blocking. Malformed BLOCKS — we
+  // won't let the user proceed with a typo'd URL that's guaranteed
+  // not to work (Priya H3: distinct from "Unreachable" where the
+  // network might just be flaky).
+  const canDone =
+    url.length > 0 && status !== "probing" && status !== "malformed";
   return (
     <View style={styles.step}>
       <Text style={styles.title} accessibilityRole="header">

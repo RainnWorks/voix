@@ -36,7 +36,7 @@ export type {
 } from "./types";
 
 export { storage } from "./storage";
-export { appInfo } from "./appInfo";
+export { appInfo, validateDaemonUrl, InvalidDaemonUrlError } from "./appInfo";
 export { permissions } from "./permissions";
 export { InlineAudioPlayer } from "./inlineAudio";
 export { PlatformWebSocket, type PlatformWebSocketInstance } from "./websocket";

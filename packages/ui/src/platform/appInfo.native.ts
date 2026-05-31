@@ -39,6 +39,47 @@ const API_BASE_KEY = "voix.api_base";
 
 let apiBaseCache: string | null = null;
 
+/**
+ * Typed error from `setApiBase` when the input isn't a valid daemon
+ * URL. DaemonUrlInput catches this to surface a distinct "malformed"
+ * indicator separately from "unreachable" — so a user with a typo
+ * sees actionable copy instead of being told their network is down
+ * (Priya H3, M23 fix-pass).
+ */
+export class InvalidDaemonUrlError extends Error {
+  readonly code = "invalid-daemon-url" as const;
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidDaemonUrlError";
+  }
+}
+
+/**
+ * Validate a candidate daemon URL string. Requires `http://` or
+ * `https://` prefix, a parseable URL, and a non-empty host. Returns
+ * the original string unchanged on pass; throws InvalidDaemonUrlError
+ * on fail. Use this as a guard BEFORE attempting a reachability probe
+ * (probing a malformed URL just yields a confusing "unreachable").
+ */
+export function validateDaemonUrl(url: string): string {
+  if (typeof url !== "string" || url.length === 0) {
+    throw new InvalidDaemonUrlError("Daemon URL is empty.");
+  }
+  if (!/^https?:\/\//i.test(url)) {
+    throw new InvalidDaemonUrlError("Daemon URL must start with http:// or https://.");
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new InvalidDaemonUrlError("Daemon URL couldn't be parsed.");
+  }
+  if (!parsed.host) {
+    throw new InvalidDaemonUrlError("Daemon URL has no host.");
+  }
+  return url;
+}
+
 export const appInfo: AppInfo = {
   async getFriendlyName(): Promise<string> {
     try {
@@ -56,9 +97,16 @@ export const appInfo: AppInfo = {
     return apiBaseCache;
   },
 
+  /**
+   * Persist the daemon URL. Throws InvalidDaemonUrlError if the URL
+   * is malformed (no protocol, no host, unparseable). Callers should
+   * catch and surface a "Malformed URL" state distinct from
+   * "Unreachable" (Priya H3).
+   */
   async setApiBase(url: string): Promise<void> {
-    apiBaseCache = url;
-    await storage.setItem(API_BASE_KEY, url);
+    const validated = validateDaemonUrl(url);
+    apiBaseCache = validated;
+    await storage.setItem(API_BASE_KEY, validated);
   },
 
   getWsUrl(base: string): string {

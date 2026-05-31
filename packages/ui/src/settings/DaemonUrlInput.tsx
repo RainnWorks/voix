@@ -25,14 +25,25 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { appInfo } from "../platform";
+import { appInfo, validateDaemonUrl, InvalidDaemonUrlError } from "../platform";
 import { colors, fontFamily, radius, spacing } from "../lib/theme";
 
 const DEFAULT_DAEMON_URL_HINT = "http://192.168.99.86:8765/";
 const DEBOUNCE_MS = 600;
 const PROBE_TIMEOUT_MS = 4000;
 
-type ProbeStatus = "idle" | "probing" | "reachable" | "unreachable";
+/**
+ * Probe lifecycle. `malformed` is distinct from `unreachable` (Priya
+ * H3, M23 fix-pass): a user with a typo gets "Try `http://your-host`"
+ * instead of being told their network is down. `malformed` short-
+ * circuits the reachability probe so we don't waste a fetch.
+ */
+type ProbeStatus =
+  | "idle"
+  | "probing"
+  | "reachable"
+  | "unreachable"
+  | "malformed";
 
 type Props = {
   /** Optional initial value. When omitted the component reads from
@@ -85,11 +96,24 @@ export function DaemonUrlInput({ initial, onChange, showResetLink = true }: Prop
 
   // Debounced probe on every edit. Editing-then-stopping fires the
   // probe; editing-while-the-prev-probe-runs aborts that prev probe.
+  // Priya H3: validate the URL first; malformed short-circuits the
+  // probe so the user sees actionable copy instead of "Unreachable"
+  // for what's really a typo.
   useEffect(() => {
     if (!url) {
       setStatus("idle");
       onChange?.(url, "idle");
       return;
+    }
+    try {
+      validateDaemonUrl(url);
+    } catch (err) {
+      if (err instanceof InvalidDaemonUrlError) {
+        setStatus("malformed");
+        onChange?.(url, "malformed");
+        return;
+      }
+      throw err;
     }
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
@@ -107,9 +131,20 @@ export function DaemonUrlInput({ initial, onChange, showResetLink = true }: Prop
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url, probe]);
 
+  // Persist on blur, but only if the URL validates. A typo'd URL stays
+  // in component state for the user to fix; we don't overwrite the
+  // last-known-good base in AsyncStorage with garbage (Priya H3).
   const handleBlur = useCallback(() => {
     if (!url) return;
-    void appInfo.setApiBase(url);
+    try {
+      void appInfo.setApiBase(url);
+    } catch (err) {
+      if (err instanceof InvalidDaemonUrlError) {
+        setStatus("malformed");
+        return;
+      }
+      throw err;
+    }
   }, [url]);
 
   const handleReset = useCallback(() => {
@@ -141,6 +176,7 @@ export function DaemonUrlInput({ initial, onChange, showResetLink = true }: Prop
         />
         <StatusIndicator status={status} />
       </View>
+      {status === "malformed" && <MalformedHint />}
       {showResetLink && !isWeb && (
         <Pressable
           onPress={handleReset}
@@ -158,7 +194,9 @@ export function DaemonUrlInput({ initial, onChange, showResetLink = true }: Prop
 function StatusIndicator({ status }: { status: ProbeStatus }) {
   // Architect Decision 2 ("Connected" / "Unreachable"); we add a
   // "Probing…" mid-state because debounced edits otherwise look like
-  // dropped requests.
+  // dropped requests. Priya H3 added "Malformed" as a distinct state
+  // from "Unreachable" so a typo'd URL shows actionable copy instead
+  // of looking like a network failure.
   let label: string;
   let color: string;
   switch (status) {
@@ -174,6 +212,10 @@ function StatusIndicator({ status }: { status: ProbeStatus }) {
       break;
     case "unreachable":
       label = "Unreachable";
+      color = colors.danger;
+      break;
+    case "malformed":
+      label = "Malformed";
       color = colors.danger;
       break;
     case "idle":
@@ -192,6 +234,20 @@ function StatusIndicator({ status }: { status: ProbeStatus }) {
       <View style={[styles.statusDot, { backgroundColor: color }]} />
       <Text style={[styles.statusLabel, { color }]}>{label}</Text>
     </View>
+  );
+}
+
+/**
+ * Helper copy explaining the malformed state. Rendered by the
+ * component below the input row only when `status === "malformed"`.
+ * Surfaces the actionable fix instead of leaving the user staring at
+ * a red dot (Priya H3, M23 fix-pass).
+ */
+function MalformedHint() {
+  return (
+    <Text style={styles.malformedHint} accessibilityLiveRegion="polite">
+      That doesn't look like a daemon URL. Try `http://your-host:8765/`.
+    </Text>
   );
 }
 
@@ -235,5 +291,11 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.ui,
     fontSize: 11,
     color: colors.sysAccent,
+  },
+  malformedHint: {
+    fontFamily: fontFamily.ui,
+    fontSize: 11,
+    color: colors.danger,
+    lineHeight: 16,
   },
 });

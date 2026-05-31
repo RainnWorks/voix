@@ -39,6 +39,13 @@ final class VoixAudioCapture: RCTEventEmitter {
     private var negotiatedSampleRate: Double = 0
     private var isRunning: Bool = false
     private var hasListeners: Bool = false
+    // M22 step 10: AVAudioEngine configuration-change observer. macOS
+    // doesn't have AVAudioSession.interruptionNotification (that's iOS),
+    // but engine config changes fire on USB headset unplug, route
+    // changes, sample-rate flips on the active device. We surface those
+    // through voixAudioCapture.error so the orchestrator emits a typed
+    // kind: "audio" error.
+    private var configChangeObserver: NSObjectProtocol?
 
     private let emitQueue = DispatchQueue(
         label: "voix.audio.capture.emit",
@@ -160,10 +167,32 @@ final class VoixAudioCapture: RCTEventEmitter {
             self?.handleTap(buffer: buffer)
         }
 
+        // Subscribe to engine config-change events BEFORE start() so we
+        // catch races between hardware enumeration and our start.
+        configChangeObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: engine,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self = self, self.isRunning else { return }
+            // Emit the error and let the orchestrator decide whether to
+            // tear down. Don't tear down ourselves — that would leak
+            // the stop responsibility.
+            if self.hasListeners {
+                self.sendEvent("voixAudioCapture.error", [
+                    "message": "audio route changed mid-session (USB device unplugged or device sample-rate flip).",
+                ])
+            }
+        }
+
         try engine.start()
     }
 
     private func endCapture() {
+        if let token = configChangeObserver {
+            NotificationCenter.default.removeObserver(token)
+            configChangeObserver = nil
+        }
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         pendingFloats.removeAll(keepingCapacity: false)

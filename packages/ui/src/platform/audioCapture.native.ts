@@ -61,6 +61,11 @@ class IosAudioCapture implements AudioCapture {
   private recorder: AudioRecorder | null = null;
   private negotiatedSampleRate: number | undefined;
   private started = false;
+  // M22 step 10: interruption observer (Sasha pushback #1). iOS audio
+  // session interruptions (incoming phone call, Siri, route change to
+  // an unavailable device) route through opts.onError so the
+  // orchestrator surfaces a typed kind: "audio" error in TalkButton.
+  private interruptionSubscription: { remove: () => void } | null = null;
 
   get sampleRate(): number | undefined {
     return this.negotiatedSampleRate;
@@ -139,6 +144,33 @@ class IosAudioCapture implements AudioCapture {
         // best-effort
       }
     });
+
+    // M22 step 10: iOS interruption observer (Sasha pushback #1). The
+    // AudioManager's "interruption" event fires when the OS yanks the
+    // audio session (phone call, Siri, alarm). We route that through
+    // opts.onError so the orchestrator emits a typed kind: "audio"
+    // error and TalkButton renders the right recovery copy.
+    //
+    // We listen for BOTH "began" (the interruption started — current
+    // session is dead) and "ended" with shouldResume:false (the
+    // interruption ended but the OS won't auto-resume — same outcome).
+    AudioManager.observeAudioInterruptions(true);
+    this.interruptionSubscription = AudioManager.addSystemEventListener(
+      "interruption",
+      (event: { type: string; shouldResume: boolean }) => {
+        if (event.type === "began") {
+          opts.onError?.(
+            new Error(
+              "audio interrupted — the system took over the mic (call, Siri, alarm).",
+            ),
+          );
+        }
+        // We don't auto-restart on "ended" — the orchestrator already
+        // tore down on the "began" error and the user can re-press
+        // the talk button.
+      },
+    );
+
     this.recorder.start();
 
     // Wait briefly for either an onError event or for isRecording() to
@@ -177,6 +209,13 @@ class IosAudioCapture implements AudioCapture {
       // best-effort
     }
     this.recorder = null;
+    this.interruptionSubscription?.remove();
+    this.interruptionSubscription = null;
+    try {
+      AudioManager.observeAudioInterruptions(false);
+    } catch {
+      // best-effort
+    }
     void this.audioContext?.close();
     this.audioContext = null;
     this.negotiatedSampleRate = undefined;

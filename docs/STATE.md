@@ -1,13 +1,20 @@
-# voix · Current State (2026-05-30, post-audit)
+# voix · Current State (2026-05-31, M19 closed)
 
 ## Read this first
 
 **Where to start, by intent:**
 
 - **Resuming after context compaction?** Read
-  `docs/session-handoff/2026-05-30-audit-pass.md` first — it captures
-  the volatile context (the audit pass, the 9 fixes, what's still
-  open). This file is the cold-read entry.
+  `docs/session-handoff/2026-05-30-audit-pass.md` for the prior
+  audit pass context, then **`docs/phase-6/architecture-m19.md` +
+  `docs/phase-6/verify-results/M19-*.md` + the new
+  `docs/agent-team-workflow.md`** for the Phase 6 RN-end-to-end
+  setup. This file is the cold-read entry.
+- **What's the team-of-agents workflow?**
+  `docs/agent-team-workflow.md` — adopted Anthropic Agent Teams as
+  the mechanism, Osmani/Shankar vocabulary, NabaOS-style receipts.
+  Applies to all projects under `/Users/tom/Projects/` unless
+  overridden.
 - **Want to know what's broken?** `docs/audits/niggly-bits.md` (B2,
   280 lines). The 9 most critical items shipped fixes in `9dc5c0b`.
 - **Want the brutal what-vs-what?** `docs/audits/goal-vs-reality.md`
@@ -19,12 +26,61 @@
 
 ---
 
-## Status — Phases 1-5 source complete, audit pass landed
+## Status — Phase 6 begun (M19 closed); RN end-to-end direction set
 
-**Phases 1-5 complete on source.** Eighteen milestones merged + an
-adversarial audit pass that shipped 9 fixes (`9dc5c0b`). Tags:
-`v0.phase-1`, `v0.phase-2`. (`v0.phase-3`, `-4`, `-5` not tagged —
-verification cliff at the Phase 3/4 boundary remains; see audit B1.)
+**Phase 6 direction**: Drop the pre-pivot Tauri shell. The voix UI is
+already RN-shaped (9 files import from `react-native`, rendered today
+via `react-native-web`). Phase 6 lifts the component layer into a
+shared `@voix/ui` package and grows three platform shells from it:
+web (HA iframe, today), react-native-macos (M22), react-native-ios +
+keyboard extension (M23-M24). Tauri would force a desktop/mobile
+split for no gain. See `docs/build-workflow.md` Phase 6 + the
+decision context in `docs/phase-6/architecture-m19.md`.
+
+**M19 closed (2026-05-31)** — monorepo + shared UI package shipped
+through the new team-of-agents workflow. Six commits + a three-fix
+follow-pass landed end-to-end:
+
+- `e1d71e0..a5547d5` — Implementer steps 1-4 + 6 (root workspace +
+  React 19 bump, `@voix/protocol`, `@voix/ui` move, `.native.ts`
+  suffix split + InlineAudioPlayer split, STATE update).
+- `5127013` — Fix pass 1: pin `@sinclair/typebox: ^0.34.49` via root
+  `overrides` (RN's `@jest/schemas` was hoisting 0.27.10, breaking
+  Elysia's `Unsafe` import — daemon wouldn't boot).
+- `09cebc3` — Fix pass 2: revert daemon's workspace dep on
+  `@voix/protocol`. Wire-types parallel-copied at
+  `voix-backend/src/audio_io/protocol.ts` and
+  `packages/protocol/src/audio-io.ts`; `scripts/check-protocol-sync.sh`
+  enforces drift. Unblocks the HA Add-on Docker build context.
+- `5b95afd` — Fix pass 3: drop dead `paths` map + the `clients/*`
+  glob until M20 re-adds it.
+
+**M19 smoke tests (all green)**:
+```
+scripts/check-protocol-sync.sh         → OK
+cd voix-backend && bun run typecheck   → exit 0
+cd voix-backend && bun src/index.ts    → "listening on :8765"
+cd voix-backend/ui && bun run build    → 325 modules / ~600ms
+cd voix-backend/ui && bun run typecheck → exit 0
+```
+
+**Carry-forward issues from M19 verify** (filed for M20):
+- HA Add-on UI install path still broken in production Docker
+  (`voix-backend/ui/package.json` workspace:* deps escape build
+  context). Dev path (HA Add-on `dev_mode` clones full repo) works.
+  M20 lands the pre-build vendoring fix.
+- Internal package imports use explicit `.ts(x)` extensions —
+  Metro's `.native.ts` resolution only fires on extensionless
+  imports. M20 strips them.
+- `.native` sibling-exists invariant has no enforcement — a missing
+  web-side companion to a `.native.ts` would compile silently. M20
+  adds a guard.
+
+**Phases 1-5 (pre-M19) — complete on source.** Eighteen milestones
+merged + an adversarial audit pass that shipped 9 fixes (`9dc5c0b`).
+Tags: `v0.phase-1`, `v0.phase-2`. (`v0.phase-3`, `-4`, `-5` not
+tagged — verification cliff at the Phase 3/4 boundary remains; see
+audit B1.)
 
 **The verification cliff** (B1's headline): only M01 + M02b/c/d ever
 ran against real systems. Everything M08+ has only ever run against

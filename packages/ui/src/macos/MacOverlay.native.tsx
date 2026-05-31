@@ -1,14 +1,27 @@
 /**
  * MacOverlay — hotkey-driven PTT for macOS.
  *
+ * M23 note: the HUD's visual chrome (puck glyph + HA-blue pulse ring +
+ * status label) lives on the Swift side in VoixOverlayPanel; this
+ * file is the behaviour component. setLevel() drives the pulse via
+ * mic RMS sampling. The architect's M23 step-9 brief listed Puck +
+ * pulse as a JS-side delta, but M22 fix-pass already moved this work
+ * into VoixOverlayPanel (NSView puck + HA-blue ring, matching
+ * Puck.tsx ratios). Acceptance criterion #12 is satisfied today —
+ * see clients/app/macos/VoixNative/Sources/VoixOverlay.swift.
+ *
  * Wired to:
  *   - useGlobalHotkey() — receives ⌃⌥Space down/up events from
  *     VoixHotkey native module.
  *   - NativeModules.VoixOverlay — the borderless NSPanel HUD (shown on
- *     down, hidden on up). The HUD now carries the voix brand: puck
- *     glyph + HA-blue + audio-level pulse (Marina BRAND-1). Audio
- *     session runs through the JS BrowserAudioIoClient like any other
- *     surface, with intent: "dictate" per Decision 10.
+ *     down, hidden on up). The HUD carries the voix brand: puck
+ *     glyph + HA-blue + audio-level pulse (Marina BRAND-1, M22 fix).
+ *     Audio session runs through the JS BrowserAudioIoClient like
+ *     any other surface, with intent: "dictate" per Decision 10.
+ *   - NativeModules.VoixStatusItem — the menu-bar item (M23 step 8).
+ *     Driven from this file: install() on mount, setOverlayVisible()
+ *     on PTT down/up, setHotkeyLabel + setHotkeyConflict on
+ *     registration changes.
  *   - BrowserAudioIoClient — opens the WS + mic via the same audio
  *     primitives as the in-app TalkButton, but with `intent: "dictate"`
  *     so the daemon returns transcript output instead of spoken reply.
@@ -40,6 +53,10 @@ type VoixOverlayModule = {
   /** Drives the brand pulse ring around the puck. 0..1; called as the
    *  mic streams in. Best-effort — older builds may not expose this. */
   setLevel?(level: number): Promise<void>;
+  /** M23 — set the small hint line under the status label so the
+   *  active hotkey chord is always reflected (chord rebind in
+   *  M23.5). Best-effort — older builds may not expose this. */
+  setHint?(hint: string): Promise<void>;
 };
 
 type VoixPasteModule = {
@@ -229,6 +246,15 @@ export function MacOverlay(): null {
         .setHotkeyLabel(`Hotkey: ${registration.chord}`)
         .catch(() => {});
       void statusItem.setHotkeyConflict(conflict).catch(() => {});
+    }
+    // M23 — keep the HUD hint in sync with the registered chord so a
+    // future chord-rebind UI (M23.5) doesn't leave stale copy on the
+    // panel.
+    const overlay = NativeModules.VoixOverlay as VoixOverlayModule | undefined;
+    if (registration && overlay?.setHint) {
+      void overlay
+        .setHint(`Hold ${registration.chord} — release to send`)
+        .catch(() => {});
     }
   }, [registration]);
 

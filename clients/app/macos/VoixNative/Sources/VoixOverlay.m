@@ -19,4 +19,8 @@ RCT_EXTERN_METHOD(setLevel:(nonnull NSNumber *)level
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(setHint:(nonnull NSString *)hint
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 @end

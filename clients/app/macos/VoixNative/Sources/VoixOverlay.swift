@@ -108,6 +108,22 @@ final class VoixOverlay: NSObject {
             resolve(nil)
         }
     }
+
+    /// M23 — override the small hint line under the status label.
+    /// Default is "Hold ⌃⌥Space — release to send" but the hotkey
+    /// chord is rebindable in a future M23.5; surface the active chord
+    /// here so the HUD always shows the user the right thing.
+    @objc(setHint:resolver:rejecter:)
+    func setHint(
+        _ hint: NSString,
+        resolver resolve: @escaping RCTPromiseResolveBlock,
+        rejecter reject: @escaping RCTPromiseRejectBlock
+    ) {
+        DispatchQueue.main.async { [weak self] in
+            self?.panel?.setHint(hint as String)
+            resolve(nil)
+        }
+    }
 }
 
 /// The HUD panel itself. Load-bearing overrides: canBecomeKey /
@@ -135,6 +151,7 @@ final class VoixOverlayPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 
     private var statusLabel: NSTextField?
+    private var hintLabel: NSTextField?
     private var puckBody: NSView?
     private var puckInner: NSView?
     private var puckRing: NSView?
@@ -311,6 +328,7 @@ final class VoixOverlayPanel: NSPanel {
         ])
 
         statusLabel = label
+        hintLabel = hint
         puckBody = body
         puckInner = inner
         puckRing = ring
@@ -320,6 +338,10 @@ final class VoixOverlayPanel: NSPanel {
 
     func setStatus(_ s: String) {
         statusLabel?.stringValue = s
+    }
+
+    func setHint(_ s: String) {
+        hintLabel?.stringValue = s
     }
 
     /// Drive the audio-level ring from JS-side mic RMS.

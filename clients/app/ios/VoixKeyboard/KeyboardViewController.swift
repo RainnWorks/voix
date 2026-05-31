@@ -54,6 +54,13 @@ final class KeyboardViewController: UIInputViewController {
         os_log("voix kbd: viewDidLoad", log: Self.log, type: .info)
         probeSharedContainer()
         SharedContainer.sweepOrphans()
+        // Adversary H-1: a recycled extension comes back with a fresh
+        // .idle phase. Reconstruct .bounced from the durable pointer so
+        // viewDidAppear consumes the host's `done` session instead of
+        // letting the transcript get swept silently. Must run AFTER the
+        // orphan sweep so a long-dead pointer (whose files the sweep
+        // just cleared) is treated as stale rather than restored.
+        restorePersistedBounceIfFresh()
         installSwiftUIRoot()
     }
 
@@ -174,7 +181,12 @@ final class KeyboardViewController: UIInputViewController {
         }
         os_log("voix kbd: bouncing to host session=%{public}@",
                log: Self.log, type: .info, sessionId)
-        state.phase = .bounced(sessionId: sessionId, startedAt: Date())
+        let startedAt = Date()
+        state.phase = .bounced(sessionId: sessionId, startedAt: startedAt)
+        // Durable copy of the bounce so a recycled extension can resume
+        // it on next viewDidLoad (Adversary H-1). Cleared on every
+        // terminal transition below.
+        SharedContainer.persistActiveBounce(sessionId: sessionId, startedAt: startedAt)
         refreshHostingController()
         startTimers()
         extensionContext?.open(url) { [weak self] success in
@@ -184,12 +196,37 @@ final class KeyboardViewController: UIInputViewController {
                        log: Self.log, type: .error)
                 DispatchQueue.main.async {
                     self.cancelTimers()
+                    SharedContainer.clearActiveBounce()
                     self.state.phase = .idle
                     self.state.showToast("voix host app not found")
                     self.refreshHostingController()
                 }
             }
         }
+    }
+
+    /// Adversary H-1: on a cold/recycled launch, reconstruct an
+    /// in-flight bounce from the durable App Group pointer so the
+    /// return leg still fires. Only restores a pointer still inside the
+    /// timeout window — a long-dead one is cleared silently rather than
+    /// flashing a "couldn't record" toast on a launch the user didn't
+    /// initiate.
+    private func restorePersistedBounceIfFresh() {
+        guard case .idle = state.phase,
+              let bounce = SharedContainer.loadActiveBounce() else {
+            return
+        }
+        let elapsed = Date().timeIntervalSince(bounce.startedAt)
+        if elapsed > Self.bounceTimeout {
+            SharedContainer.clearActiveBounce()
+            return
+        }
+        os_log(
+            "voix kbd: restoring persisted bounce session=%{public}@ elapsed=%.1fs",
+            log: Self.log, type: .info, bounce.sessionId, elapsed
+        )
+        state.phase = .bounced(sessionId: bounce.sessionId, startedAt: bounce.startedAt)
+        startTimers()
     }
 
     // MARK: - Return-flow consumer
@@ -236,6 +273,7 @@ final class KeyboardViewController: UIInputViewController {
         let transcript = (try? SharedContainer.readTranscript(sessionId)) ?? ""
         SharedContainer.deleteSession(sessionId)
         cancelTimers()
+        SharedContainer.clearActiveBounce()
         state.phase = .inserting
         refreshHostingController()
         let proxy = textDocumentProxy
@@ -251,6 +289,7 @@ final class KeyboardViewController: UIInputViewController {
     private func applyFailed(sessionId: String, error: String?) {
         SharedContainer.deleteSession(sessionId)
         cancelTimers()
+        SharedContainer.clearActiveBounce()
         state.phase = .idle
         let message: String
         switch error {
@@ -272,6 +311,7 @@ final class KeyboardViewController: UIInputViewController {
     private func applyCancelled(sessionId: String) {
         SharedContainer.deleteSession(sessionId)
         cancelTimers()
+        SharedContainer.clearActiveBounce()
         state.phase = .idle
         state.showToast("Cancelled")
         refreshHostingController()
@@ -286,6 +326,7 @@ final class KeyboardViewController: UIInputViewController {
         try? SharedContainer.writeState(cancelled)
         SharedContainer.deleteSession(sessionId)
         cancelTimers()
+        SharedContainer.clearActiveBounce()
         state.phase = .idle
         state.showToast("voix couldn't record")
         refreshHostingController()

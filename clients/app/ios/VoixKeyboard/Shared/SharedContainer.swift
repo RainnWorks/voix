@@ -119,6 +119,66 @@ enum SharedContainer {
         }
     }
 
+    // MARK: - Durable active-bounce pointer (Adversary H-1)
+    //
+    // The bounce lifecycle (`KeyboardState.phase == .bounced`) lives
+    // only in RAM on the KeyboardViewController instance. When the
+    // keyboard bounces to the host, iOS foregrounds a heavy RN app and
+    // routinely jettisons the backgrounded keyboard extension. On
+    // return iOS spins up a FRESH controller whose phase is `.idle`, so
+    // `viewDidAppear`'s `if case .bounced` consume-trigger never fires
+    // and the dictated transcript sits in the container until the
+    // 5-minute orphan sweep silently deletes it.
+    //
+    // Fix: persist the active bounce (sessionId + startedAt) to the App
+    // Group's UserDefaults the moment we bounce, and reload it in
+    // `viewDidLoad` so a recycled extension reconstructs `.bounced` and
+    // consumes the `done` session. The `.json`/`.txt` channel was
+    // always sound; this restores the *trigger* to read it.
+
+    private static let activeBounceKey = "voix.kbd.activeBounce"
+
+    private static func defaults() -> UserDefaults? {
+        UserDefaults(suiteName: groupId)
+    }
+
+    static func persistActiveBounce(sessionId: String, startedAt: Date) {
+        guard let defaults = defaults() else {
+            os_log(
+                "persistActiveBounce: App Group UserDefaults unavailable",
+                log: log, type: .error
+            )
+            return
+        }
+        defaults.set(
+            [
+                "sessionId": sessionId,
+                "startedAt": startedAt.timeIntervalSince1970,
+            ] as [String: Any],
+            forKey: activeBounceKey
+        )
+    }
+
+    /// Reload a persisted active bounce, if any. Returns nil when there
+    /// is none. The caller is responsible for timeout math — startedAt
+    /// is the original bounce instant so the 60s window survives a
+    /// process restart.
+    static func loadActiveBounce() -> (sessionId: String, startedAt: Date)? {
+        guard
+            let defaults = defaults(),
+            let dict = defaults.dictionary(forKey: activeBounceKey),
+            let sessionId = dict["sessionId"] as? String,
+            let startedAt = dict["startedAt"] as? TimeInterval
+        else {
+            return nil
+        }
+        return (sessionId, Date(timeIntervalSince1970: startedAt))
+    }
+
+    static func clearActiveBounce() {
+        defaults()?.removeObject(forKey: activeBounceKey)
+    }
+
     /// Sweep sessions older than `maxAge` seconds. Orphans from host
     /// crashes get cleaned up on next keyboard launch.
     static func sweepOrphans(olderThan maxAge: TimeInterval = 300) {

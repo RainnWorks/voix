@@ -27,7 +27,7 @@
  * connected.
  */
 
-import { Platform } from "react-native";
+import { NativeEventEmitter, NativeModules, Platform } from "react-native";
 import {
   AudioBuffer,
   AudioContext,
@@ -201,19 +201,136 @@ class IosAudioCapture implements AudioCapture {
   }
 }
 
-class MacosAudioCaptureStub implements AudioCapture {
+/**
+ * macOS implementation backed by the in-tree VoixAudioCapture TurboModule
+ * (clients/app/macos/VoixNative/Sources/VoixAudioCapture.swift).
+ *
+ * The native side runs an AVAudioEngine input tap at the device's native
+ * rate (read post-engine.start() — Sasha H1 fix), batches Float32 → PCM16
+ * on a userInteractive queue, and emits base64-encoded frames via the
+ * "voixAudioCapture.frame" event.
+ *
+ * This class decodes the base64 → Int16Array and hands each chunk to
+ * opts.onFrame. The contract matches IosAudioCapture identically so the
+ * orchestrator + TalkButton don't branch on platform.
+ */
+
+/** base64 → Uint8Array. Native string with `atob` is fine in RN-macOS
+ *  (Hermes provides it via the JS env). We avoid Buffer to keep the web
+ *  bundle clean — that's the whole reason this file is `.native.ts`. */
+function base64ToBytes(b64: string): Uint8Array {
+  // eslint-disable-next-line no-restricted-globals
+  const bin = (globalThis as { atob?: (s: string) => string }).atob?.(b64);
+  if (bin === undefined) {
+    throw new Error(
+      "atob unavailable in RN runtime — VoixAudioCapture frame decode failed",
+    );
+  }
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+/** Reinterpret a byte array as Int16LE. Native VoixAudioCapture
+ *  emits little-endian native PCM16; on Apple Silicon + Intel that's
+ *  always LE. */
+function bytesToInt16LE(bytes: Uint8Array): Int16Array {
+  // Copy into a new ArrayBuffer aligned for Int16 — re-using bytes.buffer
+  // can land on an odd offset depending on the base64 decoder's slab.
+  const buf = new ArrayBuffer(bytes.length);
+  new Uint8Array(buf).set(bytes);
+  return new Int16Array(buf);
+}
+
+type VoixAudioCaptureModule = {
+  start(): Promise<{ sampleRate: number }>;
+  stop(): Promise<void>;
+  getSampleRate(): Promise<number | null>;
+};
+
+class MacosAudioCapture implements AudioCapture {
+  private negotiatedSampleRate: number | undefined;
+  private started = false;
+  private subscription: { remove: () => void } | null = null;
+  private errorSubscription: { remove: () => void } | null = null;
+
   get sampleRate(): number | undefined {
-    return undefined;
+    return this.negotiatedSampleRate;
   }
-  async start(_opts: AudioCaptureStartOpts): Promise<void> {
-    // User-facing string — no internal milestone numbers (Wren FINDING-2).
-    throw new Error("voix's microphone on macOS is coming soon.");
+
+  async start(opts: AudioCaptureStartOpts): Promise<void> {
+    if (this.started) return;
+    const mod = NativeModules.VoixAudioCapture as VoixAudioCaptureModule | undefined;
+    if (!mod) {
+      throw new Error(
+        "VoixAudioCapture native module unavailable — rebuild the macOS app",
+      );
+    }
+
+    // Wire frame + error listeners BEFORE start() so we don't miss a
+    // race-condition error fired during native engine.start().
+    const emitter = new NativeEventEmitter(
+      NativeModules.VoixAudioCapture as unknown as Parameters<
+        typeof NativeEventEmitter
+      >[0],
+    );
+    this.subscription = emitter.addListener(
+      "voixAudioCapture.frame",
+      (event: { base64: string; frames: number; sampleRate: number }) => {
+        try {
+          const bytes = base64ToBytes(event.base64);
+          const pcm = bytesToInt16LE(bytes);
+          opts.onFrame(pcm);
+        } catch (err) {
+          // Don't let a single bad frame kill the stream — log and
+          // continue. The error path below catches stop-the-world failures.
+          opts.onError?.(err instanceof Error ? err : new Error(String(err)));
+        }
+      },
+    );
+    this.errorSubscription = emitter.addListener(
+      "voixAudioCapture.error",
+      (event: { message: string }) => {
+        opts.onError?.(new Error(`VoixAudioCapture: ${event.message}`));
+      },
+    );
+
+    try {
+      const result = await mod.start();
+      this.negotiatedSampleRate = result.sampleRate;
+      this.started = true;
+    } catch (err) {
+      this.subscription?.remove();
+      this.subscription = null;
+      this.errorSubscription?.remove();
+      this.errorSubscription = null;
+      throw err instanceof Error ? err : new Error(String(err));
+    }
   }
+
   stop(): void {
-    // no-op
+    if (!this.started) {
+      // Clean up any listeners installed but engine-start failed.
+      this.subscription?.remove();
+      this.subscription = null;
+      this.errorSubscription?.remove();
+      this.errorSubscription = null;
+      return;
+    }
+    this.started = false;
+    this.subscription?.remove();
+    this.subscription = null;
+    this.errorSubscription?.remove();
+    this.errorSubscription = null;
+    const mod = NativeModules.VoixAudioCapture as VoixAudioCaptureModule | undefined;
+    // Fire-and-forget — stop() interface is sync.
+    void mod?.stop().catch(() => {
+      // best-effort
+    });
+    this.negotiatedSampleRate = undefined;
   }
 }
 
 export function createAudioCapture(): AudioCapture {
-  return Platform.OS === "macos" ? new MacosAudioCaptureStub() : new IosAudioCapture();
+  return Platform.OS === "macos" ? new MacosAudioCapture() : new IosAudioCapture();
 }

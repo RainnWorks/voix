@@ -18,6 +18,9 @@
     "typecheck": "bun run --filter '*' typecheck",
     "test": "bun run --filter '*' test"
   },
+  "dependencies": {
+    "react-native-macos": "0.81.7"
+  },
   "overrides": {
     "@sinclair/typebox": "^0.34.49"
   }

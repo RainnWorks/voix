@@ -396,7 +396,18 @@ function DaemonStep({
         Home Assistant box. We've pre-filled the dev address; edit if
         yours lives elsewhere.
       </Text>
-      <DaemonUrlInput initial={url} onChange={onUrlChange} showResetLink />
+      <DaemonUrlInput
+        initial={url}
+        onChange={onUrlChange}
+        showResetLink
+        appearance={{
+          bg: ob.fieldBg,
+          border: ob.fieldBorder,
+          text: ob.fieldText,
+          placeholder: ob.fieldPlaceholder,
+          accent: ob.accent,
+        }}
+      />
       <View style={styles.ctaRow}>
         <Pressable
           onPress={onDone}

@@ -45,6 +45,23 @@ type ProbeStatus =
   | "unreachable"
   | "malformed";
 
+/**
+ * Field appearance override. Settings renders the input on a light
+ * surface (the defaults); onboarding renders it on the dark teach-mode
+ * canvas, where the light bgSubtle fill + black-alpha border collapse to
+ * invisibility and the field reads as a plain label (Marina v3 #5).
+ * The caller passes scheme-aware colours so the editable field looks
+ * editable in both places.
+ */
+export type FieldAppearance = {
+  bg: string;
+  border: string;
+  text: string;
+  placeholder: string;
+  /** Focus-ring colour — drawn as a thicker border while focused. */
+  accent: string;
+};
+
 type Props = {
   /** Optional initial value. When omitted the component reads from
    *  appInfo.getApiBase() on mount. */
@@ -55,11 +72,15 @@ type Props = {
   /** Show a "Reset to default" link below the input. Defaults to true
    *  in Settings; the onboarding screen shows it too. */
   showResetLink?: boolean;
+  /** Override the field colours for non-default surfaces (onboarding's
+   *  dark canvas). Omitted → the light Settings treatment. */
+  appearance?: FieldAppearance;
 };
 
-export function DaemonUrlInput({ initial, onChange, showResetLink = true }: Props) {
+export function DaemonUrlInput({ initial, onChange, showResetLink = true, appearance }: Props) {
   const [url, setUrl] = useState<string>(initial ?? "");
   const [status, setStatus] = useState<ProbeStatus>("idle");
+  const [focused, setFocused] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -157,20 +178,44 @@ export function DaemonUrlInput({ initial, onChange, showResetLink = true }: Prop
   // someone renders us anyway we still want correct visual state.
   const isWeb = Platform.OS === "web";
 
+  // Resolve the field palette: caller override (onboarding's dark canvas)
+  // or the light Settings default. The focus ring is the accent border
+  // drawn while the field is focused, so the input visibly reacts to a
+  // tap instead of looking like static text (Marina v3 #5).
+  const field: FieldAppearance = appearance ?? {
+    bg: colors.bgSubtle,
+    border: colors.rule,
+    text: colors.ink,
+    placeholder: colors.textQuiet,
+    accent: colors.sysAccent,
+  };
+
   return (
     <View style={styles.wrap}>
       <View style={styles.row}>
         <TextInput
           value={url}
           onChangeText={setUrl}
-          onBlur={handleBlur}
+          onFocus={() => setFocused(true)}
+          onBlur={() => {
+            setFocused(false);
+            handleBlur();
+          }}
           editable={!isWeb}
           autoCapitalize="none"
           autoCorrect={false}
           keyboardType="url"
           placeholder={DEFAULT_DAEMON_URL_HINT}
-          placeholderTextColor={colors.textQuiet}
-          style={styles.input}
+          placeholderTextColor={field.placeholder}
+          style={[
+            styles.input,
+            {
+              backgroundColor: field.bg,
+              color: field.text,
+              borderColor: focused ? field.accent : field.border,
+              borderWidth: focused ? 1.5 : StyleSheet.hairlineWidth * 2,
+            },
+          ]}
           accessibilityLabel="Daemon URL"
           accessibilityHint="The address where the voix daemon is reachable."
         />
@@ -184,7 +229,7 @@ export function DaemonUrlInput({ initial, onChange, showResetLink = true }: Prop
           accessibilityRole="button"
           accessibilityLabel="Reset daemon URL to default"
         >
-          <Text style={styles.resetLink}>Reset to default</Text>
+          <Text style={[styles.resetLink, { color: field.accent }]}>Reset to default</Text>
         </Pressable>
       )}
     </View>

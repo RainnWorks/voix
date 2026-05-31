@@ -15,6 +15,10 @@
 		D185BD0600DFA3D399072114 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
 		KEXT0001000000000000A006 /* KeyboardViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = KEXT0001000000000000A005 /* KeyboardViewController.swift */; };
 		KEXT0001000000000000A00F /* VoixKeyboard.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = KEXT0001000000000000A002 /* VoixKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		SHARED00000000000000A004 /* KeyboardSessionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = SHARED00000000000000A002 /* KeyboardSessionState.swift */; };
+		SHARED00000000000000A005 /* SharedContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = SHARED00000000000000A003 /* SharedContainer.swift */; };
+		SHARED00000000000000A006 /* KeyboardSessionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = SHARED00000000000000A002 /* KeyboardSessionState.swift */; };
+		SHARED00000000000000A007 /* SharedContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = SHARED00000000000000A003 /* SharedContainer.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -59,6 +63,9 @@
 		KEXT0001000000000000A003 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = Info.plist; path = VoixKeyboard/Info.plist; sourceTree = "<group>"; };
 		KEXT0001000000000000A004 /* VoixKeyboard.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = VoixKeyboard.entitlements; path = VoixKeyboard/VoixKeyboard.entitlements; sourceTree = "<group>"; };
 		KEXT0001000000000000A005 /* KeyboardViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = KeyboardViewController.swift; path = VoixKeyboard/KeyboardViewController.swift; sourceTree = "<group>"; };
+		SHARED00000000000000A001 /* voix.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = voix.entitlements; path = voix/voix.entitlements; sourceTree = "<group>"; };
+		SHARED00000000000000A002 /* KeyboardSessionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = KeyboardSessionState.swift; path = VoixKeyboard/Shared/KeyboardSessionState.swift; sourceTree = "<group>"; };
+		SHARED00000000000000A003 /* SharedContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SharedContainer.swift; path = VoixKeyboard/Shared/SharedContainer.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -89,6 +96,7 @@
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
 				13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */,
+				SHARED00000000000000A001 /* voix.entitlements */,
 			);
 			name = voix;
 			sourceTree = "<group>";
@@ -149,10 +157,20 @@
 			isa = PBXGroup;
 			children = (
 				KEXT0001000000000000A005 /* KeyboardViewController.swift */,
+				SHARED00000000000000A008 /* Shared */,
 				KEXT0001000000000000A003 /* Info.plist */,
 				KEXT0001000000000000A004 /* VoixKeyboard.entitlements */,
 			);
 			name = VoixKeyboard;
+			sourceTree = "<group>";
+		};
+		SHARED00000000000000A008 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				SHARED00000000000000A002 /* KeyboardSessionState.swift */,
+				SHARED00000000000000A003 /* SharedContainer.swift */,
+			);
+			name = Shared;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -358,6 +376,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				761780ED2CA45674006654EE /* AppDelegate.swift in Sources */,
+				SHARED00000000000000A006 /* KeyboardSessionState.swift in Sources */,
+				SHARED00000000000000A007 /* SharedContainer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -366,6 +386,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				KEXT0001000000000000A006 /* KeyboardViewController.swift in Sources */,
+				SHARED00000000000000A004 /* KeyboardSessionState.swift in Sources */,
+				SHARED00000000000000A005 /* SharedContainer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -386,6 +408,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = voix/voix.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = voix/Info.plist;
@@ -414,6 +437,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = voix/voix.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
 				INFOPLIST_FILE = voix/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;

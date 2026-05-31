@@ -28,7 +28,29 @@ final class KeyboardViewController: UIInputViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         os_log("voix kbd: viewDidLoad", log: Self.log, type: .info)
+        probeSharedContainer()
         installStubPill()
+    }
+
+    private func probeSharedContainer() {
+        // Step 3 smoke: confirm App Group entitlement landed. If the
+        // entitlements file drifted between host and extension, the
+        // container URL is nil and the keyboard cannot read host
+        // state. Architect Risk 4.
+        if let dir = SharedContainer.sessionsDirectoryURL() {
+            os_log(
+                "voix kbd: shared container OK at %{public}@",
+                log: Self.log,
+                type: .info,
+                dir.path
+            )
+        } else {
+            os_log(
+                "voix kbd: shared container UNAVAILABLE — check App Group entitlement",
+                log: Self.log,
+                type: .error
+            )
+        }
     }
 
     override func viewWillAppear(_ animated: Bool) {

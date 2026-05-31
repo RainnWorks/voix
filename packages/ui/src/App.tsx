@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Platform } from "react-native";
 import { AppShell, type Section } from "./components/AppShell";
 import { ConversationDetail } from "./conversations/ConversationDetail";
 import { ConversationList } from "./conversations/ConversationList";
 import { MacAccessibilityBanner } from "./macos/MacAccessibilityBanner";
 import { MacOverlay } from "./macos/MacOverlay";
+import { Onboarding, isOnboardingComplete } from "./onboarding/Onboarding";
 import { SettingsScreen } from "./settings/SettingsScreen";
 import { SurfaceList } from "./surfaces/SurfaceList";
 import { VoiceEditor } from "./voices/VoiceEditor";
@@ -13,6 +15,27 @@ export function App() {
   const [section, setSection] = useState<Section>("voices");
   const [editingVoiceId, setEditingVoiceId] = useState<string | null>(null);
   const [openEntryId, setOpenEntryId] = useState<string | null>(null);
+  // M23 Decision 4 — onboarding gate. Web always skips (the daemon
+  // serves the document + the browser handles mic prompts itself);
+  // iOS + macOS gate on the AsyncStorage flag. `null` is the
+  // unresolved state — we render nothing while we check storage so
+  // the user doesn't see a flash of AppShell pre-onboarding.
+  const [onboardingDone, setOnboardingDone] = useState<boolean | null>(
+    Platform.OS === "web" ? true : null,
+  );
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    void isOnboardingComplete().then((done) => setOnboardingDone(done));
+  }, []);
+
+  if (onboardingDone === null) {
+    // Brief pre-bootstrap moment; rendering nothing is preferable to
+    // a flash of AppShell that then unmounts to show Onboarding.
+    return null;
+  }
+  if (!onboardingDone) {
+    return <Onboarding onDone={() => setOnboardingDone(true)} />;
+  }
 
   let title: string;
   const toolbarRight: React.ReactNode = null;

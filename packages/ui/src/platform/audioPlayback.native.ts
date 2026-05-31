@@ -16,7 +16,7 @@
  * context, we'll fold them together in M22.
  */
 
-import { Platform } from "react-native";
+import { NativeModules, Platform } from "react-native";
 import { AudioContext } from "react-native-audio-api";
 import type { AudioPlayback, AudioPlaybackStartOpts } from "./types";
 
@@ -67,21 +67,86 @@ class IosAudioPlayback implements AudioPlayback {
   }
 }
 
-class MacosAudioPlaybackStub implements AudioPlayback {
-  async start(_opts: AudioPlaybackStartOpts): Promise<void> {
-    // User-facing string — no internal milestone numbers (Wren FINDING-2).
-    throw new Error("voix's microphone on macOS is coming soon.");
+/**
+ * macOS impl backed by VoixAudioPlayback (AVAudioEngine + AVAudioPlayerNode).
+ * The native side schedules each pushFrame buffer at the running
+ * `nextPlayerSampleTime` watermark so consecutive chunks play gapless
+ * even if the JS round-trip has jitter.
+ *
+ * Encoding: we base64-encode the Int16Array's little-endian bytes
+ * before crossing the bridge. RN's NativeModules don't accept raw
+ * TypedArrays across the bridge in 0.81; base64 is the documented path
+ * (same shape react-native-audio-api uses for its native push).
+ */
+
+type VoixAudioPlaybackModule = {
+  start(sampleRateHz: number): Promise<void>;
+  pushFrame(base64: string): Promise<void>;
+  stop(): Promise<void>;
+};
+
+/** Int16Array → base64 of its byte representation (LE on Apple
+ *  hardware, which is what the Swift side expects). `btoa` is available
+ *  in Hermes; we avoid Buffer for the same reason audioCapture.native.ts
+ *  does. */
+function int16ToBase64(pcm: Int16Array): string {
+  const bytes = new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength);
+  let bin = "";
+  // Chunked to avoid the "Maximum call stack" hit on very large arrays.
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode.apply(
+      null,
+      Array.from(bytes.subarray(i, i + CHUNK)),
+    );
   }
-  pushFrame(_pcm16: Int16Array): void {
-    // Swallow rather than throw — the orchestrator may push a frame
-    // before realising start() threw; throwing twice would surface
-    // an opaque second error.
+  // eslint-disable-next-line no-restricted-globals
+  const enc = (globalThis as { btoa?: (s: string) => string }).btoa;
+  if (!enc) {
+    throw new Error(
+      "btoa unavailable in RN runtime — VoixAudioPlayback frame encode failed",
+    );
   }
+  return enc(bin);
+}
+
+class MacosAudioPlayback implements AudioPlayback {
+  private started = false;
+
+  async start(opts: AudioPlaybackStartOpts): Promise<void> {
+    if (this.started) return;
+    const mod = NativeModules.VoixAudioPlayback as VoixAudioPlaybackModule | undefined;
+    if (!mod) {
+      throw new Error(
+        "VoixAudioPlayback native module unavailable — rebuild the macOS app",
+      );
+    }
+    await mod.start(opts.sampleRateHz);
+    this.started = true;
+  }
+
+  pushFrame(pcm16: Int16Array): void {
+    if (!this.started) return;
+    const mod = NativeModules.VoixAudioPlayback as VoixAudioPlaybackModule | undefined;
+    if (!mod) return;
+    // Fire-and-forget — pushFrame's interface is sync; the native side
+    // resolves immediately after scheduling.
+    const b64 = int16ToBase64(pcm16);
+    void mod.pushFrame(b64).catch(() => {
+      // best-effort — a single dropped frame is recoverable.
+    });
+  }
+
   stop(): void {
-    // no-op
+    if (!this.started) return;
+    this.started = false;
+    const mod = NativeModules.VoixAudioPlayback as VoixAudioPlaybackModule | undefined;
+    void mod?.stop().catch(() => {
+      // best-effort
+    });
   }
 }
 
 export function createAudioPlayback(): AudioPlayback {
-  return Platform.OS === "macos" ? new MacosAudioPlaybackStub() : new IosAudioPlayback();
+  return Platform.OS === "macos" ? new MacosAudioPlayback() : new IosAudioPlayback();
 }

@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, fontFamily, radius, spacing } from "../lib/theme";
 import { useResponsive } from "../lib/useResponsive";
 import { SafeAreaView } from "../platform";
@@ -30,6 +30,16 @@ import { Wordmark } from "./Wordmark";
 
 export type Section = "conversations" | "voices" | "surfaces" | "settings";
 
+/**
+ * On macOS the native shell (AppDelegate) installs a behind-window
+ * NSVisualEffectView backdrop and clears the RN host layer (A2 point 4).
+ * To reveal that vibrancy under the sidebar — and ONLY the sidebar — the
+ * desktop shell turns its root + sidebar transparent on macOS while the
+ * titlebar and content pane keep opaque fills. iOS/web are untouched
+ * (Platform.OS is never "macos" there), so this is a no-op off macOS.
+ */
+const isMacNative = Platform.OS === "macos";
+
 type Props = {
   section: Section;
   onPickSection: (s: Section) => void;
@@ -58,7 +68,7 @@ function DesktopShell({
   children,
 }: Props) {
   return (
-    <View style={styles.app}>
+    <View style={[styles.app, isMacNative && styles.appMac]}>
       {/* edges=['top'] is a no-op on macOS/web (zero inset) and insets
           correctly under an iPad status bar. */}
       <SafeAreaView edges={["top"]} style={styles.titlebar}>
@@ -70,7 +80,7 @@ function DesktopShell({
           onPickSection={onPickSection}
           onNewConversation={onNewConversation}
         />
-        <View style={styles.main}>
+        <View style={[styles.main, isMacNative && styles.mainMac]}>
           <View style={styles.toolbar}>
             <Text style={styles.toolbarTitle}>{title}</Text>
             <View style={styles.toolbarRight}>{toolbarRight}</View>
@@ -92,7 +102,7 @@ function Sidebar({
   onNewConversation: () => void;
 }) {
   return (
-    <View style={styles.sidebar}>
+    <View style={[styles.sidebar, isMacNative && styles.sidebarMac]}>
       <Pressable
         style={({ pressed }) => [styles.newButton, pressed && styles.newButtonPressed]}
         onPress={onNewConversation}
@@ -314,6 +324,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg,
   },
+  // macOS: let the native NSVisualEffectView backdrop show through.
+  appMac: {
+    backgroundColor: "transparent",
+  },
   titlebar: {
     paddingHorizontal: 14,
     flexDirection: "row",
@@ -334,6 +348,12 @@ const styles = StyleSheet.create({
     borderRightColor: colors.rule,
     paddingTop: spacing.sm,
     paddingHorizontal: spacing.sm,
+  },
+  // macOS: drop the flat translucent fill so the native sidebar-material
+  // vibrancy (installed behind the RN host in AppDelegate) is revealed
+  // under this column. Selection fills + the hairline border remain.
+  sidebarMac: {
+    backgroundColor: "transparent",
   },
   newButton: {
     flexDirection: "row",
@@ -439,6 +459,11 @@ const styles = StyleSheet.create({
   main: {
     flex: 1,
     minWidth: 0,
+  },
+  // macOS: keep the content pane opaque so vibrancy stays scoped to the
+  // sidebar column (the titlebar already carries an opaque elevated bg).
+  mainMac: {
+    backgroundColor: colors.bg,
   },
   toolbar: {
     height: 38,

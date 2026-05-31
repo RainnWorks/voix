@@ -50,7 +50,66 @@
     }];
   }
 
-  return [super applicationDidFinishLaunching:notification];
+  // -applicationDidFinishLaunching: is a void method on RN-macOS's
+  // RCTAppDelegate; call super (it creates the window + RN host) then
+  // install our backdrop. No return value — see below.
+  [super applicationDidFinishLaunching:notification];
+
+  // A2 (macOS M-MobileFit parity, point 4): AppKit-vibrancy on the
+  // sidebar. The desktop shell keeps the shared RN nav (web nav stays —
+  // we do NOT swap in an NSToolbar), but a flat translucent fill is the
+  // "web-app-in-a-window" tell. The native idiom is a vibrant sidebar
+  // backed by NSVisualEffectView so the desktop wallpaper/material
+  // shows through with the system's blur.
+  //
+  // Mechanics: drop a behind-window .sidebar-material NSVisualEffectView
+  // beneath the RN host view and make that host view's layer clear. The
+  // shared AppShell turns ONLY the sidebar column transparent on macOS
+  // (titlebar + content pane stay opaque), so the vibrancy is revealed
+  // exactly under the 220pt sidebar and nowhere else. Additive + fully
+  // reversible; the paste-focus NSPanel flow (VoixOverlay) is untouched.
+  [self installSidebarVibrancy];
+}
+
+/// Install a behind-window vibrant backdrop so the RN sidebar column
+/// reads as a native macOS sidebar (A2 point 4). Idempotent: guards on
+/// an identifier'd subview so a re-entrant launch can't stack backdrops.
+- (void)installSidebarVibrancy
+{
+  NSWindow *window = self.window;
+  NSView *content = window.contentView;
+  if (window == nil || content == nil) {
+    return;
+  }
+
+  static NSUserInterfaceItemIdentifier const kBackdropID = @"voixVibrancyBackdrop";
+  for (NSView *existing in content.subviews) {
+    if ([existing.identifier isEqualToString:kBackdropID]) {
+      return; // already installed
+    }
+  }
+
+  // The window must be non-opaque with a clear background for the
+  // behind-window blend to sample the desktop instead of a black fill.
+  window.opaque = NO;
+  window.backgroundColor = [NSColor clearColor];
+
+  NSVisualEffectView *backdrop =
+      [[NSVisualEffectView alloc] initWithFrame:content.bounds];
+  backdrop.identifier = kBackdropID;
+  backdrop.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  backdrop.material = NSVisualEffectMaterialSidebar;
+  backdrop.blendingMode = NSVisualEffectBlendingModeBehindWindow;
+  backdrop.state = NSVisualEffectStateActive;
+  [content addSubview:backdrop positioned:NSWindowBelow relativeTo:nil];
+
+  // Clear the RN host view's own layer fill so the transparent sidebar
+  // column (set in AppShell on macOS) reveals the backdrop. The shell's
+  // titlebar + content pane keep opaque fills, so vibrancy stays scoped
+  // to the sidebar.
+  NSView *hostView = window.contentViewController.view ?: content;
+  hostView.wantsLayer = YES;
+  hostView.layer.backgroundColor = [NSColor clearColor].CGColor;
 }
 
 - (NSURL *)sourceURLForBridge:(RCTBridge *)bridge

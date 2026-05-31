@@ -8,6 +8,8 @@ steps". Run from `/Users/tom/Projects/voix/`.
 cd /Users/tom/Projects/voix && git status && git log -1 --oneline
 which watchman || brew install watchman
 ```
+Note: `app/` has already been removed; if you see `?? app/`, run
+`rm -rf app/` — the snapshot lives on `legacy/tauri-clipboard`.
 
 **1. Refresh workspace install** — pre-empts Hiro H1 stale dirs:
 ```bash

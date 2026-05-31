@@ -1,4 +1,4 @@
-# voix · Current State (2026-05-31, M19 closed)
+# voix · Current State (2026-05-31, M20 closed)
 
 ## Read this first
 
@@ -26,7 +26,7 @@
 
 ---
 
-## Status — Phase 6 begun (M19 closed); RN end-to-end direction set
+## Status — Phase 6 (M20 closed); RN scaffold + Tauri archived
 
 **Phase 6 direction**: Drop the pre-pivot Tauri shell. The voix UI is
 already RN-shaped (9 files import from `react-native`, rendered today
@@ -68,13 +68,68 @@ cd voix-backend/ui && bun run typecheck → exit 0
 - HA Add-on UI install path still broken in production Docker
   (`voix-backend/ui/package.json` workspace:* deps escape build
   context). Dev path (HA Add-on `dev_mode` clones full repo) works.
-  M20 lands the pre-build vendoring fix.
+  **Deferred to M20a** (explicit Docker context shift) — half-day's
+  work; orthogonal to RN scaffold; doing both at once risks merging
+  across phases.
 - Internal package imports use explicit `.ts(x)` extensions —
   Metro's `.native.ts` resolution only fires on extensionless
-  imports. M20 strips them.
+  imports. **Shipped in M20 step 5** (44 imports across 11 files
+  stripped via one-shot codemod).
 - `.native` sibling-exists invariant has no enforcement — a missing
-  web-side companion to a `.native.ts` would compile silently. M20
-  adds a guard.
+  web-side companion to a `.native.ts` would compile silently.
+  **Shipped in M20 step 6** (`scripts/check-native-siblings.ts`
+  wired into `bun run check`).
+
+**M20 closed (2026-05-31)** — RN-CLI scaffold + Hiro carry-forwards
++ Tauri archive shipped through the team-of-agents workflow. Ten
+commits on main, plus a one-time `legacy/tauri-clipboard` snapshot
+branch on origin:
+
+- Step 1 (`b426475`): re-add `clients/*` to workspaces glob.
+- Step 2 (`f010cca`): RN-CLI 0.81.6 init at `clients/app/`.
+- Step 3 (`b0e56c6`): Metro workspace config + `react-native-macos
+  @0.81.7` root placeholder.
+- Step 4 (`da76318`): macOS target via direct generate-macos.js call
+  (the rn-macos-init wrapper trips ENOWORKSPACES inside bun
+  workspaces). Podfile pins `platform :macos, '14.0'` (template
+  default; brief expected 11.0 — operational; Tom's Mac is macOS
+  26.3).
+- Step 5 (`e58c1ca`): strip 44 explicit `.ts(x)` imports across 11
+  files in `packages/ui/src/` (Hiro Delta D).
+- Step 6 (`c3080cf`): `scripts/check-native-siblings.ts` + root `bun
+  run check` aggregator (Hiro M2).
+- Step 7 (`ec1126c`): `packages/ui/src/lib/apiBase.{ts,native.ts}` —
+  web returns "", native returns LAN URL `http://192.168.99.86:8765/`
+  (M21 swaps for user-config setting).
+- Step 8 (`de38bd6`): `clients/app/index.js` registers `App` from
+  `@voix/ui`. Required a one-line `pcm.buffer as ArrayBuffer` cast
+  in `client.ts` to satisfy TS 5.x strict-DOM lib (no runtime change).
+- Step 9a (`2ec5eac` on `legacy/tauri-clipboard`): snapshot the
+  pre-pivot Tauri tree (35 source files; build artefacts gitignored).
+  Pushed to origin. M02e voice rename diffs verified preserved.
+- Step 9b (`49ad1ab` + `370bcaa` on main): add-then-rm Tauri `app/`
+  so the deletion is in main's history.
+
+**M20 smoke tests (every step, all green)**:
+```
+bun install                                       # workspace OK
+cd voix-backend/ui && bun run build               # web UI OK (325 modules)
+bun run check                                     # protocol-sync + native-siblings
+cd voix-backend && timeout 5 bun src/index.ts     # "listening on :8765"
+bunx tsc -p clients/app/tsconfig.json --noEmit    # exit 0
+```
+
+**M20 deferred to M20a (HA Add-on Docker context shift)**: see
+`docs/build-workflow.md` Phase 6 table. Until M20a lands, the HA
+Add-on **stable-channel** production build is broken; `dev_mode`
+(which clones the repo inside the container) keeps working. Half
+day's work; doing it inside M20 would have merged across phases.
+
+**Tom's manual smoke for M20**: `docs/phase-6/m20-manual.md` —
+watchman install, root re-install, `pod install` (iOS + macOS), set
+LAN IP in `apiBase.native.ts`, Metro + run-ios + run-macos.
+Expected: simulator opens; sidebar with 6 built-in voices renders
+on both targets.
 
 **Phases 1-5 (pre-M19) — complete on source.** Eighteen milestones
 merged + an adversarial audit pass that shipped 9 fixes (`9dc5c0b`).

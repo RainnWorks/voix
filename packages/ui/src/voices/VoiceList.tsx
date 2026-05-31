@@ -68,7 +68,7 @@ export function VoiceList({ onPickVoice }: Props) {
         <View style={styles.activeStrip}>
           <Text style={styles.activeStripLabel}>NOW</Text>
           <Text style={styles.activeStripDevice}>
-            {devices[0].friendlyName ?? devices[0].deviceId}
+            {friendlyDeviceName(devices[0])}
           </Text>
           <Text style={styles.activeStripDot}>·</Text>
           <Text style={styles.activeStripMode}>
@@ -91,6 +91,32 @@ export function VoiceList({ onPickVoice }: Props) {
       </View>
     </View>
   );
+}
+
+/**
+ * Human surface name for the NOW strip. The daemon identifies a surface
+ * by a generated id (`browser-p250im9u56fmpu8sdx8`); that's SRE plumbing,
+ * not product language, and must never reach the UI (Wren v3 H2/F4).
+ * Prefer the surface's own friendly name; otherwise fall back to a
+ * kind-derived label ("This phone" / "This browser" / …) from
+ * client_info.kind. The raw deviceId is never rendered.
+ */
+function friendlyDeviceName(device: Device): string {
+  const named = device.friendlyName?.trim();
+  if (named) return named;
+  switch (device.clientKind) {
+    case "phone-sat":
+      return "This phone";
+    case "browser-tab":
+      return "This browser";
+    case "laptop-mic":
+      return "This Mac";
+    case "puck":
+    case "puck-legacy":
+      return "Voice PE";
+    default:
+      return "This device";
+  }
 }
 
 function VoiceCard({

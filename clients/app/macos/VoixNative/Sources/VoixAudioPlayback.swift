@@ -31,6 +31,20 @@ final class VoixAudioPlayback: NSObject {
     private var sampleRateHz: Double = 24000
     private var isStarted: Bool = false
 
+    // Yuki H3 fix: attach the player + connect to mainMixerNode ONCE
+    // at module init. AVAudioEngine.attach/connect aren't cheap (node
+    // validation, mainMixer device-format query); doing them per
+    // session caused intermittent "third session is silent" behaviour
+    // because engine.detach(player) followed by engine.attach(player)
+    // can leave the player's frame clock in an undefined state across
+    // macOS versions. With attach-once we only start/stop the engine
+    // between sessions.
+    //
+    // The format used to connect is recreated when start() declares
+    // its sampleRateHz. If a future session changes rate we
+    // disconnect-only (cheap), then reconnect with the new format.
+    private var attached: Bool = false
+
     // The next "when" relative to player time at which to schedule the
     // upcoming chunk. Grows by chunk.duration after each schedule;
     // resets to 0 on stop. Player time = monotonic frames since
@@ -163,11 +177,28 @@ final class VoixAudioPlayback: NSObject {
                     "could not create PCM16 mono format at \(sampleRateHz) Hz"]
             )
         }
+
+        // Yuki H3: attach + connect ONCE. On first start, or after a
+        // rate change, hook up the player node. Subsequent sessions
+        // reuse the existing graph and only flip engine + player run
+        // state.
+        let formatChanged = pcm16Format?.sampleRate != fmt.sampleRate
+        if !attached {
+            engine.attach(player)
+            engine.connect(
+                player, to: engine.mainMixerNode, format: fmt
+            )
+            attached = true
+        } else if formatChanged {
+            // Disconnect-only (cheap) then reconnect at the new rate.
+            // engine.detach would force a full re-attach next start.
+            engine.disconnectNodeOutput(player)
+            engine.connect(
+                player, to: engine.mainMixerNode, format: fmt
+            )
+        }
         pcm16Format = fmt
         nextPlayerSampleTime = 0
-
-        engine.attach(player)
-        engine.connect(player, to: engine.mainMixerNode, format: fmt)
 
         try engine.start()
         // Don't call player.play() yet — first pushFrame triggers it.
@@ -177,11 +208,11 @@ final class VoixAudioPlayback: NSObject {
     }
 
     private func endPlayback() {
+        // Yuki H3: keep the node graph intact. Only stop runtime state.
+        // The next start() reuses the same attached/connected player.
         player.stop()
         engine.stop()
-        engine.disconnectNodeOutput(player)
-        engine.detach(player)
-        pcm16Format = nil
         nextPlayerSampleTime = 0
+        // pcm16Format kept so the next start() can detect a rate change.
     }
 }

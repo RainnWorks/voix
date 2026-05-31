@@ -118,6 +118,13 @@ Pins:
 - `--skip-git-init` — existing `.git/` upstairs.
 - `--pm bun` — sets `package.json` scripts to bun-style invocations.
 
+Note (per M20 fix-pass / Diego H3): the `--version 0.81.6` flag pins
+RN, not the CLI. The CLI that runs is the template-bundled
+`@react-native-community/cli@20.0.0`, not `20.1.3` (which the
+`npx --yes ...@20.1.3` invocation above only controls for the
+scaffolder process itself). Both are within the 20.x line that ships
+with RN 0.81; functionally equivalent.
+
 App name **`voix`** is what the iOS xcodeproj bakes into Info.plist,
 schemes, etc. Renaming the iOS target is multi-hour archeology — leave
 it. Only rename the directory to `clients/app/` (matches the build-

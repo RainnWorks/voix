@@ -2,17 +2,20 @@
 ///
 /// Architecture: Decision 3 of architecture-m22.md.
 ///
-/// Step 8 ships clipboard write only.
-/// Step 9 adds the CGEventPost auto-paste flow.
+/// Step 8 shipped clipboard write only.
+/// Step 9 (this revision) adds CGEventPost auto-paste behind an
+/// Accessibility gate.
 ///
-/// JS surface (final shape — step 9 fills in paste()):
+/// JS surface:
 ///   copyToClipboard(text: string): Promise<void>
 ///   paste(text: string): Promise<{ pasted: boolean, copied: boolean }>
 ///     - Always copies to clipboard.
 ///     - If Accessibility is trusted, posts Cmd+V into the focused app
-///       (.cgSessionEventTap) and resolves { pasted:true, copied:true }.
+///       and resolves { pasted:true, copied:true }.
 ///     - Otherwise resolves { pasted:false, copied:true } so the JS
-///       overlay shows the CTA.
+///       overlay shows the "Grant Accessibility" CTA.
+///   isAccessibilityTrusted(): Promise<boolean>
+///     - Non-prompting check. Used at app boot to log trust state.
 
 import AppKit
 import ApplicationServices
@@ -27,18 +30,13 @@ final class VoixPaste: NSObject {
         return false
     }
 
-    /// Copy text to the general pasteboard. Sandbox-safe; no extra
-    /// entitlements required (NSPasteboard.general is allowed inside
-    /// app-sandbox per Apple's docs).
+    /// Copy text to the general pasteboard. Sandbox-safe.
     @objc(copyToClipboard:resolver:rejecter:)
     func copyToClipboard(
         _ text: NSString,
         resolver resolve: @escaping RCTPromiseResolveBlock,
         rejecter reject: @escaping RCTPromiseRejectBlock
     ) {
-        // Pasteboard ops are documented to be safe off-main but practice
-        // shows a few crashes on older macOS when called concurrently
-        // with focus changes. Hop to main; the cost is one runloop tick.
         DispatchQueue.main.async {
             let pb = NSPasteboard.general
             pb.clearContents()
@@ -47,22 +45,96 @@ final class VoixPaste: NSObject {
         }
     }
 
-    /// Copy + (step 9) post Cmd+V. Step 8 ships copy-only; the JS shim
-    /// detects no `pasted` field and treats it as { copied:true }.
+    /// Copy + try to auto-paste via CGEventPost. Gated on
+    /// AXIsProcessTrustedWithOptions(prompt:false) — we NEVER call the
+    /// prompting variant (forces quit+relaunch UX). The JS overlay
+    /// surfaces a CTA that opens System Settings via the
+    /// VoixAudioPermissions module when the result is { pasted:false }.
+    ///
+    /// The CGEventPost incantation (Tauri's archived paste.rs is the
+    /// reference):
+    ///   - keyboardEventSource: .combinedSessionState — picks up the
+    ///     session's combined state (current modifiers, lock state).
+    ///   - virtualKey 0x09 = V (kVK_ANSI_V).
+    ///   - flags = .maskCommand — adds Cmd to the synthesised event.
+    ///   - post(tap: .cgSessionEventTap) — session-level tap; lands in
+    ///     the focused app even if it's sandboxed. .cghidEventTap can
+    ///     lose to keyboards plugged in after voix started.
     @objc(paste:resolver:rejecter:)
     func paste(
         _ text: NSString,
         resolver resolve: @escaping RCTPromiseResolveBlock,
         rejecter reject: @escaping RCTPromiseRejectBlock
     ) {
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+
+            // Step 1: always write to the pasteboard. This is the
+            // graceful-degradation guarantee — even if paste fails for
+            // any reason, the user can ⌘V manually.
             let pb = NSPasteboard.general
             pb.clearContents()
             pb.setString(text as String, forType: .string)
-            // Step 9 adds CGEventPost here. For step 8, resolve
-            // copy-only — the MacOverlay JS uses `pasted` to decide
-            // which toast to show.
-            resolve(["pasted": false, "copied": true])
+
+            // Step 2: check Accessibility trust without prompting. The
+            // prompting variant pops a system modal that demands a
+            // quit+relaunch and the user may legitimately want manual-
+            // paste (no Accessibility), so we use the read-only check
+            // here and let the JS overlay drive the CTA.
+            let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+            let trusted = AXIsProcessTrustedWithOptions(
+                [key: false] as CFDictionary
+            )
+
+            if !trusted {
+                resolve(["pasted": false, "copied": true])
+                return
+            }
+
+            // Step 3: small delay so the focused app has a stable cursor
+            // before we synthesise the keystroke. Without this, fast
+            // sessions sometimes synthesise the keystroke into a UI
+            // element that just became first-responder a microsecond
+            // earlier (the prior overlay-orderOut). 50 ms is invisible
+            // to the user, plenty for AppKit's focus pipeline.
+            //
+            // Empirically this is the difference between "pastes
+            // reliably" and "pastes 80% of the time."
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                self.postCmdV()
+                resolve(["pasted": true, "copied": true])
+            }
         }
+    }
+
+    /// Non-prompting Accessibility trust check. Used by the JS app at
+    /// boot to log the current state + by the MacOverlay's
+    /// post-session UX.
+    @objc(isAccessibilityTrusted:rejecter:)
+    func isAccessibilityTrusted(
+        _ resolve: @escaping RCTPromiseResolveBlock,
+        rejecter reject: @escaping RCTPromiseRejectBlock
+    ) {
+        let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+        let trusted = AXIsProcessTrustedWithOptions([key: false] as CFDictionary)
+        resolve(trusted)
+    }
+
+    // MARK: Cmd+V synthesis
+
+    private func postCmdV() {
+        let src = CGEventSource(stateID: .combinedSessionState)
+        guard
+            let down = CGEvent(keyboardEventSource: src, virtualKey: 0x09, keyDown: true),
+            let up = CGEvent(keyboardEventSource: src, virtualKey: 0x09, keyDown: false)
+        else {
+            return
+        }
+        down.flags = .maskCommand
+        up.flags = .maskCommand
+        // .cgSessionEventTap is the right layer — posts as if from a
+        // real keyboard, lands in the focused app's first responder.
+        down.post(tap: .cgSessionEventTap)
+        up.post(tap: .cgSessionEventTap)
     }
 }

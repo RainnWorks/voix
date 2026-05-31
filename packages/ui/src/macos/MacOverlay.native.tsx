@@ -38,6 +38,11 @@ type VoixOverlayModule = {
 type VoixPasteModule = {
   copyToClipboard(text: string): Promise<void>;
   paste(text: string): Promise<{ pasted: boolean; copied: boolean }>;
+  isAccessibilityTrusted(): Promise<boolean>;
+};
+
+type VoixAudioPermissionsModule = {
+  openAccessibilitySettings(): Promise<void>;
 };
 
 export function MacOverlay(): null {
@@ -148,6 +153,27 @@ export function MacOverlay(): null {
     }
   }, [registration]);
 
+  // Log Accessibility trust state at boot (M22 risk #3 mitigation —
+  // helps diagnose "I granted it and it still doesn't paste" by
+  // recording the pre-paste state in the dev console).
+  useEffect(() => {
+    const paste = NativeModules.VoixPaste as VoixPasteModule | undefined;
+    if (!paste) return;
+    void paste
+      .isAccessibilityTrusted()
+      .then((trusted) => {
+        // eslint-disable-next-line no-console
+        console.log(
+          `voix accessibility: ${
+            trusted
+              ? "trusted — paste will auto-fire"
+              : "not trusted — paste will copy-only; grant in System Settings"
+          }`,
+        );
+      })
+      .catch(() => {});
+  }, []);
+
   // Tear down on unmount.
   useEffect(() => {
     return () => {
@@ -161,14 +187,24 @@ export function MacOverlay(): null {
 }
 
 /**
- * Step 8 ships clipboard write; step 9 adds CGEventPost auto-paste.
- * Until both modules are wired the function is best-effort — overlay
- * updates with the result + hides after a brief moment so the user
- * sees confirmation before the HUD disappears.
+ * Tracks whether we've already opened System Settings for the
+ * Accessibility CTA this session. Avoids re-opening on every press
+ * if Tom denies grant and keeps using the hotkey.
+ */
+let hasOpenedAccessibilitySettings = false;
+
+/**
+ * Steps 8-9: paste flow. Always copies to clipboard; auto-pastes via
+ * CGEventPost iff Accessibility is trusted. When not trusted, opens
+ * System Settings → Privacy → Accessibility (once per app session) so
+ * the user can grant + relaunch.
  */
 async function onSessionEnded(transcript: string): Promise<void> {
   const overlay = NativeModules.VoixOverlay as VoixOverlayModule | undefined;
   const paste = NativeModules.VoixPaste as VoixPasteModule | undefined;
+  const perms = NativeModules.VoixAudioPermissions as
+    | VoixAudioPermissionsModule
+    | undefined;
 
   if (!transcript || transcript.trim() === "") {
     void overlay?.updateStatus("No transcript captured.").catch(() => {});
@@ -177,7 +213,6 @@ async function onSessionEnded(transcript: string): Promise<void> {
   }
 
   if (!paste) {
-    // Steps 8+ not yet shipped — just acknowledge.
     void overlay?.updateStatus("Captured").catch(() => {});
     setTimeout(() => void overlay?.hideOverlay().catch(() => {}), 1200);
     return;
@@ -188,16 +223,28 @@ async function onSessionEnded(transcript: string): Promise<void> {
     if (result.pasted) {
       void overlay?.updateStatus("Pasted").catch(() => {});
     } else if (result.copied) {
-      void overlay?.updateStatus(
-        "Copied — grant Accessibility to auto-paste.",
-      ).catch(() => {});
+      void overlay
+        ?.updateStatus("Copied — grant Accessibility to auto-paste.")
+        .catch(() => {});
+      // Open Settings ONCE per app session — onward presses don't
+      // re-open it, so Tom can keep using the copy-only flow.
+      if (!hasOpenedAccessibilitySettings && perms) {
+        hasOpenedAccessibilitySettings = true;
+        // Slight delay so the overlay toast is visible before the
+        // Settings window steals focus.
+        setTimeout(() => {
+          void perms.openAccessibilitySettings().catch(() => {});
+        }, 800);
+      }
     } else {
       void overlay?.updateStatus("Captured").catch(() => {});
     }
   } catch (err) {
-    void overlay?.updateStatus(
-      `Error: ${err instanceof Error ? err.message : String(err)}`,
-    ).catch(() => {});
+    void overlay
+      ?.updateStatus(
+        `Error: ${err instanceof Error ? err.message : String(err)}`,
+      )
+      .catch(() => {});
   }
   setTimeout(() => void overlay?.hideOverlay().catch(() => {}), 1400);
 }

@@ -12,4 +12,7 @@ RCT_EXTERN_METHOD(paste:(nonnull NSString *)text
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(isAccessibilityTrusted:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 @end

@@ -37,7 +37,13 @@ import {
 } from "react-native";
 import { Puck } from "../components/Puck";
 import { Wordmark } from "../components/Wordmark";
-import { appInfo, permissions, storage, type PermissionResult } from "../platform";
+import {
+  appInfo,
+  permissions,
+  storage,
+  useSafeAreaInsets,
+  type PermissionResult,
+} from "../platform";
 import { colors, fontFamily, radius, spacing } from "../lib/theme";
 import { DaemonUrlInput } from "../settings/DaemonUrlInput";
 
@@ -106,8 +112,21 @@ export function Onboarding({ onDone }: Props) {
     await permissions.openMicrophoneSettings();
   }, []);
 
+  // Keep the wordmark/Skip header clear of the status bar / Dynamic
+  // Island and the dots clear of the home indicator on iOS. Zero insets
+  // on web/macOS, so the centered layout is unchanged there (soul §3.2).
+  const insets = useSafeAreaInsets();
+
   return (
-    <ScrollView contentContainerStyle={styles.scroll}>
+    <ScrollView
+      contentContainerStyle={[
+        styles.scroll,
+        {
+          paddingTop: Math.max(spacing.xl, insets.top + spacing.sm),
+          paddingBottom: Math.max(spacing.xl, insets.bottom + spacing.sm),
+        },
+      ]}
+    >
       <View style={styles.shell}>
         <View style={styles.header}>
           <Wordmark />
@@ -345,13 +364,17 @@ function DaemonStep({
 }
 
 function StepDots({ step }: { step: Step }) {
+  // All three dots are always drawn: the current step is a wider haBlue
+  // pill, the rest are visible neutral dots — a real 3-of-N indicator,
+  // not one orphaned dot (Marina #12 / Wren F9, M-MobileFit target e).
   return (
-    <View style={styles.dots}>
+    <View
+      style={styles.dots}
+      accessibilityRole="progressbar"
+      accessibilityLabel={`Step ${step} of 3`}
+    >
       {[1, 2, 3].map((s) => (
-        <View
-          key={s}
-          style={[styles.dot, s === step && styles.dotActive]}
-        />
+        <View key={s} style={[styles.dot, s === step && styles.dotActive]} />
       ))}
     </View>
   );
@@ -451,12 +474,17 @@ const styles = StyleSheet.create({
     paddingTop: spacing.lg,
   },
   dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.rule,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    // Inactive dots were colors.rule (rgba(0,0,0,0.08)) — near-invisible,
+    // so the group read as a single dot. A clearly-visible neutral makes
+    // the remaining steps legible.
+    backgroundColor: "rgba(0,0,0,0.2)",
   },
   dotActive: {
+    // Current step: a wider haBlue pill so position reads at a glance.
+    width: 22,
     backgroundColor: colors.haBlue,
   },
 

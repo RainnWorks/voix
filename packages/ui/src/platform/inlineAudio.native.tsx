@@ -95,7 +95,8 @@ function IosInlineAudioPlayer({ src }: Props) {
 }
 
 function MacosInlineAudioPlayer({ src: _src }: Props) {
-  return <Text style={styles.placeholder}>Playback: macOS audio lands in M22</Text>;
+  // User-facing string — no internal milestone numbers (Wren FINDING-2).
+  return <Text style={styles.placeholder}>Audio playback on macOS is coming soon.</Text>;
 }
 
 export function InlineAudioPlayer(props: Props) {

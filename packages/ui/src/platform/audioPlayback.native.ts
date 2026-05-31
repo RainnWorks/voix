@@ -69,9 +69,8 @@ class IosAudioPlayback implements AudioPlayback {
 
 class MacosAudioPlaybackStub implements AudioPlayback {
   async start(_opts: AudioPlaybackStartOpts): Promise<void> {
-    throw new Error(
-      "audio playback: macOS audio lands in M22 (alongside global hotkey + paste)",
-    );
+    // User-facing string — no internal milestone numbers (Wren FINDING-2).
+    throw new Error("voix's microphone on macOS is coming soon.");
   }
   pushFrame(_pcm16: Int16Array): void {
     // Swallow rather than throw — the orchestrator may push a frame

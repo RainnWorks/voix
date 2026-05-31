@@ -188,9 +188,8 @@ class MacosAudioCaptureStub implements AudioCapture {
     return undefined;
   }
   async start(_opts: AudioCaptureStartOpts): Promise<void> {
-    throw new Error(
-      "audio capture: macOS audio lands in M22 (alongside global hotkey + paste)",
-    );
+    // User-facing string — no internal milestone numbers (Wren FINDING-2).
+    throw new Error("voix's microphone on macOS is coming soon.");
   }
   stop(): void {
     // no-op

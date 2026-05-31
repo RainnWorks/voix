@@ -124,6 +124,14 @@ export class BrowserAudioIoClient {
         sampleRateHz: 48000,
         bufferSize: MIC_BUFFER_SIZE,
         onFrame: (pcm16) => this.sendMicFrame(pcm16),
+        // Surface async recorder failures (e.g. iOS AVAudioSession
+        // interruption, hardware revoked mid-session) to the consumer
+        // so the TalkButton can render a real message rather than
+        // sitting on "Listening" forever (Sasha H2).
+        onError: (err) => {
+          this.opts.onEvent({ type: "error", message: err.message });
+          this.stop();
+        },
       });
 
       this.openWs();

@@ -116,10 +116,53 @@ class IosAudioCapture implements AudioCapture {
       },
     );
 
-    const result = this.recorder.start();
-    if (result.status === "error") {
+    // Sasha H2 fix: recorder.start() always returns {status:"success"}
+    // in callback-only mode (we don't call enableFileOutput()), so the
+    // previous `result.status === "error"` branch was dead code. Use
+    // the lib's onError event + an isRecording() poll to surface
+    // native-side start failures: AVAudioSession activation failures,
+    // hardware unavailable, mic permission revoked between gate and
+    // start, etc.
+    //
+    // audio-api docs (AudioRecorder.onError + isRecording):
+    // https://github.com/software-mansion/react-native-audio-api/blob/main/packages/react-native-audio-api/src/core/AudioRecorder.ts
+    let nativeError: Error | null = null;
+    this.recorder.onError((event) => {
+      const err = new Error(`AudioRecorder error: ${event.message}`);
+      nativeError = err;
+      // Surface to the caller. The orchestrator may have already
+      // resolved start(); this is the only signal it gets for failures
+      // that fire after start() returned.
+      try {
+        opts.onError?.(err);
+      } catch {
+        // best-effort
+      }
+    });
+    this.recorder.start();
+
+    // Wait briefly for either an onError event or for isRecording() to
+    // flip true. iOS native start is asynchronous despite the JS
+    // surface being synchronous; polling at 50 ms ticks up to ~2 s is
+    // a pragmatic substitute for the missing "onStart" event.
+    const deadline = Date.now() + 2000;
+    while (Date.now() < deadline) {
+      if (nativeError) {
+        this.stop();
+        throw nativeError;
+      }
+      if (this.recorder.isRecording()) break;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    if (nativeError) {
       this.stop();
-      throw new Error(`AudioRecorder start failed: ${result.message}`);
+      throw nativeError;
+    }
+    if (!this.recorder.isRecording()) {
+      this.stop();
+      throw new Error(
+        "AudioRecorder failed to start within 2s — check AVAudioSession activation, mic permission, or hardware availability",
+      );
     }
   }
 
@@ -127,6 +170,7 @@ class IosAudioCapture implements AudioCapture {
     if (!this.started) return;
     this.started = false;
     try {
+      this.recorder?.clearOnError();
       this.recorder?.clearOnAudioReady();
       this.recorder?.stop();
     } catch {

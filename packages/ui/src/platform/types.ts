@@ -40,6 +40,11 @@ export type AudioCaptureStartOpts = {
   /** Called once per captured chunk, on whatever thread / loop the
    *  impl uses. Consumers MUST be cheap; do not block. */
   onFrame: AudioCaptureFrameHandler;
+  /** Surfaced for async failures that arrive after start() resolves —
+   *  e.g. native recorder error events on iOS (AVAudioSession
+   *  interruption, hardware unavailable). The orchestrator routes
+   *  these through its error event. Optional; web impl never fires. */
+  onError?: (err: Error) => void;
 };
 
 /**

@@ -178,6 +178,17 @@ final class VoixOverlayPanel: NSPanel {
         panel.isFloatingPanel = true
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
+        // Yuki H1: NSPanel hardening for focus + space behaviour.
+        //   worksWhenModal=true   — keep responding when user has a
+        //     modal sheet open inside voix (M23 settings).
+        //   isMovableByWindowBackground=false — borderless panels can
+        //     inherit this flag from RN's RCTRootView container; force
+        //     it off so a stray click can't drag the HUD.
+        //   acceptsMouseMovedEvents=false — defaults vary; future hover
+        //     handlers would otherwise steal focus.
+        panel.worksWhenModal = true
+        panel.isMovableByWindowBackground = false
+        panel.acceptsMouseMovedEvents = false
         panel.collectionBehavior = [
             .canJoinAllSpaces,
             .stationary,
@@ -186,6 +197,15 @@ final class VoixOverlayPanel: NSPanel {
         ]
         panel.setupContent()
         return panel
+    }
+
+    // Yuki H1: NSPanel mouseDown by default activates the parent app
+    // (the "make-key-on-click" pathway). Override to no-op so a future
+    // M23 click target inside the panel can't steal focus from the
+    // user's editor mid-paste. Crucially, DO NOT call super.mouseDown
+    // — that would defeat the override.
+    override func mouseDown(with event: NSEvent) {
+        // intentional no-op — see class docs.
     }
 
     private func setupContent() {

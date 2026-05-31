@@ -168,7 +168,7 @@ const styles = StyleSheet.create({
   activeStripLabel: {
     fontFamily: fontFamily.mono,
     fontSize: 10,
-    color: colors.haBlue,
+    color: colors.haBlueText,
     letterSpacing: 1.2,
   },
   activeStripDevice: {
@@ -226,21 +226,23 @@ const styles = StyleSheet.create({
   activeTag: {
     fontFamily: fontFamily.mono,
     fontSize: 9,
-    color: colors.haBlue,
+    color: colors.haBlueText,
     backgroundColor: colors.haBlueBg,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 3,
     letterSpacing: 0.5,
   },
-  // M23 — tone snippet under the voice name. Italic HA-blue earns its
-  // brand colour as voice-identity, distinct from cardDesc (muted
-  // metadata).
+  // M23 — tone snippet under the voice name. Italic HA-blue-text earns
+  // its brand colour as voice-identity, distinct from cardDesc (muted
+  // metadata). Uses `haBlueText` (#0277BD) not `haBlue` (#03A9F4)
+  // because raw haBlue at 11pt italic on bgSubtle is 2.49:1 — fails
+  // WCAG AA. Priya B1 (M23 fix-pass).
   cardTone: {
     fontFamily: fontFamily.ui,
     fontSize: 11,
     fontStyle: "italic",
-    color: colors.haBlue,
+    color: colors.haBlueText,
     lineHeight: 14,
   },
   cardDesc: {

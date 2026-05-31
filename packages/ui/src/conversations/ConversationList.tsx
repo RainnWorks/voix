@@ -219,12 +219,13 @@ const styles = StyleSheet.create({
   },
   // M23 — italic HA-blue tone snippet under the voice name. Matches
   // VoiceList.cardTone + SurfaceList.rowTone so the same voice reads
-  // the same wherever it appears.
+  // the same wherever it appears. Uses `haBlueText` for WCAG AA
+  // contrast (Priya B1 — M23 fix-pass).
   rowTone: {
     fontFamily: fontFamily.ui,
     fontSize: 11,
     fontStyle: "italic",
-    color: colors.haBlue,
+    color: colors.haBlueText,
     lineHeight: 14,
   },
   rowMeta: {

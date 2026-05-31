@@ -704,14 +704,15 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     backgroundColor: "transparent",
   },
-  // M23 — tone input. Italic 11pt HA-blue mirrors the consumer
+  // M23 — tone input. Italic 11pt HA-blue-text mirrors the consumer
   // styling on VoiceList / SurfaceList / ConversationList cards so
   // the user sees what their snippet will look like as they type.
+  // Uses `haBlueText` for WCAG AA contrast (Priya B1 — M23 fix-pass).
   toneInput: {
     fontFamily: fontFamily.ui,
     fontSize: 11,
     fontStyle: "italic",
-    color: colors.haBlue,
+    color: colors.haBlueText,
     borderBottomWidth: 0.5,
     borderBottomColor: colors.ruleSoft,
     paddingVertical: spacing.xs,
@@ -833,7 +834,7 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.mono,
     fontSize: 11,
     fontWeight: "600",
-    color: colors.haBlue,
+    color: colors.haBlueText,
   },
   phaseHeaderText: {
     flex: 1,

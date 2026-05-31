@@ -42,9 +42,18 @@ export const colors = {
   // HA blue. THE brand colour. Used for: puck centre dot, "● LIVE"
   // status, VOIX speaker prefix, active-mode pill on the modes list,
   // pulsing rings emanating from the puck during a session. Never
-  // chrome.
+  // chrome. Treat this as a **fill / accent** token, not a text
+  // foreground — at 11pt italic on bgSubtle it lands at 2.49:1 and
+  // fails WCAG AA. For text foreground use `haBlueText` below.
   haBlue: "#03A9F4",
   haBlueBg: "rgba(3,169,244,0.08)",
+  // HA-blue darkened to clear WCAG AA contrast as TEXT FOREGROUND.
+  // Material blue 800 — 4.86:1 against bgSubtle's effective #f9f9f9
+  // surface, 5.0:1 against bgElevated #ffffff. Use this anywhere
+  // haBlue used to land as a `color:` on a Text node (tone snippets,
+  // status labels, link-style buttons). Keeps haBlue for fills,
+  // borders, glyphs (where contrast math doesn't apply).
+  haBlueText: "#0277BD",
 
   // Semantic danger surface for error toasts + invalid form rows.
   // Hand-rolled hex previously lived inline in VoiceEditor — tokenised

@@ -474,7 +474,7 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.ui,
     fontSize: 12,
     fontWeight: "600",
-    color: colors.haBlue,
+    color: colors.haBlueText,
   },
   btnSecondary: {
     paddingHorizontal: spacing.md,
@@ -514,7 +514,7 @@ const styles = StyleSheet.create({
     color: colors.ink,
   },
   chipLabelSelected: {
-    color: colors.haBlue,
+    color: colors.haBlueText,
     fontWeight: "600",
   },
 

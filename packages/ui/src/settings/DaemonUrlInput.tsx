@@ -161,7 +161,9 @@ function StatusIndicator({ status }: { status: ProbeStatus }) {
       break;
     case "reachable":
       label = "Connected";
-      color = colors.haBlue;
+      // Use `haBlueText` not `haBlue` — the status label is text on
+      // bgSubtle and needs WCAG AA contrast (Priya B1 — M23 fix-pass).
+      color = colors.haBlueText;
       break;
     case "unreachable":
       label = "Unreachable";

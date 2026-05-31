@@ -330,7 +330,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: colors.ink,
   },
-  labelActive: { color: colors.haBlue },
+  labelActive: { color: colors.haBlueText },
   labelSpeaking: { color: colors.bgElevated },
   hint: {
     fontFamily: fontFamily.ui,
@@ -382,6 +382,6 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.ui,
     fontSize: 12,
     fontWeight: "600",
-    color: colors.haBlue,
+    color: colors.haBlueText,
   },
 });

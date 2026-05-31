@@ -233,11 +233,12 @@ const styles = StyleSheet.create({
   },
   // M23 — voice tone snippet under the bound voice. Brand-coloured
   // italic to match VoiceList / ConversationList tone rendering.
+  // Uses `haBlueText` for WCAG AA contrast (Priya B1 — M23 fix-pass).
   rowTone: {
     fontFamily: fontFamily.ui,
     fontSize: 11,
     fontStyle: "italic",
-    color: colors.haBlue,
+    color: colors.haBlueText,
     lineHeight: 14,
   },
   glyphFallback: {

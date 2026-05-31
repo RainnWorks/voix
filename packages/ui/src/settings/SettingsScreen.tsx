@@ -192,6 +192,9 @@ export function SettingsScreen() {
                       styles.btn,
                       pressed && styles.btnPressed,
                     ]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Open system Settings for microphone"
+                    accessibilityHint="Opens the system Settings app so you can grant voix microphone access."
                   >
                     <Text style={styles.btnLabel}>Open settings</Text>
                   </Pressable>
@@ -203,6 +206,9 @@ export function SettingsScreen() {
                       styles.btnSecondary,
                       pressed && styles.btnPressed,
                     ]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Re-prompt for microphone permission"
+                    accessibilityHint="Re-triggers the system permission dialog for microphone access."
                   >
                     <Text style={styles.btnSecondaryLabel}>Re-prompt</Text>
                   </Pressable>
@@ -241,6 +247,9 @@ export function SettingsScreen() {
                     styles.btn,
                     pressed && styles.btnPressed,
                   ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open macOS Accessibility settings"
+                  accessibilityHint="Opens System Settings so you can grant voix Accessibility access to paste transcripts."
                 >
                   <Text style={styles.btnLabel}>Open settings</Text>
                 </Pressable>
@@ -287,7 +296,9 @@ export function SettingsScreen() {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
+      <Text style={styles.sectionTitle} accessibilityRole="header">
+        {title}
+      </Text>
       <View style={styles.sectionBody}>{children}</View>
     </View>
   );
@@ -326,7 +337,7 @@ function VoicePicker({
   // Avoids importing platform picker components which behave
   // inconsistently across iOS / macOS / web.
   return (
-    <View style={styles.chipWrap}>
+    <View style={styles.chipWrap} accessibilityRole="radiogroup">
       {voices.length === 0 ? (
         <ActivityIndicator color={colors.sysAccent} />
       ) : (
@@ -341,6 +352,9 @@ function VoicePicker({
                 selected && styles.chipSelected,
                 pressed && !selected && styles.chipPressed,
               ]}
+              accessibilityRole="radio"
+              accessibilityLabel={`Default voice: ${v.name}`}
+              accessibilityState={{ selected }}
             >
               <Text style={[styles.chipLabel, selected && styles.chipLabelSelected]}>
                 {v.name}

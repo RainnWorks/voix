@@ -107,7 +107,13 @@ export function Onboarding({ onDone }: Props) {
       <View style={styles.shell}>
         <View style={styles.header}>
           <Wordmark />
-          <Pressable onPress={skip} style={styles.skipHit}>
+          <Pressable
+            onPress={skip}
+            style={styles.skipHit}
+            accessibilityRole="button"
+            accessibilityLabel="Skip setup"
+            accessibilityHint="Dismiss onboarding and go to the main app."
+          >
             <Text style={styles.skipLink}>Skip setup</Text>
           </Pressable>
         </View>
@@ -146,10 +152,18 @@ export function Onboarding({ onDone }: Props) {
 function Welcome({ onNext }: { onNext: () => void }) {
   return (
     <View style={styles.step}>
-      <View style={styles.heroRow}>
+      <View
+        style={styles.heroRow}
+        accessibilityLabel="voix — push-to-talk voice assistant"
+      >
         <Puck size={64} />
       </View>
-      <Text style={styles.title}>voix listens when you talk to it.</Text>
+      <Text
+        style={styles.title}
+        accessibilityRole="header"
+      >
+        voix listens when you talk to it.
+      </Text>
       <Text style={styles.body}>
         Press, speak, paste. Or hold to have a full conversation. voix is a
         push-to-talk dictation and chat surface for your Home Assistant
@@ -159,6 +173,9 @@ function Welcome({ onNext }: { onNext: () => void }) {
       <Pressable
         onPress={onNext}
         style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed]}
+        accessibilityRole="button"
+        accessibilityLabel="Get started"
+        accessibilityHint="Advance to the microphone permission step."
       >
         <Text style={styles.ctaLabel}>Get started</Text>
       </Pressable>
@@ -180,7 +197,9 @@ function MicStep({
   const denied = result && !result.ok && (result.reason === "denied" || result.reason === "restricted");
   return (
     <View style={styles.step}>
-      <Text style={styles.title}>voix needs your microphone.</Text>
+      <Text style={styles.title} accessibilityRole="header">
+        voix needs your microphone.
+      </Text>
       <Text style={styles.body}>
         {denied
           ? "Won't work without microphone access. Open Settings, allow voix, then come back."
@@ -192,12 +211,18 @@ function MicStep({
             <Pressable
               onPress={onOpenSettings}
               style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Open system Settings"
+              accessibilityHint="Opens the iOS or macOS Settings app so you can grant voix microphone access."
             >
               <Text style={styles.ctaLabel}>Open settings</Text>
             </Pressable>
             <Pressable
               onPress={onSkip}
               style={({ pressed }) => [styles.ctaSecondary, pressed && styles.ctaPressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Skip microphone permission for now"
+              accessibilityHint="Continue onboarding without microphone access. You can grant it later in Settings."
             >
               <Text style={styles.ctaSecondaryLabel}>Skip for now</Text>
             </Pressable>
@@ -206,6 +231,9 @@ function MicStep({
           <Pressable
             onPress={onAllow}
             style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Allow microphone access"
+            accessibilityHint="Triggers the system permission prompt to let voix use the microphone."
           >
             <Text style={styles.ctaLabel}>Allow microphone</Text>
           </Pressable>
@@ -233,7 +261,9 @@ function DaemonStep({
   const canDone = url.length > 0 && status !== "probing";
   return (
     <View style={styles.step}>
-      <Text style={styles.title}>Where's your daemon?</Text>
+      <Text style={styles.title} accessibilityRole="header">
+        Where's your daemon?
+      </Text>
       <Text style={styles.body}>
         voix talks to a small daemon running on your network — usually the
         Home Assistant box. We've pre-filled the dev address; edit if
@@ -249,6 +279,10 @@ function DaemonStep({
             !canDone && styles.ctaDisabled,
             pressed && styles.ctaPressed,
           ]}
+          accessibilityRole="button"
+          accessibilityLabel={status === "probing" ? "Probing daemon URL" : "Finish onboarding"}
+          accessibilityState={{ disabled: !canDone }}
+          accessibilityHint="Persist the daemon URL and enter the main app."
         >
           <Text style={styles.ctaLabel}>
             {status === "probing" ? "Probing…" : "Done"}
@@ -256,7 +290,7 @@ function DaemonStep({
         </Pressable>
       </View>
       {status === "unreachable" && (
-        <Text style={styles.softHint}>
+        <Text style={styles.softHint} accessibilityLiveRegion="polite">
           voix will work as soon as it's reachable. You can edit the URL
           any time in Settings.
         </Text>

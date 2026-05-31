@@ -136,11 +136,18 @@ export function DaemonUrlInput({ initial, onChange, showResetLink = true }: Prop
           placeholder={DEFAULT_DAEMON_URL_HINT}
           placeholderTextColor={colors.textQuiet}
           style={styles.input}
+          accessibilityLabel="Daemon URL"
+          accessibilityHint="The address where the voix daemon is reachable."
         />
         <StatusIndicator status={status} />
       </View>
       {showResetLink && !isWeb && (
-        <Pressable onPress={handleReset} style={styles.resetHit}>
+        <Pressable
+          onPress={handleReset}
+          style={styles.resetHit}
+          accessibilityRole="button"
+          accessibilityLabel="Reset daemon URL to default"
+        >
           <Text style={styles.resetLink}>Reset to default</Text>
         </Pressable>
       )}
@@ -177,7 +184,11 @@ function StatusIndicator({ status }: { status: ProbeStatus }) {
   }
   if (!label) return null;
   return (
-    <View style={styles.statusRow}>
+    <View
+      style={styles.statusRow}
+      accessibilityLiveRegion="polite"
+      accessibilityLabel={`Daemon status: ${label}`}
+    >
       <View style={[styles.statusDot, { backgroundColor: color }]} />
       <Text style={[styles.statusLabel, { color }]}>{label}</Text>
     </View>

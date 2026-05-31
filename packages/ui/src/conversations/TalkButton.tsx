@@ -151,13 +151,21 @@ export function TalkButton({
           speaking && styles.buttonSpeaking,
           pressed && styles.buttonPressed,
         ]}
+        accessibilityRole="button"
+        accessibilityLabel={
+          intent === "dictate" ? "Hold to dictate" : "Hold to talk to voix"
+        }
+        accessibilityHint={hintCopy}
+        accessibilityState={{ busy: active }}
       >
         <Text style={styles.glyph}>🎙</Text>
         <Text style={[styles.label, active && styles.labelActive, speaking && styles.labelSpeaking]}>
           {labelFor(status, intent)}
         </Text>
       </Pressable>
-      <Text style={styles.hint}>{hintCopy}</Text>
+      <Text style={styles.hint} accessibilityLiveRegion="polite">
+        {hintCopy}
+      </Text>
       {/* Recovery state below the hint so a failure doesn't shove the
           button down on display (Marina audit). Wren FINDING-1: tailor
           copy per error.kind instead of one undifferentiated red blob. */}
@@ -182,8 +190,14 @@ function RecoveryState({
 }) {
   const copy = copyFor(error);
   return (
-    <View style={styles.recovery}>
-      <Text style={styles.recoveryTitle}>{copy.title}</Text>
+    <View
+      style={styles.recovery}
+      accessibilityRole="alert"
+      accessibilityLiveRegion="assertive"
+    >
+      <Text style={styles.recoveryTitle} accessibilityRole="header">
+        {copy.title}
+      </Text>
       <Text style={styles.recoveryBody}>{copy.body}</Text>
       {copy.showRetry && (
         <Pressable
@@ -192,6 +206,9 @@ function RecoveryState({
             styles.retryButton,
             pressed && styles.retryButtonPressed,
           ]}
+          accessibilityRole="button"
+          accessibilityLabel={copy.retryLabel}
+          accessibilityHint="Retry the voix session."
         >
           <Text style={styles.retryLabel}>{copy.retryLabel}</Text>
         </Pressable>

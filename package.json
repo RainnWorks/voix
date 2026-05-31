@@ -20,7 +20,9 @@
     "check": "bun scripts/check-native-siblings.ts && bash scripts/check-protocol-sync.sh"
   },
   "dependencies": {
-    "react-native-macos": "0.81.7"
+    "react-native-macos": "0.81.7",
+    "@react-native-async-storage/async-storage": "^3.1.1",
+    "react-native-device-info": "^15.0.0"
   },
   "devDependencies": {
     "typescript": "5.9.3"

@@ -52,6 +52,16 @@ type VoixAudioPermissionsModule = {
   openAccessibilitySettings(): Promise<void>;
 };
 
+/** M23 — menu-bar status item bridge. install() is idempotent so we
+ *  call it every mount; events are subscribed via NativeEventEmitter
+ *  the same way VoixHotkey hands keypress events to the JS side. */
+type VoixStatusItemModule = {
+  install(): Promise<void>;
+  setOverlayVisible(visible: boolean): Promise<void>;
+  setHotkeyLabel(label: string): Promise<void>;
+  setHotkeyConflict(hasConflict: boolean): Promise<void>;
+};
+
 export function MacOverlay(): null {
   const clientRef = useRef<BrowserAudioIoClient | null>(null);
   const transcriptRef = useRef<string>("");
@@ -65,6 +75,13 @@ export function MacOverlay(): null {
 
     const overlay = NativeModules.VoixOverlay as VoixOverlayModule | undefined;
     void overlay?.showOverlay({ label: "Listening…" }).catch(() => {});
+    // M23 — drive the menu-bar status badge so users on multi-monitor
+    // setups can see voix is listening even without the HUD in
+    // sight (Marina UX-2 / BRAND-1 carry-forward).
+    const statusItem = NativeModules.VoixStatusItem as
+      | VoixStatusItemModule
+      | undefined;
+    void statusItem?.setOverlayVisible(true).catch(() => {});
 
     // Marina BRAND-1: subscribe to mic frames to drive the puck pulse.
     // We tap the NATIVE event stream non-destructively (the io_client
@@ -171,6 +188,14 @@ export function MacOverlay(): null {
     levelSubRef.current = null;
     const overlay = NativeModules.VoixOverlay as VoixOverlayModule | undefined;
     void overlay?.setLevel?.(0).catch(() => {});
+    // M23 — clear the status item badge. The visible badge is the
+    // user's "voix is hot" signal; clearing it here mirrors
+    // overlay.hideOverlay even when client.stop() is still wrapping
+    // up the session asynchronously.
+    const statusItem = NativeModules.VoixStatusItem as
+      | VoixStatusItemModule
+      | undefined;
+    void statusItem?.setOverlayVisible(false).catch(() => {});
     const client = clientRef.current;
     if (client) {
       client.stop();
@@ -192,7 +217,69 @@ export function MacOverlay(): null {
         `voix overlay: hotkey ${registration.chord} is owned by another app; voix won't open on press.`,
       );
     }
+    // M23 — reflect conflict state into the menu-bar status item so
+    // the hotkey row reads "Hotkey: ⌃⌥Space (conflict — open
+    // Settings)" instead of silently failing (Marina UX-2).
+    const statusItem = NativeModules.VoixStatusItem as
+      | VoixStatusItemModule
+      | undefined;
+    if (registration && statusItem) {
+      const conflict = registration.ok === false;
+      void statusItem
+        .setHotkeyLabel(`Hotkey: ${registration.chord}`)
+        .catch(() => {});
+      void statusItem.setHotkeyConflict(conflict).catch(() => {});
+    }
   }, [registration]);
+
+  // M23 — install the menu-bar status item on mount + subscribe to
+  // its "Talk to voix" action. The status item bridges back to the
+  // same handleDown/handleUp flow used by the hotkey so the menu
+  // entry behaves exactly like a press of ⌃⌥Space (one tap = one
+  // PTT session; the user releases via Esc / a second tap).
+  useEffect(() => {
+    const statusItem = NativeModules.VoixStatusItem as
+      | VoixStatusItemModule
+      | undefined;
+    if (!statusItem) return;
+    void statusItem.install().catch(() => {});
+    const emitter = new NativeEventEmitter(
+      NativeModules.VoixStatusItem as unknown as Parameters<
+        typeof NativeEventEmitter
+      >[0],
+    );
+    // Tap "Talk to voix" behaves like one PTT — open the overlay,
+    // run a session, hide. We synthesise hold + release with a small
+    // delay so the user has time to start speaking before the
+    // session times out on silence.
+    const talkSub = emitter.addListener("voixStatusItem.talk", () => {
+      handleDown();
+      // Auto-release after 8s if the user doesn't otherwise close
+      // the session; mirrors the hotkey "tap-and-release" pattern
+      // when the user starts a session from the menu rather than
+      // by holding the chord.
+      setTimeout(() => {
+        if (holdingRef.current) handleUp();
+      }, 8000);
+    });
+    // For the hotkey-conflict CTA + Quit hooks we just log today —
+    // a richer Settings deep-link can wire in M23.5 with the chord
+    // rebind UI.
+    const settingsSub = emitter.addListener("voixStatusItem.openSettings", () => {
+      // eslint-disable-next-line no-console
+      console.log("voix status item: open settings tapped (chord rebind UI lands M23.5)");
+    });
+    const quitSub = emitter.addListener("voixStatusItem.quit", () => {
+      // No persistence to flush right now; NSApp.terminate fires
+      // ~50ms after this event. Leave the hook in place for future
+      // session-graceful-shutdown logic.
+    });
+    return () => {
+      talkSub.remove();
+      settingsSub.remove();
+      quitSub.remove();
+    };
+  }, [handleDown, handleUp]);
 
   // Log Accessibility trust state at boot (M22 risk #3 mitigation —
   // helps diagnose "I granted it and it still doesn't paste" by

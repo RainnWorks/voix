@@ -59,7 +59,15 @@ export function App() {
     }
   } else if (section === "settings") {
     title = "Settings";
-    content = <SettingsScreen />;
+    // Priya H1 — Reset onboarding row in Settings clears the
+    // AsyncStorage flag and we bounce back to Welcome by flipping
+    // our `onboardingDone` state to false. Native-only path; on web
+    // the prop is a no-op.
+    content = (
+      <SettingsScreen
+        onResetOnboarding={() => setOnboardingDone(false)}
+      />
+    );
   } else {
     title = "Surfaces";
     content = <SurfaceList />;

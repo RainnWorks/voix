@@ -11,6 +11,12 @@
  *      data but shows the row whether trusted or not.
  *   5. About — app version + bundle id + protocol version + daemon
  *      version (probe; hide on 404).
+ *   6. Developer (native only) — "Reset onboarding" row. Clears the
+ *      `voix.onboarding.completed` AsyncStorage flag and bounces the
+ *      app back to the Welcome screen. Priya H1 (M23 fix-pass): the
+ *      one-shot onboarding flag was a known QA / re-test footgun;
+ *      tucked at the bottom of Settings so an accidental tap just
+ *      re-walks the user through the three screens.
  *
  * Web build keeps the screen but hides platform-only rows. Daemon URL +
  * Microphone status rows hide on web because the document was served
@@ -34,10 +40,19 @@ import { type Device, type Voice, devicesApi, voicesApi } from "../lib/api";
 import { appInfo, permissions, storage, type PermissionResult } from "../platform";
 import { colors, fontFamily, radius, spacing } from "../lib/theme";
 import { DaemonUrlInput } from "./DaemonUrlInput";
+import { ONBOARDING_COMPLETED_KEY } from "../onboarding/Onboarding";
 
 const DEFAULT_VOICE_KEY = "voix.settings.default_voice_id";
 
-export function SettingsScreen() {
+type Props = {
+  /** Called after we clear the onboarding-completed flag. App.tsx
+   *  flips its `onboardingDone` state back to false so the next render
+   *  swaps in `<Onboarding>`. Optional — hidden on web, where the
+   *  daemon serves the document and onboarding never runs. */
+  onResetOnboarding?: () => void;
+};
+
+export function SettingsScreen({ onResetOnboarding }: Props = {}) {
   const [voices, setVoices] = useState<Voice[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
   const [defaultVoiceOverride, setDefaultVoiceOverride] = useState<string | null>(null);
@@ -137,10 +152,22 @@ export function SettingsScreen() {
     await permissions.openMicrophoneSettings();
   }, []);
 
+  // Priya H1 — clear the one-shot onboarding flag so the user can
+  // re-walk the three screens. We do NOT confirm before clearing
+  // (cheap action — worst case the user re-walks 3 screens). The
+  // optional callback lets App.tsx flip its onboardingDone state
+  // back to false without a relaunch.
+  const handleResetOnboarding = useCallback(async () => {
+    await storage.removeItem(ONBOARDING_COMPLETED_KEY);
+    onResetOnboarding?.();
+  }, [onResetOnboarding]);
+
   const activeVoiceId = devices[0]?.voiceId;
   const showDaemonUrlRow = Platform.OS !== "web";
   const showMicRow = Platform.OS !== "web";
   const showAccessibilityRow = Platform.OS === "macos";
+  // Developer row is native-only (the web build never runs Onboarding).
+  const showDeveloperRow = Platform.OS !== "web";
 
   return (
     <ScrollView contentContainerStyle={styles.scroll}>
@@ -287,6 +314,29 @@ export function SettingsScreen() {
           }
         />
       </Section>
+
+      {showDeveloperRow && (
+        <Section title="Developer">
+          <Row
+            label="Reset onboarding"
+            desc="Clear the first-launch flag and walk the welcome, microphone, and daemon URL screens again. Useful if you skipped a step or want to demo the flow."
+            control={
+              <Pressable
+                onPress={handleResetOnboarding}
+                style={({ pressed }) => [
+                  styles.btnSecondary,
+                  pressed && styles.btnPressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Reset onboarding"
+                accessibilityHint="Clears the onboarding-completed flag and returns to the Welcome screen."
+              >
+                <Text style={styles.btnSecondaryLabel}>Reset onboarding</Text>
+              </Pressable>
+            }
+          />
+        </Section>
+      )}
     </ScrollView>
   );
 }

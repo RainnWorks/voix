@@ -21,8 +21,27 @@ import { readFile, rename } from "node:fs/promises";
 import { log } from "../log.ts";
 import { atomicWrite } from "../storage/atomic.ts";
 import { paths } from "../storage/paths.ts";
-import { BUILTIN_VOICES, DEFAULT_VOICE_ID, KNOWN_BUILTIN_PROMPTS } from "./builtins.ts";
+import {
+  BUILTIN_VOICES,
+  DEFAULT_VOICE_ID,
+  KNOWN_BUILTIN_PROMPTS,
+  KNOWN_BUILTIN_TONES,
+} from "./builtins.ts";
 import type { Voice, VoiceUpdate } from "./types.ts";
+
+/** M23 — tone is ≤80 chars after trim. Empty → null. */
+const TONE_MAX_CHARS = 80;
+
+/** Normalise an inbound tone value. Strings are trimmed; an empty
+ *  string after trim becomes null; longer than TONE_MAX_CHARS clamps.
+ *  Null / undefined / non-strings pass through as null. */
+export function normaliseTone(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return null;
+  if (trimmed.length > TONE_MAX_CHARS) return trimmed.slice(0, TONE_MAX_CHARS);
+  return trimmed;
+}
 
 const cache = new Map<string, Voice>();
 let loaded = false;
@@ -80,10 +99,17 @@ export function normalisePhasePrompts(v: Partial<Voice> & { id: string }): Voice
       : typeof raw["postProcessPrompt"] === "string"
         ? (raw["postProcessPrompt"] as string)
         : "";
+  // M23: tone is stored as `string | null`. On-disk records from before
+  // M23 don't carry the field at all; treat undefined as null (the UI
+  // hides null/empty). Strings get trimmed + clamped via normaliseTone
+  // so corrupted or oversized values don't slip through.
+  const toneRaw = raw["tone"];
+  const tone: string | null = toneRaw === undefined ? null : normaliseTone(toneRaw);
   return {
     ...(v as Voice),
     talkingPrompt,
     donePrompt,
+    tone,
     // Mirror the new fields back into the legacy ones so any code that
     // still reads `prompt` / `postProcessPrompt` (the UI editor, until
     // M04) sees the same value.
@@ -136,21 +162,36 @@ export async function loadVoices(): Promise<void> {
     }
     if (!existing.isBuiltin) continue; // user-renamed a builtin → leave it
     const userTouched = !KNOWN_BUILTIN_PROMPTS.has(existing.prompt);
-    if (userTouched) continue;
-    if (
-      existing.talkingPrompt !== builtin.talkingPrompt ||
-      existing.donePrompt !== builtin.donePrompt
-    ) {
+    // M23: tone is refreshed under the same "user hasn't touched it
+    // yet" rule — if the on-disk value matches a known historical
+    // built-in tone (including null/empty for pre-M23 records), the
+    // refresh stamps the current built-in tone in. Decouples from
+    // prompt-edit detection so a user who only edited their prompt
+    // still gets the new tone copy. Built-in voices ONLY — user
+    // voices (isBuiltin: false) are never touched.
+    const toneUntouched = KNOWN_BUILTIN_TONES.has(existing.tone);
+    if (userTouched && !toneUntouched) continue;
+    const needsPromptRefresh =
+      !userTouched &&
+      (existing.talkingPrompt !== builtin.talkingPrompt ||
+        existing.donePrompt !== builtin.donePrompt);
+    const needsToneRefresh = toneUntouched && existing.tone !== builtin.tone;
+    if (needsPromptRefresh || needsToneRefresh) {
       // Update only the built-in-shipped fields. Preserve color etc.
       // which users may have customised through the LED UI. Set both
       // pairs so a downgraded daemon still sees a consistent voice.
       cache.set(builtin.id, {
         ...existing,
-        talkingPrompt: builtin.talkingPrompt,
-        donePrompt: builtin.donePrompt,
-        prompt: builtin.talkingPrompt,
-        postProcessPrompt: builtin.donePrompt,
-        routingHint: builtin.routingHint,
+        ...(needsPromptRefresh
+          ? {
+              talkingPrompt: builtin.talkingPrompt,
+              donePrompt: builtin.donePrompt,
+              prompt: builtin.talkingPrompt,
+              postProcessPrompt: builtin.donePrompt,
+              routingHint: builtin.routingHint,
+            }
+          : {}),
+        ...(needsToneRefresh ? { tone: builtin.tone } : {}),
       });
       refreshed++;
     }
@@ -196,6 +237,11 @@ export function getVoice(id: string | undefined | null): Voice {
 
 export async function upsertVoice(voice: Voice): Promise<Voice> {
   const normalised = normalisePhasePrompts(voice);
+  // M23: normaliseTone runs inside normalisePhasePrompts already (reads
+  // raw["tone"]), but upsert callers may have pre-existing typed Voice
+  // shapes whose .tone field bypasses that read. Re-clamp here to be
+  // explicit, mirroring updateVoice's behaviour.
+  normalised.tone = normaliseTone(normalised.tone);
   cache.set(normalised.id, normalised);
   await persist();
   return normalised;
@@ -216,6 +262,13 @@ export async function updateVoice(id: string, patch: VoiceUpdate): Promise<Voice
   }
   if ("postProcessPrompt" in patch && !("donePrompt" in patch)) {
     merged.donePrompt = patch.postProcessPrompt ?? "";
+  }
+  // M23: clamp + trim tone on every write. Caller-supplied null or
+  // omission of the field is fine; oversized / whitespace-only inputs
+  // get normalised so the UI's maxLength={80} cap is also enforced
+  // server-side for non-UI writers.
+  if ("tone" in patch) {
+    merged.tone = normaliseTone(patch.tone);
   }
   const normalised = normalisePhasePrompts(merged);
   cache.set(id, normalised);

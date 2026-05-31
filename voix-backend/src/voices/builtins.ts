@@ -134,6 +134,42 @@ function makeVoice(partial: Omit<Voice, "isBuiltin" | "prompt" | "postProcessPro
   };
 }
 
+/**
+ * M23 — per-built-in tone snippet. Shown as the italic HA-blue
+ * one-liner under the voice name across cards. Stable strings;
+ * if you change them, also add the previous value to
+ * KNOWN_BUILTIN_TONES below so the upgrade migration knows it can
+ * refresh on disk.
+ */
+export const BUILTIN_TONES: Record<string, string> = {
+  "default-realtime": "A calm conversational partner.",
+  "default-dictation": "Just transcribes. No rewrite.",
+  "default-message": "Crisp messages. No fluff.",
+  "default-email": "Polite and professional. Always lands.",
+  "default-note": "Quick capture for future-you.",
+  "default-code": "Plain prompts. Comments where they earn it.",
+};
+
+/**
+ * Every tone string that has ever shipped as a built-in. Used by the
+ * upgrade migration in `voices/store.ts::loadVoices` to distinguish
+ * "user typed their own tone" (leave alone) from "still the old
+ * built-in copy, safe to refresh". Mirrors the pattern of
+ * KNOWN_BUILTIN_PROMPTS above.
+ *
+ * Add new entries at the TOP whenever a built-in tone changes; never
+ * remove existing entries — that breaks upgrades for installs that
+ * skipped a version.
+ */
+export const KNOWN_BUILTIN_TONES = new Set<string | null>([
+  // ─── Current ───────────────────────────────────────────────────────
+  ...Object.values(BUILTIN_TONES),
+  // Empty / null = the default for any voice that has never been
+  // touched on this dimension.
+  null,
+  "",
+]);
+
 export const BUILTIN_VOICES: Voice[] = [
   makeVoice({
     id: "default-realtime",
@@ -154,6 +190,7 @@ export const BUILTIN_VOICES: Voice[] = [
     postProcessProvider: "openai",
     postProcessModel: "gpt-4o-mini",
     routingHint: "",
+    tone: BUILTIN_TONES["default-realtime"] ?? null,
   }),
   makeVoice({
     id: "default-dictation",
@@ -174,6 +211,7 @@ export const BUILTIN_VOICES: Voice[] = [
     postProcessProvider: "openai",
     postProcessModel: "gpt-4o-mini",
     routingHint: "Raw transcription with no processing. Use when exact words matter.",
+    tone: BUILTIN_TONES["default-dictation"] ?? null,
   }),
   makeVoice({
     id: "default-message",
@@ -195,6 +233,7 @@ export const BUILTIN_VOICES: Voice[] = [
     postProcessModel: "gpt-4o-mini",
     routingHint:
       "Clean up casual messages. Use for chat apps like Slack, Discord, iMessage, WhatsApp.",
+    tone: BUILTIN_TONES["default-message"] ?? null,
   }),
   makeVoice({
     id: "default-email",
@@ -215,6 +254,7 @@ export const BUILTIN_VOICES: Voice[] = [
     postProcessProvider: "openai",
     postProcessModel: "gpt-4o-mini",
     routingHint: "Format as professional email. Use for mail apps and email compose.",
+    tone: BUILTIN_TONES["default-email"] ?? null,
   }),
   makeVoice({
     id: "default-note",
@@ -236,6 +276,7 @@ export const BUILTIN_VOICES: Voice[] = [
     postProcessModel: "gpt-4o-mini",
     routingHint:
       "Format as structured notes with markdown. Use for note-taking apps like Notion, Obsidian, Bear.",
+    tone: BUILTIN_TONES["default-note"] ?? null,
   }),
   makeVoice({
     id: "default-code",
@@ -257,6 +298,7 @@ export const BUILTIN_VOICES: Voice[] = [
     postProcessModel: "gpt-4o-mini",
     routingHint:
       "Format speech as prompts for AI coding assistants. Use in terminals, IDEs, and coding tools.",
+    tone: BUILTIN_TONES["default-code"] ?? null,
   }),
 ];
 

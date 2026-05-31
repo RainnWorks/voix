@@ -138,6 +138,19 @@ export type Voice = {
    *  UI may surface this as a reset button, and migrations only
    *  touch the built-ins. */
   isBuiltin: boolean;
+
+  /** M23 — one-line snippet shown under the voice's name on every
+   *  card (VoiceList, SurfaceList, ConversationList). Personality /
+   *  marketing copy, ≤80 chars after trim. Null or empty hides it.
+   *
+   *  Normalised on write in `voices/store.ts`: trim → empty becomes
+   *  null; longer than 80 chars clamps. UI inputs cap visually with
+   *  `maxLength={80}`.
+   *
+   *  Daemon-API only — does NOT appear on the wire protocol.
+   *  Migrations seed built-ins from `builtins.ts` defaults; user
+   *  voices never auto-fill. */
+  tone: string | null;
 };
 
 /** Subset of `Voice` accepted by voice-update endpoints. All fields

@@ -39,12 +39,21 @@ final class VoixAudioCapture: RCTEventEmitter {
     private var negotiatedSampleRate: Double = 0
     private var isRunning: Bool = false
     private var hasListeners: Bool = false
-    // M22 step 10: AVAudioEngine configuration-change observer. macOS
-    // doesn't have AVAudioSession.interruptionNotification (that's iOS),
-    // but engine config changes fire on USB headset unplug, route
-    // changes, sample-rate flips on the active device. We surface those
-    // through voixAudioCapture.error so the orchestrator emits a typed
-    // kind: "audio" error.
+    // M22 step 10 / Yuki H2 fix: AVAudioEngine configuration-change
+    // observer. macOS doesn't have AVAudioSession.interruptionNotification
+    // (that's iOS), but engine config changes fire on USB headset
+    // unplug, route changes, sample-rate flips on the active device.
+    //
+    // Apple's docs: "you must stop the engine, reconfigure it if
+    // needed, and restart it." The original M22 implementation just
+    // emitted an error event and left the engine running — but a
+    // post-config-change engine has a stale node graph, and subsequent
+    // taps deliver wrong-rate frames (or fall silent).
+    //
+    // Rebuild flow: stop engine → remove + re-install tap with the
+    // new input format → restart engine → emit a typed
+    // "configurationChanged" event so the orchestrator can re-declare
+    // the rate in hello (or close + prompt reconnect).
     private var configChangeObserver: NSObjectProtocol?
 
     private let emitQueue = DispatchQueue(
@@ -65,7 +74,11 @@ final class VoixAudioCapture: RCTEventEmitter {
     }
 
     override func supportedEvents() -> [String]! {
-        return ["voixAudioCapture.frame", "voixAudioCapture.error"]
+        return [
+            "voixAudioCapture.frame",
+            "voixAudioCapture.error",
+            "voixAudioCapture.configurationChanged",
+        ]
     }
 
     override func startObserving() {
@@ -126,6 +139,26 @@ final class VoixAudioCapture: RCTEventEmitter {
     // MARK: Engine plumbing
 
     private func beginCapture() throws {
+        pendingFloats.removeAll(keepingCapacity: true)
+        pendingFloats.reserveCapacity(targetChunkFrames * 2)
+
+        // Subscribe to engine config-change events BEFORE start() so we
+        // catch races between hardware enumeration and our start.
+        configChangeObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: engine,
+            queue: .main
+        ) { [weak self] _ in
+            self?.handleConfigurationChange()
+        }
+
+        try installTapAndStart()
+    }
+
+    /// Reads inputNode's native format, validates it, installs the tap,
+    /// starts the engine. Factored out so the config-change observer
+    /// can re-run it after stopping the engine.
+    private func installTapAndStart() throws {
         let input = engine.inputNode
         // Reading the input node's NATIVE output format — this is what
         // CoreAudio is going to deliver. Sasha H1: hello declares what
@@ -147,8 +180,6 @@ final class VoixAudioCapture: RCTEventEmitter {
         }
 
         negotiatedSampleRate = sampleRate
-        pendingFloats.removeAll(keepingCapacity: true)
-        pendingFloats.reserveCapacity(targetChunkFrames * 2)
 
         // installTap is the streaming primitive. The format arg is the
         // FORMAT THE TAP DELIVERS; passing `nil` is documented to mean
@@ -167,25 +198,45 @@ final class VoixAudioCapture: RCTEventEmitter {
             self?.handleTap(buffer: buffer)
         }
 
-        // Subscribe to engine config-change events BEFORE start() so we
-        // catch races between hardware enumeration and our start.
-        configChangeObserver = NotificationCenter.default.addObserver(
-            forName: .AVAudioEngineConfigurationChange,
-            object: engine,
-            queue: .main
-        ) { [weak self] _ in
-            guard let self = self, self.isRunning else { return }
-            // Emit the error and let the orchestrator decide whether to
-            // tear down. Don't tear down ourselves — that would leak
-            // the stop responsibility.
-            if self.hasListeners {
-                self.sendEvent("voixAudioCapture.error", [
-                    "message": "audio route changed mid-session (USB device unplugged or device sample-rate flip).",
+        try engine.start()
+    }
+
+    /// Yuki H2 fix: rebuild the engine when the route changes mid-
+    /// session. Apple's docs require stop → reconfigure → restart;
+    /// otherwise subsequent taps deliver stale-format frames or fall
+    /// silent.
+    ///
+    /// Reads the NEW inputNode format after the stop+restart cycle, so
+    /// if a USB mic was unplugged and the built-in took over at a
+    /// different rate, hello-time guesses are caught.
+    private func handleConfigurationChange() {
+        guard isRunning else { return }
+        engine.stop()
+        engine.inputNode.removeTap(onBus: 0)
+        let previousRate = negotiatedSampleRate
+        do {
+            try installTapAndStart()
+        } catch {
+            // Rebuild failed → can't recover here. Surface as error;
+            // orchestrator will close the session.
+            isRunning = false
+            if hasListeners {
+                sendEvent("voixAudioCapture.error", [
+                    "message": "audio route change recovery failed: \(error.localizedDescription)",
                 ])
             }
+            return
         }
-
-        try engine.start()
+        if hasListeners {
+            // Typed event so JS can re-declare sample rate in hello
+            // (if mid-session re-hello is supported) or close cleanly
+            // and prompt the user to reconnect. Carries both old + new
+            // rate so the orchestrator can diff.
+            sendEvent("voixAudioCapture.configurationChanged", [
+                "previousSampleRate": previousRate,
+                "sampleRate": negotiatedSampleRate,
+            ])
+        }
     }
 
     private func endCapture() {

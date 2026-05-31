@@ -161,9 +161,11 @@ export function Onboarding({ onDone }: Props) {
 
   return (
     <ScrollView
+      style={{ backgroundColor: ob.bg }}
       contentContainerStyle={[
         styles.scroll,
         {
+          backgroundColor: ob.bg,
           paddingTop: Math.max(spacing.xl, insets.top + spacing.sm),
           paddingBottom: Math.max(spacing.xl, insets.bottom + spacing.sm),
         },
@@ -180,7 +182,7 @@ export function Onboarding({ onDone }: Props) {
             accessibilityLabel="Skip setup"
             accessibilityHint="Dismiss onboarding and go to the main app."
           >
-            <Text style={styles.skipLink}>Skip setup</Text>
+            <Text style={[styles.skipLink, { color: ob.muted }]}>Skip setup</Text>
           </Pressable>
         </View>
 
@@ -264,12 +266,12 @@ function Welcome({ ob, onNext }: { ob: ObPalette; onNext: () => void }) {
       </View>
       <Text
         ref={titleRef}
-        style={styles.title}
+        style={[styles.title, { color: ob.title }]}
         accessibilityRole="header"
       >
         voix listens when you talk to it.
       </Text>
-      <Text style={styles.body}>
+      <Text style={[styles.body, { color: ob.body }]}>
         Press, speak, paste. Or hold to have a full conversation. voix is a
         push-to-talk dictation and chat surface for your Home Assistant
         Voice PE. It also works on its own with the daemon you'll wire up
@@ -309,10 +311,10 @@ function MicStep({
   const titleRef = useFocusOnMount<Text>();
   return (
     <View style={styles.step}>
-      <Text ref={titleRef} style={styles.title} accessibilityRole="header">
+      <Text ref={titleRef} style={[styles.title, { color: ob.title }]} accessibilityRole="header">
         voix needs your microphone.
       </Text>
-      <Text style={styles.body}>
+      <Text style={[styles.body, { color: ob.body }]}>
         {denied
           ? "Won't work without microphone access. Open Settings, allow voix, then come back."
           : "Tap allow on the system prompt. You can change this any time in Settings."}
@@ -386,10 +388,10 @@ function DaemonStep({
   const titleRef = useFocusOnMount<Text>();
   return (
     <View style={styles.step}>
-      <Text ref={titleRef} style={styles.title} accessibilityRole="header">
+      <Text ref={titleRef} style={[styles.title, { color: ob.title }]} accessibilityRole="header">
         Connect to voix
       </Text>
-      <Text style={styles.body}>
+      <Text style={[styles.body, { color: ob.body }]}>
         voix talks to a small daemon running on your network. Usually the
         Home Assistant box. We've pre-filled the dev address; edit if
         yours lives elsewhere.
@@ -416,7 +418,7 @@ function DaemonStep({
         </Pressable>
       </View>
       {status === "unreachable" && (
-        <Text style={styles.softHint} accessibilityLiveRegion="polite">
+        <Text style={[styles.softHint, { color: ob.muted }]} accessibilityLiveRegion="polite">
           voix will work as soon as it's reachable. You can edit the URL
           any time in Settings.
         </Text>

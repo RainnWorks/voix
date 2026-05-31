@@ -292,14 +292,18 @@ const styles = StyleSheet.create({
     color: colors.textQuiet,
     fontWeight: "400",
   },
-  // M23 — tone snippet under the voice name. Italic HA-blue-text earns
-  // its brand colour as voice-identity. Uses `haBlueText` (#0277BD) not
-  // `haBlue` (#03A9F4) for WCAG AA contrast. Priya B1 (M23 fix-pass).
+  // M23 — tone snippet under the voice name. Per Marina §brand the
+  // snippet is BODY copy describing how the voice sounds, NOT a voix
+  // moment, so it routes to `textBody` (the secondaryLabel equivalent),
+  // not the reserved HA blue. Accent-blue body copy read as tappable
+  // link text in every row (Marina v4 colour-discipline) — the voice
+  // identity already lives on the leading swatch Puck, so the snippet
+  // stays neutral. Italic preserves the "voice character" feel.
   rowTone: {
     fontFamily: fontFamily.ui,
     fontSize: 12,
     fontStyle: "italic",
-    color: colors.haBlueText,
+    color: colors.textBody,
     lineHeight: 15,
   },
   rowDesc: {

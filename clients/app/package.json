@@ -21,7 +21,6 @@
     "@react-native-async-storage/async-storage": "^3.1.1",
     "react-native-device-info": "^15.0.0",
     "react-native-audio-api": "^0.12.2",
-    "_comment_worklets": "react-native-worklets is NOT optional despite peerDependenciesMeta.optional:true on audio-api. The audio-api podspec raises 'Pathname.relative_path_from different prefix' at pod install if worklets is absent. Sasha M21 finding N3; documented here so a future cleanup doesn't drop it.",
     "react-native-worklets": "0.8.3"
   },
   "devDependencies": {

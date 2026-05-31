@@ -1,3 +1,11 @@
+# NOTE: clients/app/package.json pins react-native-worklets@0.8.3 (NOT
+# 0.9.x). audio-api 0.12.2 says worklets is an optional peer; in
+# practice the audio-api podspec raises `Pathname.relative_path_from
+# different prefix` if worklets is absent. Worklets 0.9.x asserts RN
+# 0.83+ at the pod level (we're on RN 0.81.6). scripts/check-pin-bounds.sh
+# enforces the 0.8.x band. Sasha M21 N1 — doc here so a future cleanup
+# doesn't drop the pin.
+
 # Resolve react_native_pods.rb with node to allow for hoisting
 require Pod::Executable.execute_command('node', ['-p',
   'require.resolve(

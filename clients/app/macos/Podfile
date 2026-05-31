@@ -1,3 +1,13 @@
+# NOTE: clients/app/package.json pins react-native-worklets@0.8.3
+# (NOT 0.9.x), even though audio-api 0.12.2's peerDependenciesMeta marks
+# worklets as optional. The audio-api podspec raises
+# `Pathname.relative_path_from different prefix` at pod install if
+# worklets is absent — it's not actually optional in practice.
+# Worklets 0.9.x also asserts RN 0.83+ at the pod level (we're on RN
+# 0.81.6). scripts/check-pin-bounds.sh enforces the 0.8.x band.
+# Sasha M21 finding N1 — documented here so a future cleanup doesn't
+# drop the pin.
+
 require 'pathname'
 
 ws_dir = Pathname.new(__dir__)

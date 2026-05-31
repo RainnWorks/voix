@@ -97,7 +97,6 @@ describe("AudioIoConnection", () => {
     const { ws, sent } = stubWs();
     const conn = new AudioIoConnection(ws, {
       wsToken: validToken,
-      openaiApiKey: "k",
       pipelineFactory: stubPipelineFactory(calls),
     });
     await conn.handleText({
@@ -120,7 +119,6 @@ describe("AudioIoConnection", () => {
     const { ws } = stubWs();
     const conn = new AudioIoConnection(ws, {
       wsToken: validToken,
-      openaiApiKey: "k",
       pipelineFactory: stubPipelineFactory(calls),
     });
     const caps: Capabilities = {
@@ -146,7 +144,6 @@ describe("AudioIoConnection", () => {
     const { ws, sent, getClose } = stubWs();
     const conn = new AudioIoConnection(ws, {
       wsToken: validToken,
-      openaiApiKey: "k",
       pipelineFactory: stubPipelineFactory(calls),
     });
     await conn.handleText({
@@ -165,7 +162,6 @@ describe("AudioIoConnection", () => {
     const { ws, sent, getClose } = stubWs();
     const conn = new AudioIoConnection(ws, {
       wsToken: validToken,
-      openaiApiKey: "k",
       pipelineFactory: stubPipelineFactory(calls),
     });
     await conn.handleText({
@@ -185,7 +181,6 @@ describe("AudioIoConnection", () => {
     const { ws } = stubWs();
     const conn = new AudioIoConnection(ws, {
       wsToken: validToken,
-      openaiApiKey: "k",
       pipelineFactory: stubPipelineFactory(calls),
     });
     await conn.handleText({
@@ -202,7 +197,6 @@ describe("AudioIoConnection", () => {
     const { ws } = stubWs();
     const conn = new AudioIoConnection(ws, {
       wsToken: validToken,
-      openaiApiKey: "k",
       pipelineFactory: stubPipelineFactory(calls),
     });
     conn.handleBinary(Buffer.alloc(640));
@@ -213,7 +207,6 @@ describe("AudioIoConnection", () => {
     const { ws } = stubWs();
     const conn = new AudioIoConnection(ws, {
       wsToken: validToken,
-      openaiApiKey: "k",
       pipelineFactory: stubPipelineFactory(calls),
     });
     await conn.handleText({
@@ -230,7 +223,6 @@ describe("AudioIoConnection", () => {
     const { ws } = stubWs();
     const conn = new AudioIoConnection(ws, {
       wsToken: validToken,
-      openaiApiKey: "k",
       pipelineFactory: stubPipelineFactory(calls),
     });
     await conn.handleText({
@@ -247,7 +239,6 @@ describe("AudioIoConnection", () => {
     const { ws } = stubWs();
     const conn = new AudioIoConnection(ws, {
       wsToken: validToken,
-      openaiApiKey: "k",
       pipelineFactory: stubPipelineFactory(calls),
     });
     await conn.handleText({
@@ -265,7 +256,6 @@ describe("AudioIoConnection", () => {
     const { ws } = stubWs();
     const conn = new AudioIoConnection(ws, {
       wsToken: validToken,
-      openaiApiKey: "k",
       pipelineFactory: stubPipelineFactory(calls),
     });
     const hello = {
@@ -283,7 +273,6 @@ describe("AudioIoConnection", () => {
     const { ws, getClose } = stubWs();
     const conn = new AudioIoConnection(ws, {
       wsToken: validToken,
-      openaiApiKey: "k",
       pipelineFactory: stubPipelineFactory(calls),
     });
     await conn.handleText({
@@ -301,7 +290,6 @@ describe("AudioIoConnection", () => {
     const { ws, sent } = stubWs();
     const conn = new AudioIoConnection(ws, {
       wsToken: validToken,
-      openaiApiKey: "k",
       pipelineFactory: stubPipelineFactory(calls),
     });
     await conn.handleText({
@@ -322,7 +310,6 @@ describe("AudioIoConnection", () => {
     const { ws, binSent } = stubWs();
     const conn = new AudioIoConnection(ws, {
       wsToken: validToken,
-      openaiApiKey: "k",
       pipelineFactory: stubPipelineFactory(calls),
     });
     await conn.handleText({
@@ -348,7 +335,6 @@ describe("AudioIoConnection", () => {
     const { ws, binSent } = stubWs();
     const conn = new AudioIoConnection(ws, {
       wsToken: validToken,
-      openaiApiKey: "k",
       pipelineFactory: stubPipelineFactory(calls),
     });
     await conn.handleText({

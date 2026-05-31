@@ -26,11 +26,10 @@ import type { Intent } from "../audio_io/protocol.ts";
 import { callTool, gatherAll, listAllTools } from "../context/registry.ts";
 import { voixSource } from "../context/sources/voix.ts";
 import type { ContextEntry, ToolSpec } from "../context/types.ts";
-import { config } from "../env.ts";
 import { appendHistory } from "../history/store.ts";
 import { log } from "../log.ts";
 import {
-  OpenAIRealtimeClient,
+  type OpenAIRealtimeClient,
   type RealtimeSessionConfig,
   toOpenAiTool,
 } from "../realtime/openai.ts";
@@ -42,7 +41,7 @@ import {
   writeRawSidecar,
 } from "../transcripts/store.ts";
 import type { Voice } from "../voices/types.ts";
-import { postProcess } from "./providers/llm/index.ts";
+import { type PostProcessKeys, postProcess } from "./providers/llm/index.ts";
 import type { Pipeline, PipelineCallbacks, PipelineStart } from "./types.ts";
 import { SessionWatchdog } from "./watchdog.ts";
 
@@ -80,6 +79,25 @@ function computeRms(pcm16: Buffer): number {
   return Math.sqrt(sumSq / n);
 }
 
+/** Dependencies the orchestrator (or a test) injects into a
+ *  RealtimePipeline at construction. Wave A #5 removes the
+ *  vendor-named `openaiApiKey` from `PipelineStart`; instead, the
+ *  orchestrator constructs the OpenAI client via the factory closure
+ *  below + supplies any keys needed for done-phase post-process.
+ *
+ *  Wave B (refactor #1) replaces this with a neutral RealtimeProvider
+ *  interface; today the factory still returns the concrete OpenAI
+ *  client because the realtime seam isn't load-bearing yet. */
+export type RealtimePipelineDeps = {
+  /** Build an OpenAI Realtime client from a session config. Constructed
+   *  by the orchestrator with the appropriate API key bound. */
+  realtimeClientFactory: (cfg: RealtimeSessionConfig) => OpenAIRealtimeClient;
+  /** Keys for the dictate done-phase LLM call. Open-shaped — keyed by
+   *  provider name; the post-process facade looks up the key matching
+   *  `voice.postProcessProvider`. */
+  postProcessKeys: PostProcessKeys;
+};
+
 export class RealtimePipeline implements Pipeline {
   private openai: OpenAIRealtimeClient | null = null;
   private upsample: ReturnType<typeof createResampler>;
@@ -107,7 +125,10 @@ export class RealtimePipeline implements Pipeline {
    *  process prompt so both phases see the same context. */
   private contextSnapshot: ContextEntry[] = [];
 
-  constructor(private readonly s: PipelineStart) {
+  constructor(
+    s: PipelineStart,
+    private readonly deps: RealtimePipelineDeps,
+  ) {
     this.sessionId = s.sessionId;
     this.deviceId = s.deviceId;
     this.voice = s.voice;
@@ -145,7 +166,7 @@ export class RealtimePipeline implements Pipeline {
     const toolsPromise = listAllTools();
 
     const cfg = this.buildRealtimeConfig(this.voice);
-    this.openai = new OpenAIRealtimeClient(this.s.openaiApiKey, cfg);
+    this.openai = this.deps.realtimeClientFactory(cfg);
 
     try {
       await this.openai.connect();
@@ -408,7 +429,7 @@ export class RealtimePipeline implements Pipeline {
         provider: this.voice.postProcessProvider,
         model: this.voice.postProcessModel,
         contextBlock: renderContextBlock(this.contextSnapshot),
-        keys: { openai: this.s.openaiApiKey, openrouter: config.openrouterApiKey },
+        keys: this.deps.postProcessKeys,
       });
       if (processedText && processedText !== trimmed) {
         finalText = processedText;
@@ -470,11 +491,4 @@ export class RealtimePipeline implements Pipeline {
     );
     this.openai?.sendToolResult(callId, result.content);
   }
-}
-
-/** Default factory. Today every (intent, voice) lands on the realtime
- *  pipeline; Phase 4 swaps in a Provider-aware factory that picks a
- *  cheaper STT pipeline for the dictate path. */
-export function realtimePipelineFactory(start: PipelineStart): Pipeline {
-  return new RealtimePipeline(start);
 }

@@ -194,7 +194,6 @@ function buildPipeline(overrides: Partial<Voice> = {}): {
     intent: "discuss",
     micSampleRateHz: SAMPLE_RATE,
     halfDuplexOnChip: true,
-    openaiApiKey: "k",
     callbacks: cb,
   };
   const pipe = new TraditionalDiscussPipeline(start, {

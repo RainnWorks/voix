@@ -49,10 +49,10 @@ export type WSLike = {
 export type ConnectionDeps = {
   /** Shared secret. Every hello's `token` must match. */
   wsToken: string;
-  /** Provider keys handed to the pipeline. */
-  openaiApiKey: string;
   /** How to build the pipeline once we have a hello. Injected so
-   *  tests can substitute a stub. */
+   *  tests can substitute a stub. Wave A #5 dropped the
+   *  openaiApiKey field here — provider construction (including key
+   *  binding) is the orchestrator's job, not the connection's. */
   pipelineFactory: PipelineFactory;
 };
 
@@ -264,7 +264,6 @@ export class AudioIoConnection {
       sessionId: this.sessionId,
       voice,
       intent,
-      openaiApiKey: this.deps.openaiApiKey,
       micSampleRateHz: capabilities.mic.sample_rate_hz,
       speakerSampleRateHz: this.speakerSampleRateHz || undefined,
       halfDuplexOnChip: !needsDaemonEchoGate(capabilities),

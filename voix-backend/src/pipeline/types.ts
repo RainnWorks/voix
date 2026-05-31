@@ -88,9 +88,6 @@ export type PipelineStart = {
   /** When true, the endpoint declares it handles AEC + half-duplex
    *  on chip; pipeline skips its software echo gate. */
   halfDuplexOnChip: boolean;
-  /** Provider credentials. Passed through rather than imported to
-   *  keep the pipeline testable without a working env. */
-  openaiApiKey: string;
   /** Pipeline → connection bridge. */
   callbacks: PipelineCallbacks;
 };

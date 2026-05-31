@@ -37,7 +37,6 @@ function getConn(ws: { raw: object }): AudioIoConnection {
   if (existing) return existing;
   const fresh = new AudioIoConnection(ws.raw as unknown as WSLike, {
     wsToken: config.wsToken,
-    openaiApiKey: config.openaiApiKey,
     pipelineFactory,
   });
   connections.set(ws.raw, fresh);

@@ -73,7 +73,6 @@ function fakeStart(overrides: Partial<PipelineStart> = {}): PipelineStart {
     intent: "dictate",
     micSampleRateHz: 16000,
     halfDuplexOnChip: true,
-    openaiApiKey: "k",
     callbacks: fakeCallbacks(),
     ...overrides,
   };

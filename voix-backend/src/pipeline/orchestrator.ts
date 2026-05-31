@@ -34,8 +34,10 @@
 
 import { config } from "../env.ts";
 import { log } from "../log.ts";
+import { OpenAIRealtimeClient } from "../realtime/openai.ts";
 import { TraditionalDictatePipeline } from "./dictate_traditional.ts";
 import { TraditionalDiscussPipeline } from "./discuss_traditional.ts";
+import type { PostProcessKeys } from "./providers/llm/index.ts";
 import { createOpenAiProvider } from "./providers/llm/openai.ts";
 import { createOpenRouterProvider } from "./providers/llm/openrouter.ts";
 import type { LlmProvider } from "./providers/llm/types.ts";
@@ -43,7 +45,7 @@ import { createDeepgramProvider } from "./providers/stt/deepgram.ts";
 import type { SttProvider } from "./providers/stt/types.ts";
 import { createAuraProvider } from "./providers/tts/aura.ts";
 import type { TtsProvider } from "./providers/tts/types.ts";
-import { RealtimePipeline } from "./realtime.ts";
+import { RealtimePipeline, type RealtimePipelineDeps } from "./realtime.ts";
 import type { Pipeline, PipelineFactory, PipelineStart } from "./types.ts";
 
 /** Kinds of providers the registry knows about today. Realtime is
@@ -181,6 +183,34 @@ export function getDefaultRegistry(): ProviderRegistry {
   return _defaultRegistrySingleton;
 }
 
+/** Extra wiring the orchestrator threads into pipelines beyond the
+ *  registry-resolved STT/LLM/TTS providers. Wave A #5 carved these
+ *  off `PipelineStart.openaiApiKey` so the pipeline interface stays
+ *  vendor-neutral; the orchestrator owns the env→deps mapping.
+ *
+ *  Wave B (refactor #1) makes the realtime seam load-bearing — at
+ *  that point `realtimeClientFactory` becomes a registry lookup like
+ *  STT/LLM/TTS. */
+export type OrchestratorOptions = {
+  /** Build an OpenAI Realtime client for a given session config. The
+   *  default uses `config.openaiApiKey` bound at boot. */
+  realtimeClientFactory?: RealtimePipelineDeps["realtimeClientFactory"];
+  /** Open-shaped key map for the done-phase post-process facade. The
+   *  default seeds the two known providers (openai, openrouter) from
+   *  env. */
+  postProcessKeys?: PostProcessKeys;
+};
+
+function defaultOrchestratorOptions(): Required<OrchestratorOptions> {
+  return {
+    realtimeClientFactory: (cfg) => new OpenAIRealtimeClient(config.openaiApiKey, cfg),
+    postProcessKeys: {
+      openai: config.openaiApiKey,
+      openrouter: config.openrouterApiKey,
+    },
+  };
+}
+
 /**
  * Build the orchestrator's PipelineFactory. The factory is what the
  * audio-io route hands to its connection — one call per capture.
@@ -190,9 +220,16 @@ export function getDefaultRegistry(): ProviderRegistry {
  */
 export function createOrchestrator(
   registry: ProviderRegistry = getDefaultRegistry(),
+  options: OrchestratorOptions = {},
 ): PipelineFactory {
+  const defaults = defaultOrchestratorOptions();
+  const realtimeClientFactory = options.realtimeClientFactory ?? defaults.realtimeClientFactory;
+  const postProcessKeys = options.postProcessKeys ?? defaults.postProcessKeys;
   return (start: PipelineStart): Pipeline => {
-    return new OrchestratedPipeline(start, registry);
+    return new OrchestratedPipeline(start, registry, {
+      realtimeClientFactory,
+      postProcessKeys,
+    });
   };
 }
 
@@ -212,6 +249,7 @@ class OrchestratedPipeline implements Pipeline {
   constructor(
     private readonly start_: PipelineStart,
     private readonly registry: ProviderRegistry,
+    private readonly options: Required<OrchestratorOptions>,
   ) {}
 
   async start(): Promise<void> {
@@ -267,13 +305,19 @@ class OrchestratedPipeline implements Pipeline {
           `orchestrator: device=${this.start_.deviceId} intent=dictate → ` +
             `TraditionalDictatePipeline(stt=${sttProvider.name})`,
         );
-        return new TraditionalDictatePipeline(this.start_, { sttProvider });
+        return new TraditionalDictatePipeline(this.start_, {
+          sttProvider,
+          postProcessKeys: this.options.postProcessKeys,
+        });
       }
       log.info(
         `orchestrator: device=${this.start_.deviceId} intent=dictate ` +
           `sttProvider=${voice.sttProvider} → RealtimePipeline`,
       );
-      return new RealtimePipeline(this.start_);
+      return new RealtimePipeline(this.start_, {
+        realtimeClientFactory: this.options.realtimeClientFactory,
+        postProcessKeys: this.options.postProcessKeys,
+      });
     }
     // intent === "discuss"
     const engine = voice.discussEngine || "realtime";
@@ -305,6 +349,9 @@ class OrchestratedPipeline implements Pipeline {
     log.info(
       `orchestrator: device=${this.start_.deviceId} intent=discuss engine=realtime → RealtimePipeline`,
     );
-    return new RealtimePipeline(this.start_);
+    return new RealtimePipeline(this.start_, {
+      realtimeClientFactory: this.options.realtimeClientFactory,
+      postProcessKeys: this.options.postProcessKeys,
+    });
   }
 }

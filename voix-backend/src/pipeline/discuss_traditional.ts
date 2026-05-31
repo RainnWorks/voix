@@ -31,7 +31,6 @@
 
 import { gatherAll } from "../context/registry.ts";
 import type { ContextEntry } from "../context/types.ts";
-import { config } from "../env.ts";
 import { appendHistory } from "../history/store.ts";
 import { log } from "../log.ts";
 import { SessionRecorder } from "../recordings/store.ts";
@@ -476,9 +475,10 @@ export class TraditionalDiscussPipeline implements Pipeline {
         }
       } catch (err) {
         log.warn(`discuss ${this.deviceId}: done-phase LLM failed, using raw`, err);
-        // Stash key for the warn-but-no-fail design used elsewhere in
-        // the daemon — keys live in env.
-        void config;
+        // Warn-but-no-fail: discuss reuses the talking-phase llmProvider
+        // (its key is bound at construction by the orchestrator), so
+        // there's no per-call key to thread here. The session keeps
+        // its raw conversation transcript on the failure path.
       }
     }
 

@@ -37,13 +37,12 @@
 import type { Intent } from "../audio_io/protocol.ts";
 import { gatherAll } from "../context/registry.ts";
 import type { ContextEntry } from "../context/types.ts";
-import { config } from "../env.ts";
 import { appendHistory } from "../history/store.ts";
 import { log } from "../log.ts";
 import { SessionRecorder } from "../recordings/store.ts";
 import { writeComplete as writeCompleteTranscript, writeRawSidecar } from "../transcripts/store.ts";
 import type { Voice } from "../voices/types.ts";
-import { postProcess } from "./providers/llm/index.ts";
+import { type PostProcessKeys, postProcess } from "./providers/llm/index.ts";
 import type { SttProvider, SttSession } from "./providers/stt/types.ts";
 import type { Pipeline, PipelineCallbacks, PipelineStart } from "./types.ts";
 import { SessionWatchdog } from "./watchdog.ts";
@@ -72,6 +71,11 @@ export type TraditionalDictateDeps = {
    *  `voice.sttProvider` to an instance + handles missing-key errors
    *  before we get here. */
   sttProvider: SttProvider;
+  /** Keys for the done-phase post-process LLM call (M-Arch Wave A #5
+   *  — no longer threaded through PipelineStart.openaiApiKey). Open
+   *  shape keyed by provider name; the post-process facade falls back
+   *  to raw text if `voice.postProcessProvider`'s key is missing. */
+  postProcessKeys: PostProcessKeys;
 };
 
 export class TraditionalDictatePipeline implements Pipeline {
@@ -257,7 +261,7 @@ export class TraditionalDictatePipeline implements Pipeline {
         provider: this.voice.postProcessProvider,
         model: this.voice.postProcessModel,
         contextBlock: renderContextBlock(this.contextSnapshot),
-        keys: { openai: this.s.openaiApiKey, openrouter: config.openrouterApiKey },
+        keys: this.deps.postProcessKeys,
       });
       if (processedText && processedText !== rawText) {
         finalText = processedText;

@@ -54,7 +54,21 @@ export function TalkButton({
 }) {
   const [status, setStatus] = useState<BrowserClientStatus>("idle");
   const [error, setError] = useState<ErrorState | null>(null);
+  // Terminal cue shown briefly after a session closes so "Connecting…"
+  // never decays silently to idle (Wren v3 H1/F2). "done" = a real
+  // exchange happened; "heard-nothing" = the session opened but closed
+  // with nothing exchanged ("0-chunk close").
+  const [terminal, setTerminal] = useState<"done" | "heard-nothing" | null>(null);
   const clientRef = useRef<BrowserAudioIoClient | null>(null);
+  // Session bookkeeping for the terminal cue. `opened` flips once the WS
+  // reaches ready/listening; `exchanged` flips once voix produces output
+  // (speaking) — the proxy for "audio actually flowed." `hadError`
+  // suppresses the terminal cue when the RecoveryState already explains
+  // the close.
+  const openedRef = useRef(false);
+  const exchangedRef = useRef(false);
+  const hadErrorRef = useRef(false);
+  const terminalTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Track the user's *intent* to be holding the button. handlePressIn is
   // async (auth fetch + AudioContext open + getUserMedia + WS connect)
   // and on a fast tap the user releases before the client exists.
@@ -67,6 +81,7 @@ export function TalkButton({
   useEffect(() => {
     return () => {
       clientRef.current?.stop();
+      if (terminalTimerRef.current) clearTimeout(terminalTimerRef.current);
     };
   }, []);
 
@@ -74,6 +89,13 @@ export function TalkButton({
     if (clientRef.current) return;
     holdingRef.current = true;
     setError(null);
+    // Reset the session bookkeeping + clear any lingering terminal cue
+    // from the previous session.
+    setTerminal(null);
+    openedRef.current = false;
+    exchangedRef.current = false;
+    hadErrorRef.current = false;
+    if (terminalTimerRef.current) clearTimeout(terminalTimerRef.current);
     try {
       const base = await appInfo.getApiBase();
       const tokenResp = await fetch(base + WS_TOKEN_PATH);
@@ -87,11 +109,26 @@ export function TalkButton({
         onEvent: (ev) => {
           if (ev.type === "status") {
             setStatus(ev.status);
+            // Track session lifecycle for the terminal cue.
+            if (ev.status === "ready" || ev.status === "listening") {
+              openedRef.current = true;
+            }
+            if (ev.status === "speaking") exchangedRef.current = true;
             if (ev.status === "idle" && clientRef.current) {
               clientRef.current = null;
+              // Surface an explicit terminal state instead of letting the
+              // button snap silently back to idle (Wren v3 H1/F2). Only
+              // for sessions that actually opened, and only when no error
+              // already explains the close.
+              if (openedRef.current && !hadErrorRef.current) {
+                setTerminal(exchangedRef.current ? "done" : "heard-nothing");
+                if (terminalTimerRef.current) clearTimeout(terminalTimerRef.current);
+                terminalTimerRef.current = setTimeout(() => setTerminal(null), 6000);
+              }
               onSessionEnded?.();
             }
           } else if (ev.type === "error") {
+            hadErrorRef.current = true;
             setError({
               kind: ev.kind,
               message: ev.message,
@@ -132,6 +169,10 @@ export function TalkButton({
     status === "ready" ||
     status === "connecting";
   const speaking = status === "speaking";
+  // Distinct LISTENING state — the session is open and the mic is live.
+  // Drives the "I'm listening" copy + a live indicator dot so the user
+  // can tell listening apart from connecting (Wren v3 H1/F2).
+  const listening = status === "listening" || status === "ready";
 
   // M23 Decision 3 — hint + speaking label both derive from intent.
   // Picking a Dictation voice surfaces "Hold to dictate." + the
@@ -159,6 +200,9 @@ export function TalkButton({
         accessibilityState={{ busy: active }}
       >
         <Text style={styles.glyph}>🎙</Text>
+        {/* Mic-live indicator — a filled voix-blue dot while listening so
+            "I'm listening" is unmistakable from "Connecting…". */}
+        {listening && <View style={styles.liveDot} />}
         <Text style={[styles.label, active && styles.labelActive, speaking && styles.labelSpeaking]}>
           {labelFor(status, intent)}
         </Text>
@@ -166,6 +210,18 @@ export function TalkButton({
       <Text style={styles.hint} accessibilityLiveRegion="polite">
         {hintCopy}
       </Text>
+      {/* Explicit terminal cue so the button never decays silently from
+          "Connecting…" back to idle (Wren v3 H1/F2). */}
+      {terminal && !error && (
+        <Text
+          style={[styles.terminal, terminal === "heard-nothing" && styles.terminalAttn]}
+          accessibilityLiveRegion="polite"
+        >
+          {terminal === "heard-nothing"
+            ? "Heard nothing — hold and speak again"
+            : "Done"}
+        </Text>
+      )}
       {/* Recovery state below the hint so a failure doesn't shove the
           button down on display (Marina audit). Wren FINDING-1: tailor
           copy per error.kind instead of one undifferentiated red blob. */}
@@ -297,7 +353,7 @@ function labelFor(status: BrowserClientStatus, intent: Intent): string {
     // announcing (Wren audit).
     case "ready":
     case "listening":
-      return "Listening";
+      return "I'm listening";
     case "speaking":
       // M23: dictation doesn't have an assistant audio reply — the
       // "speaking" status fires when the daemon is producing the
@@ -341,6 +397,15 @@ const styles = StyleSheet.create({
   glyph: {
     fontSize: 14,
   },
+  // Mic-live indicator dot — voix blue (a sanctioned voix moment: the
+  // listening state). Sits between the glyph and the "I'm listening"
+  // label while the session is open.
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.haBlue,
+  },
   label: {
     fontFamily: fontFamily.ui,
     fontSize: 13,
@@ -353,6 +418,18 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.ui,
     fontSize: 11,
     color: colors.textMuted,
+  },
+  // Terminal cue after a session closes. "Done" reads quiet (a normal
+  // end); "heard-nothing" reads a touch louder (an actionable nudge to
+  // try again) but stays a text cue, not an error pill.
+  terminal: {
+    fontFamily: fontFamily.ui,
+    fontSize: 12,
+    fontWeight: "500",
+    color: colors.textBody,
+  },
+  terminalAttn: {
+    color: colors.ink,
   },
   // Recovery state — soft info surface, not the red danger pill. Mirrors
   // the ConversationList errorBox treatment (Wren FINDING-1).

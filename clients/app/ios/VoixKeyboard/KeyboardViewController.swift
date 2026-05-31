@@ -10,6 +10,37 @@
 //  fine; no third-party libs; no heavy async chains. Apple's hard
 //  limit for keyboard extensions is ~48 MB before iOS terminates.
 //
+//  ── App Review rationale (Guideline 2.5.1 / 4.2 minimum functionality)
+//  ── (Adversary H-4)
+//
+//  A custom keyboard that has no character rows and whose hero action
+//  bounces to a sibling app reads, at a glance, like the rejection
+//  pattern App Review applies to "keyboards that only launch another
+//  app." voix's defensible position is the opposite framing:
+//
+//   - The keyboard IS the product on this surface, not a launcher for
+//     a different product. Its job is voice dictation INTO the focused
+//     text field — the single thing the system keyboard cannot do and
+//     the reason a user installs it. Tapping the pill and getting
+//     polished text back into Notes/Mail/Safari is the keyboard's
+//     primary, keyboard-native value: it types for you, by voice.
+//   - The bounce-to-host is an Apple-imposed implementation detail, not
+//     a workaround to drive traffic elsewhere. Keyboard extensions are
+//     denied reliable microphone/AVAudioSession access, so the only
+//     way to dictate from a keyboard surface is to capture in a process
+//     that may record and hand the text back via the App Group. The
+//     user's mental model is "voix typed my words" — they never leave
+//     the dictation task; iOS returns them to the original field and
+//     the transcript appears inline (textDocumentProxy.insertText).
+//   - Precedent: Apple's own Dictation, plus Gboard / SwiftKey /
+//     Grammarly all hand off to a host process for non-typing surfaces.
+//     voix is a dictation-first keyboard in the same family.
+//
+//  This is the rationale to put in the App Store review notes + listing
+//  ("voice dictation keyboard"). It is owned, not assumed — see
+//  docs/phase-6/m24-manual.md "App Review story" and Architecture
+//  Risk 1 for the fallback (in-keyboard recording) if Review pushes back.
+//
 //  Step 7 (this commit): closes the return loop.
 //   - viewDidAppear reads <session_id>.json from the shared container;
 //     on status=done, inserts the transcript via textDocumentProxy

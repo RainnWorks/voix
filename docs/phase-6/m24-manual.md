@@ -138,6 +138,41 @@ All of:
 If any of those fail, log in this file under "Outcomes" and queue
 M24.5.
 
+## App Review story (READ before submitting to TestFlight / App Store)
+
+A zero-key custom keyboard whose only visible action bounces to another
+app is the textbook shape App Review challenges under Guideline 2.5.1 /
+4.2 (minimum functionality) — "keyboards that primarily launch another
+app." voix can ship this surface, but the rationale has to be **owned in
+the submission**, not discovered at rejection. Put this in the App Store
+Connect review notes and the listing copy:
+
+- **voix is a voice-dictation keyboard.** Its keyboard-primary value is
+  typing text into the focused field by voice — the one thing the system
+  keyboard cannot do, and the reason a user adds it. Tap the pill, speak,
+  and polished text lands back in Notes / Mail / Safari via
+  `textDocumentProxy.insertText`. The user never leaves the dictation
+  task; this is keyboard-native input, not a launcher.
+- **The bounce-to-host is an Apple constraint, not a traffic funnel.**
+  Keyboard extensions are denied reliable microphone / `AVAudioSession`
+  access, so the only way to dictate *from a keyboard surface* is to
+  capture in a process that may record and hand the transcript back
+  through the App Group container. iOS returns the user to the original
+  app automatically; the hop is invisible in intent.
+- **Precedent.** Apple's own Dictation, plus Gboard, SwiftKey, and
+  Grammarly Keyboard, all hand off to a host process for non-typing
+  surfaces. voix is a dictation-first keyboard in the same family.
+- **Listing framing.** Describe it as "voix — voice dictation keyboard,"
+  lead with the dictate-into-any-field value, and mention Full Access is
+  required to record and to return the text. Do **not** describe it as a
+  shortcut to "open the voix app."
+
+If Review still pushes back, the fallback is **in-keyboard recording**
+(Full Access + `AVAudioSession`; memory will be tight, quality may
+suffer) — tracked as the M24.5 / Architecture Risk 1 mitigation. The
+inline rationale also lives at the top of
+`clients/app/ios/VoixKeyboard/KeyboardViewController.swift`.
+
 ## Outcomes (Tom fills in)
 
 - [ ] Pill visible in Notes

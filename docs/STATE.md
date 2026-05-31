@@ -128,8 +128,36 @@ day's work; doing it inside M20 would have merged across phases.
 **Tom's manual smoke for M20**: `docs/phase-6/m20-manual.md` —
 watchman install, root re-install, `pod install` (iOS + macOS), set
 LAN IP in `apiBase.native.ts`, Metro + run-ios + run-macos.
-Expected: simulator opens; sidebar with 6 built-in voices renders
-on both targets.
+
+**Smoke RAN (2026-05-31) by claude on Tom's behalf** —
+`docs/phase-6/verify-results/M20-tom-smoke.md`:
+
+- **iOS: VISUALLY CONFIRMED** via `/tmp/voix-smoke-screenshots/ios-after-boot.png`.
+  Sidebar with Voix /vva/ wordmark + history entry; Voices list
+  populated from the live daemon (all 6 modes, brand-correct
+  swatches); HA blue only in voix moments (active pill, NOW puck-1
+  pill); system fonts; layout responsive to iPhone 16 Pro. Build
+  time: 97s first run.
+- **macOS: BUILD + LAUNCH CONFIRMED** via `ps aux` / `lsappinfo`
+  (bundleID `org.reactjs.native.voix`). Build time: 71s. **Visual
+  verification still pending Tom** — Mac was locked during smoke,
+  screencapture only got login window.
+
+**Tom's pending hands-on for M20**: unlock Mac, look at the
+voix-macOS window currently running, confirm sidebar + Voices list
+render same as iOS. If broken, screenshot + report; if working,
+no action needed.
+
+**Smoke surfaced 3 fixes shipped post-hoc** (commit `439fa6e`):
+1. `clients/app` needed `@react-native-community/cli-platform-apple`
+   devDep — without it `run-macos` errors with the misleading "macOS
+   project folder not found".
+2. Manual.md step 2 wrong path — `Gemfile` is at `clients/app/`, not
+   `clients/app/ios/`.
+3. Manual.md step 5 — Metro v0.83.7 prints "Welcome to Metro" not
+   "Dev server ready".
+4. M21-deferred: macOS hot-reload broken — `start:macos` script
+   targets port 8082 but scheme's `RCT_METRO_PORT` isn't plumbed.
 
 **Phases 1-5 (pre-M19) — complete on source.** Eighteen milestones
 merged + an adversarial audit pass that shipped 9 fixes (`9dc5c0b`).

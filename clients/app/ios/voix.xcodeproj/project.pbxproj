@@ -15,6 +15,9 @@
 		D185BD0600DFA3D399072114 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
 		KEXT0001000000000000A006 /* KeyboardViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = KEXT0001000000000000A005 /* KeyboardViewController.swift */; };
 		KEXT0001000000000000A00F /* VoixKeyboard.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = KEXT0001000000000000A002 /* VoixKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		KEXT0002000000000000A004 /* CaptureSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = KEXT0002000000000000A001 /* CaptureSession.swift */; };
+		KEXT0002000000000000A005 /* KeyboardState.swift in Sources */ = {isa = PBXBuildFile; fileRef = KEXT0002000000000000A002 /* KeyboardState.swift */; };
+		KEXT0002000000000000A006 /* KeyboardRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = KEXT0002000000000000A003 /* KeyboardRootView.swift */; };
 		SHARED00000000000000A004 /* KeyboardSessionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = SHARED00000000000000A002 /* KeyboardSessionState.swift */; };
 		SHARED00000000000000A005 /* SharedContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = SHARED00000000000000A003 /* SharedContainer.swift */; };
 		SHARED00000000000000A006 /* KeyboardSessionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = SHARED00000000000000A002 /* KeyboardSessionState.swift */; };
@@ -63,6 +66,9 @@
 		KEXT0001000000000000A003 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = Info.plist; path = VoixKeyboard/Info.plist; sourceTree = "<group>"; };
 		KEXT0001000000000000A004 /* VoixKeyboard.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = VoixKeyboard.entitlements; path = VoixKeyboard/VoixKeyboard.entitlements; sourceTree = "<group>"; };
 		KEXT0001000000000000A005 /* KeyboardViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = KeyboardViewController.swift; path = VoixKeyboard/KeyboardViewController.swift; sourceTree = "<group>"; };
+		KEXT0002000000000000A001 /* CaptureSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CaptureSession.swift; path = VoixKeyboard/CaptureSession.swift; sourceTree = "<group>"; };
+		KEXT0002000000000000A002 /* KeyboardState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = KeyboardState.swift; path = VoixKeyboard/KeyboardState.swift; sourceTree = "<group>"; };
+		KEXT0002000000000000A003 /* KeyboardRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = KeyboardRootView.swift; path = VoixKeyboard/KeyboardRootView.swift; sourceTree = "<group>"; };
 		SHARED00000000000000A001 /* voix.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = voix.entitlements; path = voix/voix.entitlements; sourceTree = "<group>"; };
 		SHARED00000000000000A002 /* KeyboardSessionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = KeyboardSessionState.swift; path = VoixKeyboard/Shared/KeyboardSessionState.swift; sourceTree = "<group>"; };
 		SHARED00000000000000A003 /* SharedContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SharedContainer.swift; path = VoixKeyboard/Shared/SharedContainer.swift; sourceTree = "<group>"; };
@@ -157,6 +163,9 @@
 			isa = PBXGroup;
 			children = (
 				KEXT0001000000000000A005 /* KeyboardViewController.swift */,
+				KEXT0002000000000000A003 /* KeyboardRootView.swift */,
+				KEXT0002000000000000A002 /* KeyboardState.swift */,
+				KEXT0002000000000000A001 /* CaptureSession.swift */,
 				SHARED00000000000000A008 /* Shared */,
 				KEXT0001000000000000A003 /* Info.plist */,
 				KEXT0001000000000000A004 /* VoixKeyboard.entitlements */,
@@ -386,6 +395,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				KEXT0001000000000000A006 /* KeyboardViewController.swift in Sources */,
+				KEXT0002000000000000A004 /* CaptureSession.swift in Sources */,
+				KEXT0002000000000000A005 /* KeyboardState.swift in Sources */,
+				KEXT0002000000000000A006 /* KeyboardRootView.swift in Sources */,
 				SHARED00000000000000A004 /* KeyboardSessionState.swift in Sources */,
 				SHARED00000000000000A005 /* SharedContainer.swift in Sources */,
 			);

@@ -25,7 +25,7 @@
 # the build context). For M19 the HA Add-on dev_mode path (run.sh
 # clones the whole repo + installs from the workspace root) is the
 # only supported install path. Production HA Add-on Store install
-# remains broken; M20 will land a pre-build vendoring step.
+# remains broken; M20a will land a pre-build vendoring step.
 #
 # `--frozen-lockfile` is dropped because the canonical lockfile lives
 # at the repo root and isn't in this build context. Image builds are

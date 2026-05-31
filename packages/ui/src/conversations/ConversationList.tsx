@@ -12,7 +12,15 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import type { Intent } from "@voix/protocol";
 import { Puck } from "../components/Puck";
 import {
@@ -40,9 +48,12 @@ export function ConversationList({ onPickEntry }: Props) {
   // Voices screen propagates back when the user returns here.
   const [activeVoice, setActiveVoice] = useState<Voice | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Pull-to-refresh state (A1 iOS nativeness). Drives the native
+  // UIRefreshControl spinner when the user tugs the list down.
+  const [refreshing, setRefreshing] = useState(false);
 
   const refresh = useCallback(() => {
-    Promise.all([
+    return Promise.all([
       historyApi.list({ limit: 200 }),
       voicesApi.list(),
       devicesApi.list(),
@@ -59,6 +70,15 @@ export function ConversationList({ onPickEntry }: Props) {
         setError(e instanceof Error ? e.message : String(e));
       });
   }, []);
+
+  // Pull-to-refresh handler — re-runs the same fetch and parks the
+  // native spinner until it settles (A1 iOS nativeness). `refresh`
+  // swallows its own errors into the error box, so the finally is
+  // safe without a catch here.
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    void refresh().finally(() => setRefreshing(false));
+  }, [refresh]);
 
   useEffect(() => {
     refresh();
@@ -98,9 +118,25 @@ export function ConversationList({ onPickEntry }: Props) {
   // until the first session lands a device record.
   const intent: Intent = activeVoice?.type === "dictation" ? "dictate" : "discuss";
 
+  // Shared native pull-to-refresh control — same instance shape on the
+  // empty + populated branches so the gesture works even before the
+  // first conversation lands (the empty state is exactly when a user
+  // reaches to refresh). System accent tint, not HA blue — the spinner
+  // is chrome, not a voix moment.
+  const refreshControl = (
+    <RefreshControl
+      refreshing={refreshing}
+      onRefresh={onRefresh}
+      tintColor={colors.sysAccent}
+    />
+  );
+
   if (entries.length === 0) {
     return (
-      <View style={styles.scroll}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        refreshControl={refreshControl}
+      >
         <TalkButton intent={intent} onSessionEnded={onSessionEnded} />
         <View style={styles.emptyBox}>
           <Text style={styles.emptyTitle}>No conversations yet</Text>
@@ -108,12 +144,12 @@ export function ConversationList({ onPickEntry }: Props) {
             Hold the button above and say something. Or talk to your puck.
           </Text>
         </View>
-      </View>
+      </ScrollView>
     );
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.scroll}>
+    <ScrollView contentContainerStyle={styles.scroll} refreshControl={refreshControl}>
       <TalkButton intent={intent} onSessionEnded={onSessionEnded} />
       {entries.map((entry) => (
         <Row

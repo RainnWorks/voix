@@ -1,5 +1,13 @@
-import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { Puck } from "../components/Puck";
 import { type Device, type Voice, devicesApi, voicesApi } from "../lib/api";
 import { colors, fontFamily, nearestSwatch, radius, spacing } from "../lib/theme";
@@ -13,22 +21,36 @@ export function VoiceList({ onPickVoice }: Props) {
   const [devices, setDevices] = useState<Device[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [activating, setActivating] = useState<string | null>(null);
+  // Pull-to-refresh state (A1 iOS nativeness). Drives the native
+  // UIRefreshControl spinner when the user tugs the list down.
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    Promise.all([voicesApi.list(), devicesApi.list()])
+  // Single load path shared by the mount effect and pull-to-refresh.
+  // Clears any prior error on success so a transient daemon blip that
+  // the user resolves (then pulls to retry) doesn't leave the error
+  // box stuck on screen.
+  const load = useCallback(() => {
+    return Promise.all([voicesApi.list(), devicesApi.list()])
       .then(([m, d]) => {
-        if (cancelled) return;
         setVoices(m);
         setDevices(d);
+        setError(null);
       })
       .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+        setError(e instanceof Error ? e.message : String(e));
       });
-    return () => {
-      cancelled = true;
-    };
   }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  // Pull-to-refresh handler — re-runs the load and parks the native
+  // spinner until it settles (A1 iOS nativeness).
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    void load().finally(() => setRefreshing(false));
+  }, [load]);
 
   const activateVoice = async (voiceId: string) => {
     const device = devices[0]; // single-puck household for now
@@ -63,7 +85,16 @@ export function VoiceList({ onPickVoice }: Props) {
   const activeVoiceId = devices[0]?.voiceId;
 
   return (
-    <View style={styles.outer}>
+    <ScrollView
+      contentContainerStyle={styles.outer}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={colors.sysAccent}
+        />
+      }
+    >
       {/* The NOW strip is the section header for the grouped voices list
           — it stays a voix moment (HA blue), captioning the surface +
           active voice that the rows below choose between (Marina v3 #2). */}
@@ -98,7 +129,7 @@ export function VoiceList({ onPickVoice }: Props) {
           />
         ))}
       </View>
-    </View>
+    </ScrollView>
   );
 }
 

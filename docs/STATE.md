@@ -235,9 +235,34 @@ audio_io home-assistant-voice-095e4e: hello v1 kind=puck intent=discuss
   unambiguous. Per-tab device_id in localStorage. Audit briefs at
   `docs/agents/m18-{marina,wren}.md`.
 
-**Phase 5 complete on source.** Phases 6–8 (Tauri shell + iOS app
-+ HA connector trim) are the natural next chunks per the build
-plan. v0.phase-4 + v0.phase-5 tags pending real-puck verification.
+- **M19 merged** (Phase 6 / RN end-to-end foundation). Monorepo
+  conversion. Repo root gets a bun-workspaces `package.json` plus
+  `tsconfig.base.json` with path mappings for `@voix/protocol` and
+  `@voix/ui`. Two new packages:
+    - `packages/protocol/` — wire types (`audio-io.ts`); the daemon's
+      old `voix-backend/src/audio_io/protocol.ts` is now a one-line
+      re-export.
+    - `packages/ui/` — every UI source file from `voix-backend/ui/src/`
+      except `main.tsx`. Web target keeps Vite + react-native-web alias
+      (with a tiny `ignoreNativeSuffixes` plugin so the build never
+      picks up `.native.ts(x)` files). `vite-tsconfig-paths` resolves
+      the workspace path mappings.
+  Step 4 split the only web-only file (`audio_io/browserClient.ts` →
+  `client.ts` + `client.native.ts` stub) plus Delta A's
+  `InlineAudioPlayer.tsx` (web `<audio>`) + `.native.tsx` (M22
+  placeholder). React 18 → 19.1.4 across the web UI per Decision 4
+  (driven by `react-native-macos@0.81.7`'s exact peer pin on RN
+  0.81.6). HA Add-on Dockerfile + run.sh drop `--frozen-lockfile`
+  because the canonical bun.lock now lives at the repo root and isn't
+  in the HA Add-on build context. M20+ (RN-CLI app, archive Tauri
+  app/, RN audio bridges, keyboard extension) flow into the workspace
+  shape this milestone established. Brief at
+  `docs/phase-6/architecture-m19.md`; deps map at
+  `docs/phase-6/research-ui-deps.md`.
+
+**Phase 5 complete on source.** Phase 6 underway: M19 closed (this
+commit), M20-M24 ahead. v0.phase-4 + v0.phase-5 tags pending
+real-puck verification.
 
 **Phase 4 complete on source** (M09-M15 + M13b). Waiting on
 deploy-side acceptance (#124 puck OTA + #130 dictate round-trip,
@@ -278,8 +303,30 @@ roadmap; this doc is "where exactly are we right now".
 
 ## Repo layout (top of tree)
 
+(As of M19 the repo is a bun workspace; the daemon and HA Add-on
+build still live at `voix-backend/`, but UI source has lifted into
+`packages/ui/`. The web UI's `voix-backend/ui/src/main.tsx` is the
+only surviving file there — everything else is `@voix/ui` source.)
+
 ```
 voix/
+├── package.json                 ← bun workspace root (M19)
+├── tsconfig.base.json           ← shared compiler options + @voix/* paths
+├── bun.lock                     ← canonical lockfile (was per-workspace)
+├── packages/
+│   ├── protocol/                ← @voix/protocol — wire types
+│   │   └── src/audio-io.ts      ← Hello + capability + events (v1)
+│   └── ui/                      ← @voix/ui — shared React UI
+│       └── src/
+│           ├── App.tsx          ← Root section router
+│           ├── components/      ← AppShell, Puck, Wordmark
+│           ├── lib/             ← theme.ts, api.ts
+│           ├── voices/          ← VoiceList, VoiceEditor
+│           ├── conversations/   ← ConversationList, ConversationDetail,
+│           │                      TalkButton, InlineAudioPlayer{,.native}
+│           ├── surfaces/        ← SurfaceList
+│           └── audio_io/        ← client.ts (web) + client.native.ts stub
+├── clients/                     ← (created in M20: RN-CLI iOS + macOS)
 ├── voix-backend/                ← The daemon (Bun + Elysia + TS)
 │   ├── src/
 │   │   ├── index.ts             ← Entrypoint
@@ -288,6 +335,7 @@ voix/
 │   │   │   ├── devices.ts       GET/PUT /api/devices/*
 │   │   │   └── ha_sync.ts       ← Calls HA REST when haUrl+haToken set
 │   │   ├── audio/               ← Resample + (vestigial) echo gate
+│   │   ├── audio_io/protocol.ts ← One-line re-export of @voix/protocol
 │   │   ├── context/             ← MCP-based context sources
 │   │   │   ├── registry.ts      ← Source registry + tool routing
 │   │   │   ├── sources/ha.ts    ← HA MCP via /api/mcp Streamable HTTP
@@ -302,21 +350,12 @@ voix/
 │   │   ├── storage/             ← atomic writes + path resolution
 │   │   ├── transcripts/         ← Plain-text transcript files
 │   │   └── ui/route.ts          ← Serves ui/dist
-│   ├── ui/                      ← React + react-native-web UI
-│   │   ├── package.json
-│   │   ├── vite.config.ts       ← Aliases react-native → react-native-web
-│   │   ├── src/
-│   │   │   ├── App.tsx          ← AppShell + section routing
-│   │   │   ├── lib/
-│   │   │   │   ├── api.ts       ← Daemon fetch wrappers
-│   │   │   │   └── theme.ts     ← Tokens + 12-colour mode palette
-│   │   │   ├── components/
-│   │   │   │   ├── Puck.tsx     ← Brand glyph (ink squircle + circle)
-│   │   │   │   ├── Wordmark.tsx ← Voix /vwa/ wordmark
-│   │   │   │   └── AppShell.tsx ← Titlebar + sidebar + main pattern
-│   │   │   └── modes/
-│   │   │       ├── ModeList.tsx ← Card grid + active pill + activate btn
-│   │   │       └── ModeEditor.tsx ← Inline name, 12-swatch picker, autosave
+│   ├── ui/                      ← Thin Vite shell over @voix/ui (M19)
+│   │   ├── package.json         ← depends on @voix/ui (workspace:*)
+│   │   ├── vite.config.ts       ← Aliases react-native → react-native-web,
+│   │   │                          + ignoreNativeSuffixes plugin,
+│   │   │                          + vite-tsconfig-paths
+│   │   ├── src/main.tsx         ← createRoot → <App/> from @voix/ui
 │   │   └── dist/                ← Built bundle (gitignored)
 │   ├── config.yaml              ← HA Add-on manifest (ingress: true)
 │   ├── Dockerfile               ← Bun Alpine, builds UI at image-build

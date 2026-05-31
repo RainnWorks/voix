@@ -38,6 +38,11 @@ export const colors = {
   // form button defaults — anything CHROME-shaped.
   sysAccent: "#007AFF",
   sysAccentDark: "#0A84FF",
+  // Tinted accent fill for chrome buttons / selected chips — the system
+  // accent at low alpha. The HA-blue-tinted `haBlueBg` used to stand in
+  // here, which spent the reserved brand blue on plain chrome (Marina
+  // v3 #3). Chrome uses THIS; HA blue stays for voix moments.
+  sysAccentBg: "rgba(0,122,255,0.10)",
 
   // HA blue. THE brand colour. Used for: puck centre dot, "● LIVE"
   // status, VOIX speaker prefix, active-mode pill on the modes list,

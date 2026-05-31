@@ -390,8 +390,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: 6,
     borderRadius: radius.sm,
-    backgroundColor: colors.haBlueBg,
-    borderColor: colors.haBlue,
+    // "Try again" is a chrome recovery action, not a voix moment —
+    // system accent, not HA blue (Marina v3 #3).
+    backgroundColor: colors.sysAccentBg,
+    borderColor: colors.sysAccent,
     borderWidth: 0.5,
   },
   retryButtonPressed: { opacity: 0.85 },
@@ -399,6 +401,6 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.ui,
     fontSize: 12,
     fontWeight: "600",
-    color: colors.haBlueText,
+    color: colors.sysAccent,
   },
 });

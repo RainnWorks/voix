@@ -27,12 +27,14 @@ import {
   AccessibilityInfo,
   ActivityIndicator,
   AppState,
+  type ColorSchemeName,
   findNodeHandle,
   type NativeEventSubscription,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  useColorScheme,
   View,
 } from "react-native";
 import { Puck } from "../components/Puck";
@@ -56,6 +58,45 @@ type Props = {
 type Step = 1 | 2 | 3;
 
 type DaemonStatus = "idle" | "probing" | "reachable" | "unreachable" | "malformed";
+
+/**
+ * Scheme-aware onboarding palette. Onboarding renders on a dark canvas
+ * in dark mode (the brand teach-mode), where the light-theme `colors`
+ * tokens (near-black ink, black-alpha rules) collapse to invisibility.
+ * These tokens adapt to the active colour scheme — system label /
+ * secondaryLabel equivalents for text, a light neutral for inactive
+ * dots, a filled field treatment — so the three legibility findings
+ * (Marina v3 #4 title-as-disabled, #5 URL-field-as-label, #6 dark-mode
+ * dots) resolve in both schemes.
+ *
+ * Chrome (CTAs) takes the **system accent**, not HA blue — HA blue is
+ * reserved for voix moments (puck, listening pill, NOW pill) per the
+ * brand soul (Marina v3 #3).
+ */
+type ObPalette = ReturnType<typeof obPalette>;
+function obPalette(scheme: ColorSchemeName) {
+  const dark = scheme === "dark";
+  return {
+    dark,
+    bg: dark ? "#0b0b0c" : colors.bg,
+    // iOS system `label` / `secondaryLabel` equivalents.
+    title: dark ? "#f5f5f7" : colors.ink,
+    body: dark ? "rgba(235,235,245,0.6)" : colors.textBody,
+    muted: dark ? "rgba(235,235,245,0.45)" : colors.textMuted,
+    // System accent — the dark variant (#0A84FF) in dark mode.
+    accent: dark ? colors.sysAccentDark : colors.sysAccent,
+    onAccent: "#ffffff",
+    // Inactive page dot: a light neutral that survives the dark canvas
+    // (the old rgba(0,0,0,0.2) was invisible on black — Marina v3 #6).
+    dotInactive: dark ? "rgba(255,255,255,0.25)" : "rgba(0,0,0,0.2)",
+    // Filled field treatment so the editable URL reads as an input,
+    // not a label (Marina v3 #5).
+    fieldBg: dark ? "rgba(255,255,255,0.08)" : colors.bgSubtle,
+    fieldBorder: dark ? "rgba(255,255,255,0.18)" : colors.rule,
+    fieldText: dark ? "#f5f5f7" : colors.ink,
+    fieldPlaceholder: dark ? "rgba(235,235,245,0.4)" : colors.textQuiet,
+  };
+}
 
 export function Onboarding({ onDone }: Props) {
   const [step, setStep] = useState<Step>(1);
@@ -116,6 +157,7 @@ export function Onboarding({ onDone }: Props) {
   // Island and the dots clear of the home indicator on iOS. Zero insets
   // on web/macOS, so the centered layout is unchanged there (soul §3.2).
   const insets = useSafeAreaInsets();
+  const ob = obPalette(useColorScheme());
 
   return (
     <ScrollView
@@ -143,9 +185,10 @@ export function Onboarding({ onDone }: Props) {
         </View>
 
         <View style={styles.stepWrap}>
-          {step === 1 && <Welcome onNext={() => setStep(2)} />}
+          {step === 1 && <Welcome ob={ob} onNext={() => setStep(2)} />}
           {step === 2 && (
             <MicStep
+              ob={ob}
               result={micResult}
               onAllow={handleAllowMic}
               onOpenSettings={handleOpenSettings}
@@ -154,6 +197,7 @@ export function Onboarding({ onDone }: Props) {
           )}
           {step === 3 && (
             <DaemonStep
+              ob={ob}
               url={daemonUrl}
               onUrlChange={(u, s) => {
                 setDaemonUrl(u);
@@ -165,7 +209,7 @@ export function Onboarding({ onDone }: Props) {
           )}
         </View>
 
-        <StepDots step={step} />
+        <StepDots step={step} ob={ob} />
       </View>
     </ScrollView>
   );
@@ -208,7 +252,7 @@ function useFocusOnMount<T>() {
   return ref;
 }
 
-function Welcome({ onNext }: { onNext: () => void }) {
+function Welcome({ ob, onNext }: { ob: ObPalette; onNext: () => void }) {
   const titleRef = useFocusOnMount<Text>();
   return (
     <View style={styles.step}>
@@ -233,23 +277,29 @@ function Welcome({ onNext }: { onNext: () => void }) {
       </Text>
       <Pressable
         onPress={onNext}
-        style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed]}
+        style={({ pressed }) => [
+          styles.cta,
+          { backgroundColor: ob.accent },
+          pressed && styles.ctaPressed,
+        ]}
         accessibilityRole="button"
         accessibilityLabel="Get started"
         accessibilityHint="Advance to the microphone permission step."
       >
-        <Text style={styles.ctaLabel}>Get started</Text>
+        <Text style={[styles.ctaLabel, { color: ob.onAccent }]}>Get started</Text>
       </Pressable>
     </View>
   );
 }
 
 function MicStep({
+  ob,
   result,
   onAllow,
   onOpenSettings,
   onSkip,
 }: {
+  ob: ObPalette;
   result: PermissionResult | null;
   onAllow: () => void;
   onOpenSettings: () => void;
@@ -272,12 +322,16 @@ function MicStep({
           <>
             <Pressable
               onPress={onOpenSettings}
-              style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed]}
+              style={({ pressed }) => [
+                styles.cta,
+                { backgroundColor: ob.accent },
+                pressed && styles.ctaPressed,
+              ]}
               accessibilityRole="button"
               accessibilityLabel="Open system Settings"
               accessibilityHint="Opens the iOS or macOS Settings app so you can grant voix microphone access."
             >
-              <Text style={styles.ctaLabel}>Open settings</Text>
+              <Text style={[styles.ctaLabel, { color: ob.onAccent }]}>Open settings</Text>
             </Pressable>
             <Pressable
               onPress={onSkip}
@@ -292,12 +346,16 @@ function MicStep({
         ) : (
           <Pressable
             onPress={onAllow}
-            style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed]}
+            style={({ pressed }) => [
+              styles.cta,
+              { backgroundColor: ob.accent },
+              pressed && styles.ctaPressed,
+            ]}
             accessibilityRole="button"
             accessibilityLabel="Allow microphone access"
             accessibilityHint="Triggers the system permission prompt to let voix use the microphone."
           >
-            <Text style={styles.ctaLabel}>Allow microphone</Text>
+            <Text style={[styles.ctaLabel, { color: ob.onAccent }]}>Allow microphone</Text>
           </Pressable>
         )}
       </View>
@@ -306,11 +364,13 @@ function MicStep({
 }
 
 function DaemonStep({
+  ob,
   url,
   status,
   onUrlChange,
   onDone,
 }: {
+  ob: ObPalette;
   url: string;
   status: DaemonStatus;
   onUrlChange: (url: string, status: DaemonStatus) => void;
@@ -341,6 +401,7 @@ function DaemonStep({
           disabled={!canDone}
           style={({ pressed }) => [
             styles.cta,
+            { backgroundColor: ob.accent },
             !canDone && styles.ctaDisabled,
             pressed && styles.ctaPressed,
           ]}
@@ -349,7 +410,7 @@ function DaemonStep({
           accessibilityState={{ disabled: !canDone }}
           accessibilityHint="Persist the daemon URL and enter the main app."
         >
-          <Text style={styles.ctaLabel}>
+          <Text style={[styles.ctaLabel, { color: ob.onAccent }]}>
             {status === "probing" ? "Probing…" : "Done"}
           </Text>
         </Pressable>
@@ -364,10 +425,11 @@ function DaemonStep({
   );
 }
 
-function StepDots({ step }: { step: Step }) {
-  // All three dots are always drawn: the current step is a wider haBlue
-  // pill, the rest are visible neutral dots — a real 3-of-N indicator,
-  // not one orphaned dot (Marina #12 / Wren F9, M-MobileFit target e).
+function StepDots({ step, ob }: { step: Step; ob: ObPalette }) {
+  // All three dots are always drawn: the current step is a wider pill in
+  // the system accent (chrome, not a voix moment — Marina v3 #3), the
+  // rest are scheme-aware neutral dots that survive the dark canvas
+  // (Marina v3 #6 / Wren F9 dark-mode).
   return (
     <View
       style={styles.dots}
@@ -375,7 +437,14 @@ function StepDots({ step }: { step: Step }) {
       accessibilityLabel={`Step ${step} of 3`}
     >
       {[1, 2, 3].map((s) => (
-        <View key={s} style={[styles.dot, s === step && styles.dotActive]} />
+        <View
+          key={s}
+          style={[
+            styles.dot,
+            { backgroundColor: ob.dotInactive },
+            s === step && [styles.dotActive, { backgroundColor: ob.accent }],
+          ]}
+        />
       ))}
     </View>
   );

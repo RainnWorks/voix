@@ -577,8 +577,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: 6,
     borderRadius: radius.sm,
-    backgroundColor: colors.haBlueBg,
-    borderColor: colors.haBlue,
+    // System accent — these are chrome buttons (Open settings, keyboard
+    // setup), not voix moments, so HA blue is no longer spent here
+    // (Marina v3 #3).
+    backgroundColor: colors.sysAccentBg,
+    borderColor: colors.sysAccent,
     borderWidth: 0.5,
   },
   btnPressed: { opacity: 0.85 },
@@ -586,7 +589,7 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.ui,
     fontSize: 12,
     fontWeight: "600",
-    color: colors.haBlueText,
+    color: colors.sysAccent,
   },
   btnSecondary: {
     paddingHorizontal: spacing.md,
@@ -616,8 +619,10 @@ const styles = StyleSheet.create({
     borderColor: colors.rule,
   },
   chipSelected: {
-    backgroundColor: colors.haBlueBg,
-    borderColor: colors.haBlue,
+    // Selected default-voice chip is a chrome selection, not a voix
+    // moment — system accent, not HA blue (Marina v3 #3).
+    backgroundColor: colors.sysAccentBg,
+    borderColor: colors.sysAccent,
   },
   chipPressed: { opacity: 0.7 },
   chipLabel: {
@@ -626,7 +631,7 @@ const styles = StyleSheet.create({
     color: colors.ink,
   },
   chipLabelSelected: {
-    color: colors.haBlueText,
+    color: colors.sysAccent,
     fontWeight: "600",
   },
 

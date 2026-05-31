@@ -7,7 +7,8 @@
   "workspaces": [
     "voix-backend",
     "voix-backend/ui",
-    "packages/*"
+    "packages/*",
+    "clients/*"
   ],
   "scripts": {
     "dev": "bun run --filter voix-backend dev",

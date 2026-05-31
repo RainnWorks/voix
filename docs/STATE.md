@@ -1,4 +1,32 @@
-# voix · Current State (2026-05-31, M24 implementer landed; Phase 6 closed on source)
+# voix · Current State (2026-05-31, Phase 6 closed + verified + M-Arch shipped; ~145 commits)
+
+## What's new since the M24 implementer landed
+
+- **M24 verify trio + fix-pass closed.** Tester PASS on sim scope.
+  Aki (Apple-platform adversary) found 4 HIGH; Wren (product) found
+  1 HIGH + 2 MED. All 7 mandated fixes shipped + pushed:
+  `264b5b5` brand-blue, `6eb40b1` bounce-phase durability via App
+  Group UserDefaults, `d292487` Tom-day os_log diagnostic,
+  `7cdd309` App-Review rationale, `ef4a6e9` voix-keyboard:// scheme
+  on extension, `6a5808a` brand squircle puck asset, `50da3fc`
+  "Set up voix keyboard" settings row + deeplink.
+- **M-Arch Wave B shipped** (commits `730b946` + `fc1854b`). The
+  Realtime provider seam is now load-bearing — neutral
+  `RealtimeEvent` union owns the boundary; OpenAI SDK types stop at
+  `OpenAIRealtimeProvider/Session` adapter in `realtime/openai.ts`;
+  `pipeline/realtime.ts` is a switch on the neutral union with zero
+  OpenAI event names; `realtime` is now a registry kind so
+  `/api/providers?kind=realtime` returns `["openai"]`. The missing
+  `tests/pipeline/realtime.test.ts` ships via a
+  `StubRealtimeProvider` that never loads the openai SDK. 140 tests
+  pass (+6 new). **After Wave A + B both shipping, voix's LLM
+  surface is genuinely provider-agnostic — the next swap is a
+  one-file PR.**
+- 35 verify-results files committed in `f373aaf` for posterity
+  (implementer + tester + adversary + product + fix-pass reports
+  across M19-M24 + Wave A/B implementer reports).
+
+
 
 ## Tom-pending hands-on list (accumulated across M19–M24)
 

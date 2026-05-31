@@ -15,7 +15,14 @@
  * in index.html; this file covers the API calls. Both have to be
  * relative, or HA's ingress prefix gets stripped on the way to the
  * daemon and every request lands as a 404 at the bare domain.)
+ *
+ * Native targets (iOS / macOS — M20+): RN's fetch can't resolve
+ * relative URLs, so getApiBase() returns an absolute daemon URL
+ * (see apiBase.native.ts). Web returns "" (this file's behaviour
+ * is unchanged).
  */
+
+import { getApiBase } from "./apiBase";
 
 export type Voice = {
   id: string;
@@ -58,7 +65,7 @@ export type Voice = {
 export type VoiceUpdate = Partial<Omit<Voice, "id" | "isBuiltin">>;
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const r = await fetch(path, {
+  const r = await fetch(getApiBase() + path, {
     ...init,
     headers: {
       "content-type": "application/json",

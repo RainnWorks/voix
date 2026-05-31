@@ -215,6 +215,23 @@ export function MacOverlay(): null {
       .catch(() => {});
   }, []);
 
+  // M22 fix (Yuki B2 partial): NativeModules.Voix* boot diagnostic.
+  // RCTNewArchEnabled=true in Info.plist while the bridges ship as
+  // legacy RCT_EXTERN_MODULE — works today via 0.81's bridge-compat
+  // shim but is a time bomb. Logging the available Voix* modules at
+  // boot makes "JS thinks the native module is undefined" a one-line
+  // diagnosis instead of a multi-hour goose chase. Paired with the
+  // [voix] NewArch=... NSLog from AppDelegate.
+  useEffect(() => {
+    const voixModules = Object.keys(NativeModules).filter((k) =>
+      k.startsWith("Voix"),
+    );
+    // eslint-disable-next-line no-console
+    console.log(
+      `voix native modules available: [${voixModules.join(", ")}]`,
+    );
+  }, []);
+
   // Tear down on unmount.
   useEffect(() => {
     return () => {

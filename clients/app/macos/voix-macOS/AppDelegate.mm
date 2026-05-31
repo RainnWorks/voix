@@ -14,6 +14,24 @@
   self.initialProps = @{};
   self.dependencyProvider = [RCTAppDependencyProvider new];
 
+  // M22 Fix (Yuki B2 partial): NewArch diagnostic boot log. The
+  // Info.plist declares RCTNewArchEnabled=true, but every voix native
+  // module ships as legacy RCT_EXTERN_MODULE. Today this works via
+  // RN-macOS 0.81's bridge-compat shim; on 0.82+ that shim is removed
+  // and the legacy modules would be invisible to JS — symptom:
+  // NativeModules.VoixHotkey === undefined, hotkey never registers,
+  // hold-to-talk silently dead. The real fix is migrating bridges to
+  // proper TurboModules (M23 surgery). For now this log gives future
+  // debugging a clear signal.
+  //
+  // Pair this with the JS-side diagnostic in MacOverlay.native.tsx
+  // which logs NativeModules.VoixHotkey availability at boot.
+  NSNumber *newArch = [[NSBundle mainBundle].infoDictionary
+                       objectForKey:@"RCTNewArchEnabled"];
+  NSLog(@"[voix] NewArch=%@ bridges=legacy "
+        @"(M22 known: bridge-compat works on RN 0.81; M23+ TurboModule)",
+        [newArch boolValue] ? @"true" : @"false");
+
   // M22 Fix (Yuki H5): request microphone permission at app boot, not on
   // the first ⌃⌥Space press. The dialog activates voix, stealing focus
   // from the user's editor (TextEdit, Notes, etc). When requested at

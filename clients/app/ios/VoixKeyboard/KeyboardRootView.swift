@@ -105,14 +105,17 @@ struct KeyboardRootView: View {
         }
     }
 
+    // voix hero puck — the brand mark, not a generic circle. Rendered
+    // from the vector asset (ink squircle body + centred HA-blue dot)
+    // in Assets.xcassets rather than approximated with a Circle, so the
+    // keyboard — voix's most public surface — shows the real mark and
+    // stays colour-continuous with the capture screen's puck (Wren MED).
+    // `.original` rendering keeps the asset's own ink + blue colours.
     private var puckGlyph: some View {
-        Circle()
-            .fill(Color.white.opacity(0.95))
-            .overlay(
-                Circle()
-                    .fill(haBlue.opacity(0.9))
-                    .padding(7)
-            )
+        Image("Puck")
+            .resizable()
+            .renderingMode(.original)
+            .aspectRatio(contentMode: .fit)
     }
 
     private var pillLabel: String {

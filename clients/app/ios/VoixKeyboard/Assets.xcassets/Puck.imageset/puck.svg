@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  voix puck — hero brand mark for the keyboard pill.
+  Ink squircle body (#18181b) + centred HA-blue dot (#03A9F4), matching
+  voix-brand-guide.html .puck-icon-* (body corner radius ~0.23 x side,
+  dot diameter ~0.35 x side). Vector; preserves-vector-representation is
+  set in Contents.json so it scales at the 24pt pill size.
+-->
+<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="0" y="0" width="48" height="48" rx="11" ry="11" fill="#18181B"/>
+  <circle cx="24" cy="24" r="8.5" fill="#03A9F4"/>
+</svg>

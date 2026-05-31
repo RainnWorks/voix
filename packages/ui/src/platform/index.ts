@@ -40,3 +40,5 @@ export { appInfo } from "./appInfo";
 export { permissions } from "./permissions";
 export { InlineAudioPlayer } from "./inlineAudio";
 export { PlatformWebSocket, type PlatformWebSocketInstance } from "./websocket";
+export { createAudioCapture } from "./audioCapture";
+export { createAudioPlayback } from "./audioPlayback";

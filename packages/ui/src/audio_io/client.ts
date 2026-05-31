@@ -1,33 +1,47 @@
 /**
- * Browser Audio I/O client (M18).
+ * Audio I/O client — thin orchestrator (M21 step 4).
  *
- * The web UI becomes an Audio I/O endpoint: opens a WS to the daemon's
- * /ws route, sends the v1 capability handshake hello with
- * `client_info.kind = "browser-tab"`, streams mic PCM16 LE up, plays
- * back speaker PCM16 LE down.
+ * Was a monolithic Web Audio program at this path. The capture +
+ * playback + storage + WS + appInfo plumbing all moved behind
+ * `../platform/`; this file now wires them together and owns the WS
+ * lifecycle. Same surface (`BrowserAudioIoClient`, statuses,
+ * BrowserClientEvent) so consumers (TalkButton + future RN
+ * TalkButton) keep working unchanged.
  *
- * Mic path:
- *   getUserMedia (Float32) → AudioWorklet/ScriptProcessorNode
- *   → Float32 → Int16 PCM → WS binary frame.
+ * Mic path: platform/audioCapture → onFrame(Int16) → WS binary frame.
+ * Speaker path: WS binary frame → Int16 → platform/audioPlayback.
  *
- * We declare the AudioContext's native sample rate (typically 48 kHz)
- * to the daemon's hello capabilities; the daemon resamples to its
- * upstream provider rate. Same on the speaker side.
- *
- * Speaker path:
- *   WS binary frame → Int16 PCM → Float32 → AudioBufferSource →
- *   AudioContext.destination.
+ * Hello capabilities: mic.sample_rate_hz reads from the capture's
+ * negotiated rate post-start (web AudioContext: ~48 kHz; iOS audio-api:
+ * whatever the bridge gives us). Speaker locked to 24 kHz to match
+ * upstream provider native rate.
  *
  * Lifecycle:
- *   start()  → opens WS + getUserMedia + waits for ready
- *   stop()   → tears down WS + tracks + audio context
+ *   start()  → WS open + permissions + capture/playback start +
+ *              hello + wait for ready
+ *   stop()   → close WS + stop capture/playback
  *   onEvent  → consumer subscribes to daemon→client text events
- *              (transcript_delta, transcript, user_speech_*, etc.)
  *
- * Tab-id persistence: a per-browser UUID lives in localStorage under
- * `voix.browser_device_id` so the same tab gets the same Surfaces
- * row across refreshes. Generated lazily on first start().
+ * Device-id persistence moved to `storage` (platform). Browser tabs
+ * still get a per-tab UUID under `voix.browser_device_id`; native
+ * gets one under the same key in AsyncStorage.
  */
+
+import {
+  PROTOCOL_VERSION,
+  type AudioIoHello,
+  type Capabilities,
+} from "@voix/protocol";
+import {
+  appInfo,
+  createAudioCapture,
+  createAudioPlayback,
+  permissions,
+  PlatformWebSocket,
+  storage,
+  type AudioCapture,
+  type AudioPlayback,
+} from "../platform";
 
 export type BrowserClientEvent =
   | { type: "status"; status: BrowserClientStatus }
@@ -50,64 +64,34 @@ export type BrowserClientOpts = {
 };
 
 const DEVICE_ID_KEY = "voix.browser_device_id";
+/** Speaker rate the daemon ships at today (OpenAI Realtime + Aura).
+ *  Declaring it matches the legacy client.ts:194 — daemon won't
+ *  resample on the hot path; the local AudioContext (or RN bridge)
+ *  is responsible. */
+const SPEAKER_SAMPLE_RATE_HZ = 24000;
+/** Mic capture buffer. 2048 @ 48 kHz ≈ 43 ms — comfortable on WS,
+ *  inside protocol spec §4's 20-100 ms budget. */
+const MIC_BUFFER_SIZE = 2048;
 
 function generateUuid(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
   }
-  // Fallback for ancient browsers.
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
-function getOrCreateDeviceId(): string {
-  try {
-    const existing = localStorage.getItem(DEVICE_ID_KEY);
-    if (existing) return existing;
-    const fresh = `browser-${generateUuid()}`;
-    localStorage.setItem(DEVICE_ID_KEY, fresh);
-    return fresh;
-  } catch {
-    return `browser-${generateUuid()}`;
-  }
-}
-
-/** Build the WS URL relative to the document's current location so
- *  the HA ingress prefix (if any) survives. The same trick the api
- *  client uses for fetch paths. */
-function wsUrlFromDocument(): string {
-  if (typeof window === "undefined") return "ws://localhost:8765/ws";
-  const loc = window.location;
-  const protocol = loc.protocol === "https:" ? "wss:" : "ws:";
-  // strip trailing slash, then append `/ws`
-  const path = loc.pathname.replace(/\/$/, "");
-  return `${protocol}//${loc.host}${path}/ws`;
-}
-
-/** Float32 [-1.0, 1.0] → Int16 PCM. Standard linear scale + clamp. */
-function floatToPcm16(input: Float32Array): Int16Array {
-  const out = new Int16Array(input.length);
-  for (let i = 0; i < input.length; i++) {
-    const s = Math.max(-1, Math.min(1, input[i] ?? 0));
-    out[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-  }
-  return out;
-}
-
-/** Int16 PCM → Float32 [-1.0, 1.0]. */
-function pcm16ToFloat(input: Int16Array): Float32Array {
-  const out = new Float32Array(input.length);
-  for (let i = 0; i < input.length; i++) {
-    out[i] = (input[i] ?? 0) / 0x8000;
-  }
-  return out;
+async function getOrCreateDeviceId(): Promise<string> {
+  const existing = await storage.getItem(DEVICE_ID_KEY);
+  if (existing) return existing;
+  const fresh = `browser-${generateUuid()}`;
+  await storage.setItem(DEVICE_ID_KEY, fresh);
+  return fresh;
 }
 
 export class BrowserAudioIoClient {
   private ws: WebSocket | null = null;
-  private audioContext: AudioContext | null = null;
-  private mediaStream: MediaStream | null = null;
-  private scriptNode: ScriptProcessorNode | null = null;
-  private playbackTime = 0; // next scheduled start for incoming audio
+  private capture: AudioCapture | null = null;
+  private playback: AudioPlayback | null = null;
   private status: BrowserClientStatus = "idle";
 
   constructor(private readonly opts: BrowserClientOpts) {}
@@ -116,14 +100,32 @@ export class BrowserAudioIoClient {
     if (this.status !== "idle") return;
     this.setStatus("connecting");
     try {
-      this.audioContext = new AudioContext();
-      this.mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
+      // Permission gate first (Decision 4 order: permission → session
+      // setup → mic start). Web's permissions impl is a no-op (the
+      // browser-chrome dialog fires inside getUserMedia later);
+      // native (iOS) prompts via AudioManager.
+      const perm = await permissions.requestMicrophone();
+      if (!perm.ok) {
+        this.opts.onEvent({
+          type: "error",
+          message: `microphone permission ${perm.reason}${perm.detail ? `: ${perm.detail}` : ""}`,
+        });
+        this.stop();
+        return;
+      }
+
+      this.playback = createAudioPlayback();
+      await this.playback.start({ sampleRateHz: SPEAKER_SAMPLE_RATE_HZ });
+
+      this.capture = createAudioCapture();
+      // Web's audioContext picks its own rate; the rate we pass here
+      // is honoured by native bridges and informational on web.
+      await this.capture.start({
+        sampleRateHz: 48000,
+        bufferSize: MIC_BUFFER_SIZE,
+        onFrame: (pcm16) => this.sendMicFrame(pcm16),
       });
+
       this.openWs();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -135,33 +137,32 @@ export class BrowserAudioIoClient {
   stop(): void {
     if (this.status === "idle") return;
     this.setStatus("closing");
+    // Quirk preservation: closing WS during connect can hang on some
+    // iOS versions — try/catch was at client.ts:138-141 originally.
     try {
       this.ws?.close();
     } catch {
       // best-effort
     }
-    this.scriptNode?.disconnect();
-    this.scriptNode = null;
-    for (const track of this.mediaStream?.getTracks() ?? []) {
-      track.stop();
-    }
-    this.mediaStream = null;
-    void this.audioContext?.close();
-    this.audioContext = null;
-    this.playbackTime = 0;
+    this.ws = null;
+    this.capture?.stop();
+    this.capture = null;
+    this.playback?.stop();
+    this.playback = null;
     this.setStatus("idle");
   }
 
   // ─── Internals ────────────────────────────────────────────────────
 
-  private openWs(): void {
-    const url = wsUrlFromDocument();
-    const ws = new WebSocket(url);
+  private async openWs(): Promise<void> {
+    const base = await appInfo.getApiBase();
+    const url = appInfo.getWsUrl(base);
+    const ws = new PlatformWebSocket(url);
     ws.binaryType = "arraybuffer";
     this.ws = ws;
 
     ws.addEventListener("open", () => {
-      this.sendHello();
+      void this.sendHello();
     });
     ws.addEventListener("message", (ev) => this.handleMessage(ev));
     ws.addEventListener("close", () => {
@@ -173,36 +174,48 @@ export class BrowserAudioIoClient {
     });
   }
 
-  private sendHello(): void {
-    if (!this.audioContext || !this.ws) return;
-    const micRate = this.audioContext.sampleRate;
-    const hello = {
+  private async sendHello(): Promise<void> {
+    if (!this.capture || !this.ws) return;
+    const micRate = this.capture.sampleRate ?? 48000;
+    const friendlyName = await appInfo.getFriendlyName();
+    const deviceId = await getOrCreateDeviceId();
+    const capabilities: Capabilities = {
+      mic: { sample_rate_hz: micRate, channels: 1 },
+      // Speaker is locked to 24 kHz to match the upstream provider's
+      // native rate (OpenAI Realtime + Aura both ship 24 kHz PCM16).
+      // The daemon resamples to whatever we declare; declaring 24 kHz
+      // lets us avoid the extra hot-path resample and play exactly
+      // what the model produced — pitch-correct.
+      speaker: { sample_rate_hz: SPEAKER_SAMPLE_RATE_HZ },
+      // getUserMedia's echoCancellation gives us hardware-ish AEC on
+      // browser; iOS's playAndRecord category + AVAudioSession AEC
+      // gives us the same on native. Daemon skips its software gate.
+      half_duplex_on_chip: true,
+    };
+    const hello: AudioIoHello = {
       type: "hello",
-      protocol_version: 1,
+      protocol_version: PROTOCOL_VERSION,
       token: this.opts.wsToken,
-      device_id: getOrCreateDeviceId(),
+      device_id: deviceId,
       intent: this.opts.intent ?? "discuss",
       voice_id: this.opts.voiceId,
-      capabilities: {
-        mic: { sample_rate_hz: micRate, channels: 1 },
-        // Speaker is locked to 24 kHz to match the upstream provider's
-        // native rate (OpenAI Realtime + Aura both ship 24 kHz PCM16).
-        // The daemon side now resamples speaker frames to whatever we
-        // declare (B1 fix), but declaring 24 kHz lets us avoid the
-        // extra resample on the daemon's hot path and play exactly
-        // what the model produced — pitch-correct.
-        speaker: { sample_rate_hz: 24000 },
-        // getUserMedia's echoCancellation gives us hardware-ish AEC
-        // on the browser side; daemon skips its software gate.
-        half_duplex_on_chip: true,
-      },
+      capabilities,
       client_info: {
-        kind: "browser-tab",
+        kind: appInfo.clientKind,
         version: "0.1.0",
-        friendly_name: typeof document !== "undefined" ? document.title : "browser",
+        friendly_name: friendlyName,
       },
     };
     this.ws.send(JSON.stringify(hello));
+  }
+
+  private sendMicFrame(pcm16: Int16Array): void {
+    if (!this.ws || this.ws.readyState !== this.ws.OPEN) return;
+    // ArrayBufferLike → ArrayBuffer cast under TS5.x strict-DOM lib
+    // (used when packages/ui is traversed via the RN-CLI app's
+    // tsconfig). The runtime payload is always a fresh
+    // non-shared buffer.
+    this.ws.send(pcm16.buffer as ArrayBuffer);
   }
 
   private handleMessage(ev: MessageEvent): void {
@@ -215,79 +228,24 @@ export class BrowserAudioIoClient {
       }
       if (parsed.type === "ready") {
         this.setStatus("ready");
-        this.startMicPump();
+        this.setStatus("listening");
       } else if (parsed.type === "decline") {
         this.opts.onEvent({
           type: "error",
           message: `declined: ${String(parsed.reason)}${parsed.detail ? ` — ${parsed.detail}` : ""}`,
         });
+      } else if (parsed.type === "audio_start") {
+        this.setStatus("speaking");
+      } else if (parsed.type === "audio_end") {
+        this.setStatus("listening");
       }
       this.opts.onEvent({ type: "daemon", event: parsed });
       return;
     }
     // Binary frame — speaker PCM.
     if (ev.data instanceof ArrayBuffer) {
-      this.playSpeaker(new Int16Array(ev.data));
+      this.playback?.pushFrame(new Int16Array(ev.data));
     }
-  }
-
-  /** Connect the mic to a ScriptProcessorNode that batches Float32
-   *  samples, converts to Int16, and ships via WS. ScriptProcessor
-   *  is deprecated in favour of AudioWorklet but works everywhere
-   *  without a separate worklet file; we'll upgrade when we ship
-   *  the M18 audit's recommendations. */
-  private startMicPump(): void {
-    if (!this.audioContext || !this.mediaStream || !this.ws) return;
-    const src = this.audioContext.createMediaStreamSource(this.mediaStream);
-    // bufferSize 2048 @ 48 kHz ≈ 43 ms per chunk — comfortable for WS.
-    const node = this.audioContext.createScriptProcessor(2048, 1, 1);
-    node.onaudioprocess = (e) => {
-      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-      const ch = e.inputBuffer.getChannelData(0);
-      const pcm = floatToPcm16(ch);
-      // ArrayBufferLike → ArrayBuffer cast: under TS5.x strict-DOM lib
-      // (used when packages/ui is traversed via the RN-CLI app's
-      // tsconfig in M20), WebSocket.send rejects ArrayBufferLike. The
-      // runtime payload is always a fresh non-shared buffer.
-      this.ws.send(pcm.buffer as ArrayBuffer);
-    };
-    src.connect(node);
-    // ScriptProcessor needs to be in the audio graph to fire its
-    // onaudioprocess callback, even though we don't want it to make
-    // sound. Route to destination via a zero-gain so it ticks
-    // without emitting.
-    const gain = this.audioContext.createGain();
-    gain.gain.value = 0;
-    node.connect(gain);
-    gain.connect(this.audioContext.destination);
-    this.scriptNode = node;
-    this.setStatus("listening");
-  }
-
-  /** Schedule a chunk of speaker audio to play back on the audio
-   *  context. We maintain a running "next scheduled start time" so
-   *  consecutive chunks queue end-to-end without gaps. */
-  private playSpeaker(pcm: Int16Array): void {
-    if (!this.audioContext) return;
-    // The hello declares speaker.sample_rate_hz = 24000; the daemon
-    // forwards 24 kHz PCM untouched. We tag the buffer at 24 kHz so
-    // the AudioContext (typically 48 kHz native) resamples on the
-    // way to the output device — pitch-correct.
-    const buf = this.audioContext.createBuffer(1, pcm.length, 24000);
-    // copyToChannel expects Float32Array<ArrayBuffer>. The helper
-    // returns a generic Float32Array; assigning the converted values
-    // into the buffer's channel-0 view sidesteps the type narrowing.
-    const channel = buf.getChannelData(0);
-    const floats = pcm16ToFloat(pcm);
-    for (let i = 0; i < floats.length; i++) channel[i] = floats[i] ?? 0;
-    const node = this.audioContext.createBufferSource();
-    node.buffer = buf;
-    node.connect(this.audioContext.destination);
-    const now = this.audioContext.currentTime;
-    const startAt = Math.max(now, this.playbackTime);
-    node.start(startAt);
-    this.playbackTime = startAt + buf.duration;
-    this.setStatus("speaking");
   }
 
   private setStatus(next: BrowserClientStatus): void {

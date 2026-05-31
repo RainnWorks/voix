@@ -70,10 +70,10 @@
 		KEXT0002000000000000A001 /* CaptureSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CaptureSession.swift; path = VoixKeyboard/CaptureSession.swift; sourceTree = "<group>"; };
 		KEXT0002000000000000A002 /* KeyboardState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = KeyboardState.swift; path = VoixKeyboard/KeyboardState.swift; sourceTree = "<group>"; };
 		KEXT0002000000000000A003 /* KeyboardRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = KeyboardRootView.swift; path = VoixKeyboard/KeyboardRootView.swift; sourceTree = "<group>"; };
+		KEXT0003000000000000A001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = VoixKeyboard/Assets.xcassets; sourceTree = "<group>"; };
 		SHARED00000000000000A001 /* voix.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = voix.entitlements; path = voix/voix.entitlements; sourceTree = "<group>"; };
 		SHARED00000000000000A002 /* KeyboardSessionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = KeyboardSessionState.swift; path = VoixKeyboard/Shared/KeyboardSessionState.swift; sourceTree = "<group>"; };
 		SHARED00000000000000A003 /* SharedContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SharedContainer.swift; path = VoixKeyboard/Shared/SharedContainer.swift; sourceTree = "<group>"; };
-		KEXT0003000000000000A001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = VoixKeyboard/Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */

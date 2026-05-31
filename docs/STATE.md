@@ -1,6 +1,6 @@
-# voix · Current State (2026-05-31, M23 implementer landed; ~108 commits this session)
+# voix · Current State (2026-05-31, M24 implementer landed; Phase 6 closed on source)
 
-## Tom-pending hands-on list (accumulated across M19–M23)
+## Tom-pending hands-on list (accumulated across M19–M24)
 
 These are the only items requiring Tom's physical hands. Code-side
 shipped + verified clean otherwise.
@@ -31,10 +31,23 @@ shipped + verified clean otherwise.
    or cleanly captured. If neither, M23.5 follow-up:
    AVAudioSession.setCategory(.playAndRecord, .voiceChat, [.allowBluetooth,
    .duckOthers]) at PTT start.
+6. **iOS keyboard bounce loop on physical iPhone** — M24 close. See
+   `docs/phase-6/m24-manual.md` steps 5-10 (load-bearing). Requires
+   Apple Developer Program enrolment (Architect Decision 7 +
+   Coordinator Delta B). The sim covers compile + URL handler +
+   keyboard UI; only physical device verifies App Group entitlement
+   and the actual Notes/Mail/Messages/Reminders/Safari insertion.
+   Three sub-items:
+   - Enable voix keyboard in Settings → Keyboards → voix → Allow
+     Full Access (Tom-touch in sim and on device).
+   - End-to-end bounce (tap pill → record → return → text inserts)
+     in ≥4 host apps.
+   - Memory profile: keyboard RSS < 30 MB during idle (Xcode →
+     Debug Navigator → Memory).
 
 Recovery, screenshots, and per-step expectations are in
 `docs/phase-6/m20-manual.md`, `m21-manual.md`, `m22-manual.md`,
-`m23-manual.md`.
+`m23-manual.md`, `m24-manual.md`.
 
 
 
@@ -61,6 +74,96 @@ Recovery, screenshots, and per-step expectations are in
   `docs/testing/ui-harness.md` (1474 lines, ready to implement),
   `docs/testing/ha-integration-harness.md` (695 lines, verified
   source).
+
+---
+
+## Status — Phase 6 closed on source (M24 implementer landed); iOS keyboard shippable pending Tom physical-device acceptance
+
+**M24 implementer landed (2026-05-31)** — voix ships a system-wide
+iOS keyboard extension. 8 commits per Decision 8 of
+`docs/phase-6/architecture-m24.md`:
+
+- Step 1 (`8c200ec`): iOS bundle id renamed from
+  `org.reactjs.native.example.voix` to `co.rowm.voix`. Required for
+  App Group entitlement + TestFlight signing. Coordinator Delta A:
+  M21 sim mic grant re-applied under the new bundle id, documented
+  in m24-manual step 1.
+- Step 2 (`b4d8bee`): VoixKeyboard custom-keyboard-extension target
+  added. Bundle id `co.rowm.voix.keyboard`. Stub
+  KeyboardViewController, Info.plist with
+  `com.apple.keyboard-service` + `RequestsOpenAccess: true`, Podfile
+  block with no pods (Apple rejects keyboards that ship a JS engine).
+  PBXCopyFilesBuildPhase on host embeds the appex into
+  voix.app/PlugIns.
+- Step 3 (`450fb7c`): App Group `group.co.rowm.voix` entitled on
+  both targets. `VoixKeyboard/Shared/KeyboardSessionState.swift` +
+  `SharedContainer.swift` (added to both targets) own the file IPC
+  schema and helpers. `scripts/check-app-group.sh` guards Risk 4.
+- Step 4 (`7aa251a`): host registers the `voix://` URL scheme.
+  AppDelegate forwards openURL to `RCTLinkingManager` so RN's
+  Linking module receives the event. `packages/ui` adds a
+  `Linking.addEventListener` hook that parses
+  `voix://capture?session_id=...&return=...` into a `keyboardCapture`
+  state slot; a placeholder `KeyboardCaptureScreen` displays the
+  parsed params.
+- Step 5 (`2ca214d`): keyboard SwiftUI root —
+  `KeyboardRootView.swift` (Decisions 4 + 5: voix wordmark, big
+  HA-blue pill, "or pick another keyboard ⌄" hint, Full Access
+  onboarding stack when off, "Open Settings" CTA via
+  `UIApplication.openSettingsURLString`, globe key + long-press
+  switcher). Pill tap writes pending state, calls
+  `extensionContext.open(voix://capture?…)`, transitions to
+  `.bounced`.
+- Step 6 (`0560024`): host closes the loop. New in-tree pod
+  `VoixIOSNative` mirrors the macOS VoixNative pattern; ships
+  `VoixKeyboardBridge` with writeSession / readSession / returnTo
+  Keyboard via App Group IO. `KeyboardCaptureScreen.tsx` replaces
+  the placeholder with the real auto-capture flow — opens
+  `BrowserAudioIoClient` with intent dictate, collects the daemon's
+  canonical `transcript` event, writes back, then bounces via
+  `voix-keyboard://done?...`. 30 s hard cap on capture; cleanup on
+  unmount marks `cancelled`.
+- Step 7 (`f96b5de`): return polling + 60 s timeout + insertText.
+  `viewDidAppear` reads the shared container; dispatches based on
+  `KeyboardSessionState.status`. `done` → insertText + delete;
+  `failed` / `cancelled` → 2 s toast + delete; `pending` /
+  `capturing` → start 500 ms poll. 60 s hard timeout writes
+  `cancelled` to the shared file so a slow host that wakes later
+  doesn't paste into the wrong field.
+- Step 8 (this commit): `docs/phase-6/m24-manual.md` + STATE
+  close-out + tag `v0.phase-6`.
+
+**M24 smoke (every step, all green)**:
+- `bun install` — no changes (cached)
+- `bun run check` — native-siblings OK; protocol-sync OK; pin-bounds OK
+- `(cd voix-backend/ui && bun run build)` — 339-341 modules, ~640 ms
+- `bunx tsc -p clients/app/tsconfig.json --noEmit` — clean (from
+  repo root)
+- iOS sim build: `xcodebuild -workspace voix.xcworkspace -scheme voix
+  -sdk iphonesimulator -destination 'platform=iOS Simulator,id=
+  C6ED4127-F20B-44D8-9830-345608F8ECBD'` — **BUILD SUCCEEDED**.
+  `find build -name "*.appex"` shows VoixKeyboard.appex embedded in
+  voix.app/PlugIns.
+- macOS build: `xcodebuild -workspace voix.xcworkspace -scheme
+  voix-macOS -sdk macosx` — **BUILD SUCCEEDED** (no regression).
+- `bash scripts/check-app-group.sh` — OK (group.co.rowm.voix
+  present in host + extension).
+- Sim probe: `xcrun simctl openurl booted "voix://capture?session_id
+  =test123&return=..."` triggers iOS's "Open in voix?" prompt — URL
+  scheme registered.
+
+**Coordinator deltas surfaced (2 of 3 ceiling)**:
+- **Delta A — bundle id rename invalidates M21 sim mic grant**.
+  Re-granted under `co.rowm.voix`. Documented in m24-manual step 1.
+- **Delta B — Apple Developer Program required for physical
+  device**. Implementer sandbox can't enrol. Steps 1-7 are sim-
+  coverable + verified; step 8 (physical-device acceptance) is
+  Tom-pending. Sub-warning: free-tier provisioning rejects App
+  Group capability — Tom MUST be enrolled before iPhone install.
+
+**M24 verify trio pending** (Tester, Adversary, Product) —
+implementer report at
+`docs/phase-6/verify-results/M24-implementer-report.md`.
 
 ---
 
@@ -734,8 +837,10 @@ audio_io home-assistant-voice-095e4e: hello v1 kind=puck intent=discuss
   `docs/phase-6/architecture-m19.md`; deps map at
   `docs/phase-6/research-ui-deps.md`.
 
-**Phase 5 complete on source.** Phase 6 underway: M19 closed (this
-commit), M20-M24 ahead. v0.phase-4 + v0.phase-5 tags pending
+**Phase 5 complete on source.** Phase 6 closed on source as of M24
+(2026-05-31): M19-M24 all merged to main. Tag `v0.phase-6` pending
+Tom-physical-device acceptance per Architect Decision 7 +
+Coordinator Delta B. v0.phase-4 + v0.phase-5 tags pending
 real-puck verification.
 
 **Phase 4 complete on source** (M09-M15 + M13b). Waiting on

@@ -64,6 +64,9 @@ export function VoiceList({ onPickVoice }: Props) {
 
   return (
     <View style={styles.outer}>
+      {/* The NOW strip is the section header for the grouped voices list
+          — it stays a voix moment (HA blue), captioning the surface +
+          active voice that the rows below choose between (Marina v3 #2). */}
       {devices[0] && (
         <View style={styles.activeStrip}>
           <Text style={styles.activeStripLabel}>NOW</Text>
@@ -77,13 +80,19 @@ export function VoiceList({ onPickVoice }: Props) {
         </View>
       )}
 
-      <View style={styles.grid}>
-        {voices.map((m) => (
-          <VoiceCard
+      {/* Inset-grouped list (iOS UITableView grouped style), not a stack
+          of free-standing cards (Marina v3 #2): one rounded section,
+          hairline row separators, the swatch as the leading accessory, a
+          checkmark on the active row (no "ACTIVE" badge / "Activate"
+          link), and a chevron to drill into the editor. */}
+      <View style={styles.group}>
+        {voices.map((m, i) => (
+          <VoiceRow
             key={m.id}
             voice={m}
             active={m.id === activeVoiceId}
             activating={activating === m.id}
+            last={i === voices.length - 1}
             onEdit={() => onPickVoice(m.id)}
             onActivate={() => activateVoice(m.id)}
           />
@@ -119,67 +128,79 @@ function friendlyDeviceName(device: Device): string {
   }
 }
 
-function VoiceCard({
+/**
+ * One grouped-list row. Tapping the row body **activates** the voice
+ * (the picker's primary action — checkmark moves to it); the trailing
+ * chevron drills into the editor. This replaces the card's split
+ * "tap-to-edit + Activate-link" model with the native picker shape
+ * Marina v3 #2 asked for.
+ */
+function VoiceRow({
   voice,
   active,
   activating,
+  last,
   onEdit,
   onActivate,
 }: {
   voice: Voice;
   active: boolean;
   activating: boolean;
+  last: boolean;
   onEdit: () => void;
   onActivate: () => void;
 }) {
   const swatch = nearestSwatch(voice.color);
   return (
-    <View style={[styles.card, active && styles.cardActive]}>
+    <View style={[styles.row, !last && styles.rowSeparator]}>
       <Pressable
-        onPress={onEdit}
-        style={({ pressed }) => [styles.cardClickable, pressed && styles.cardPressed]}
+        onPress={active ? undefined : onActivate}
+        disabled={activating}
+        accessibilityRole="radio"
+        accessibilityState={{ selected: active }}
+        accessibilityLabel={
+          active ? `${voice.name}, active voice` : `Activate ${voice.name}`
+        }
+        style={({ pressed }) => [styles.rowMain, pressed && !active && styles.rowPressed]}
       >
-        <Puck size={44} color={swatch.hex} />
-        <View style={styles.cardBody}>
-          <View style={styles.cardTitleRow}>
-            <Text style={styles.cardName}>{voice.name}</Text>
-            {active && <Text style={styles.activeTag}>ACTIVE</Text>}
-          </View>
-          {/* M23 — italic HA-blue tone one-liner. Voice-identity
-              copy (brand moment), unlike the muted routingHint below
-              which is auto-router metadata. */}
-          {voice.tone && (
-            <Text style={styles.cardTone} numberOfLines={1}>
+        {/* Leading accessory — the brand swatch (a sanctioned voix glyph). */}
+        <Puck size={30} color={swatch.hex} />
+        <View style={styles.rowBody}>
+          <Text style={styles.rowName} numberOfLines={1}>
+            {voice.name}
+          </Text>
+          {voice.tone ? (
+            <Text style={styles.rowTone} numberOfLines={1}>
               {voice.tone}
             </Text>
+          ) : (
+            <Text style={styles.rowDesc} numberOfLines={1}>
+              {voice.routingHint ||
+                (voice.type === "realtime"
+                  ? "Real-time back and forth."
+                  : "Press, speak, paste.")}
+            </Text>
           )}
-          <Text style={styles.cardDesc} numberOfLines={2}>
-            {voice.routingHint ||
-              (voice.type === "realtime"
-                ? "Real-time back and forth. Streams transcript live."
-                : "Press, speak, paste.")}
-          </Text>
         </View>
+        {/* Trailing checkmark on the active row — replaces the "ACTIVE"
+            badge + "Activate" link (Marina v3 #2). System accent = a
+            chrome selection mark, not a voix moment. */}
+        {activating ? (
+          <ActivityIndicator size="small" color={colors.sysAccent} />
+        ) : active ? (
+          <Text style={styles.checkmark}>✓</Text>
+        ) : null}
       </Pressable>
-      {!active && (
-        <Pressable
-          onPress={onActivate}
-          disabled={activating}
-          // Visual chip stays compact; hitSlop lifts the tap area to the
-          // ~44pt HIG floor on phone without bloating it on desktop
-          // (M-MobileFit target g).
-          hitSlop={{ top: 12, bottom: 12, left: 10, right: 10 }}
-          accessibilityRole="button"
-          accessibilityLabel={`Activate ${voice.name}`}
-          style={({ pressed }) => [
-            styles.activateBtn,
-            pressed && styles.activateBtnPressed,
-            activating && styles.activateBtnDisabled,
-          ]}
-        >
-          <Text style={styles.activateBtnText}>{activating ? "…" : "Activate"}</Text>
-        </Pressable>
-      )}
+      {/* Detail-disclosure chevron — drills into the voice editor. */}
+      <Pressable
+        onPress={onEdit}
+        hitSlop={{ top: 12, bottom: 12, left: 8, right: 12 }}
+        accessibilityRole="button"
+        accessibilityLabel={`Edit ${voice.name}`}
+        style={({ pressed }) => [styles.chevronHit, pressed && styles.rowPressed]}
+      >
+        <Text style={styles.chevron}>›</Text>
+      </Pressable>
     </View>
   );
 }
@@ -216,88 +237,76 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
 
-  grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.md,
-  },
-  card: {
-    flexGrow: 1,
-    minWidth: 280,
-    flexBasis: "48%",
+  // Inset-grouped section container (Marina v3 #2): one rounded card
+  // that holds every row, hairline separators between them — the iOS
+  // UITableView grouped idiom, not a stack of free-standing cards.
+  group: {
     backgroundColor: colors.bgElevated,
     borderRadius: radius.lg,
     borderWidth: 0.5,
     borderColor: colors.rule,
-    padding: spacing.md,
-    gap: spacing.sm,
+    overflow: "hidden",
   },
-  cardActive: {
-    borderColor: colors.haBlue,
-    borderWidth: 2,
-    padding: spacing.md - 1.5,
-  },
-  cardClickable: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing.md,
-  },
-  cardPressed: { opacity: 0.7 },
-  cardBody: { flex: 1, minWidth: 0, gap: 4 },
-  cardTitleRow: {
+  row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
   },
-  cardName: {
+  rowSeparator: {
+    borderBottomWidth: 0.5,
+    borderBottomColor: colors.ruleSoft,
+  },
+  rowMain: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingLeft: spacing.lg,
+    paddingRight: spacing.sm,
+    paddingVertical: spacing.md,
+    minHeight: 56,
+  },
+  rowPressed: { backgroundColor: colors.bgHover },
+  rowBody: { flex: 1, minWidth: 0, gap: 2 },
+  rowName: {
     fontFamily: fontFamily.ui,
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "500",
     color: colors.ink,
   },
-  activeTag: {
-    fontFamily: fontFamily.mono,
-    fontSize: 9,
-    color: colors.haBlueText,
-    backgroundColor: colors.haBlueBg,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 3,
-    letterSpacing: 0.5,
+  // Active-row selection mark — system accent (chrome), not HA blue.
+  checkmark: {
+    fontSize: 17,
+    fontWeight: "600",
+    color: colors.sysAccent,
+  },
+  // Native-style detail-disclosure chevron.
+  chevronHit: {
+    minHeight: 56,
+    paddingHorizontal: spacing.md,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  chevron: {
+    fontSize: 20,
+    color: colors.textQuiet,
+    fontWeight: "400",
   },
   // M23 — tone snippet under the voice name. Italic HA-blue-text earns
-  // its brand colour as voice-identity, distinct from cardDesc (muted
-  // metadata). Uses `haBlueText` (#0277BD) not `haBlue` (#03A9F4)
-  // because raw haBlue at 11pt italic on bgSubtle is 2.49:1 — fails
-  // WCAG AA. Priya B1 (M23 fix-pass).
-  cardTone: {
+  // its brand colour as voice-identity. Uses `haBlueText` (#0277BD) not
+  // `haBlue` (#03A9F4) for WCAG AA contrast. Priya B1 (M23 fix-pass).
+  rowTone: {
     fontFamily: fontFamily.ui,
-    fontSize: 11,
+    fontSize: 12,
     fontStyle: "italic",
     color: colors.haBlueText,
-    lineHeight: 14,
+    lineHeight: 15,
   },
-  cardDesc: {
+  rowDesc: {
     fontFamily: fontFamily.ui,
     fontSize: 12,
     color: colors.textMuted,
-    lineHeight: 16,
-  },
-  activateBtn: {
-    alignSelf: "flex-start",
-    marginLeft: 44 + spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 4,
-    backgroundColor: colors.bgSubtle,
-    borderRadius: radius.sm,
-  },
-  activateBtnPressed: { backgroundColor: colors.bgHover },
-  activateBtnDisabled: { opacity: 0.5 },
-  activateBtnText: {
-    fontFamily: fontFamily.ui,
-    fontSize: 12,
-    color: colors.sysAccent,
-    fontWeight: "500",
+    lineHeight: 15,
   },
 
   loadingBox: { padding: 40, alignItems: "center" },

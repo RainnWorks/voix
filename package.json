@@ -17,5 +17,8 @@
     "build:ui": "bun run --filter voix-ui build",
     "typecheck": "bun run --filter '*' typecheck",
     "test": "bun run --filter '*' test"
+  },
+  "overrides": {
+    "@sinclair/typebox": "^0.34.49"
   }
 }

@@ -18,15 +18,15 @@
 
 import { useEffect, useState } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
-import { Puck } from "../components/Puck.tsx";
+import { Puck } from "../components/Puck";
 import {
   type Surface,
   type SurfaceCapabilities,
   type Voice,
   surfacesApi,
   voicesApi,
-} from "../lib/api.ts";
-import { colors, fontFamily, nearestSwatch, radius, spacing } from "../lib/theme.ts";
+} from "../lib/api";
+import { colors, fontFamily, nearestSwatch, radius, spacing } from "../lib/theme";
 
 export function SurfaceList() {
   const [surfaces, setSurfaces] = useState<Surface[] | null>(null);

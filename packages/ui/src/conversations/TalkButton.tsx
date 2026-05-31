@@ -16,8 +16,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { BrowserAudioIoClient, type BrowserClientStatus } from "../audio_io/client.ts";
-import { colors, fontFamily, radius, spacing } from "../lib/theme.ts";
+import { BrowserAudioIoClient, type BrowserClientStatus } from "../audio_io/client";
+import { colors, fontFamily, radius, spacing } from "../lib/theme";
 
 const WS_TOKEN_URL = "api/auth/ws-token";
 

@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { AppShell, type Section } from "./components/AppShell.tsx";
-import { ConversationDetail } from "./conversations/ConversationDetail.tsx";
-import { ConversationList } from "./conversations/ConversationList.tsx";
-import { SurfaceList } from "./surfaces/SurfaceList.tsx";
-import { VoiceEditor } from "./voices/VoiceEditor.tsx";
-import { VoiceList } from "./voices/VoiceList.tsx";
+import { AppShell, type Section } from "./components/AppShell";
+import { ConversationDetail } from "./conversations/ConversationDetail";
+import { ConversationList } from "./conversations/ConversationList";
+import { SurfaceList } from "./surfaces/SurfaceList";
+import { VoiceEditor } from "./voices/VoiceEditor";
+import { VoiceList } from "./voices/VoiceList";
 
 export function App() {
   const [section, setSection] = useState<Section>("voices");

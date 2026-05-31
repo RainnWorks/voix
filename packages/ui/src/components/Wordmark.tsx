@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from "react-native";
-import { colors, fontFamily } from "../lib/theme.ts";
-import { Puck } from "./Puck.tsx";
+import { colors, fontFamily } from "../lib/theme";
+import { Puck } from "./Puck";
 
 /**
  * The wordmark: glyph + name + pronunciation. Per the marketing brand

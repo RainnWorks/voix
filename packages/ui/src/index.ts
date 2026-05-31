@@ -26,22 +26,22 @@
  * Consumers go through the named components above.
  */
 
-export { App } from "./App.tsx";
-export * from "./lib/theme.ts";
-export * from "./lib/api.ts";
-export { Puck } from "./components/Puck.tsx";
-export { Wordmark } from "./components/Wordmark.tsx";
-export { AppShell, type Section } from "./components/AppShell.tsx";
-export { VoiceList } from "./voices/VoiceList.tsx";
-export { VoiceEditor } from "./voices/VoiceEditor.tsx";
-export { ConversationList } from "./conversations/ConversationList.tsx";
-export { ConversationDetail } from "./conversations/ConversationDetail.tsx";
-export { TalkButton } from "./conversations/TalkButton.tsx";
-export { InlineAudioPlayer } from "./conversations/InlineAudioPlayer.tsx";
-export { SurfaceList } from "./surfaces/SurfaceList.tsx";
+export { App } from "./App";
+export * from "./lib/theme";
+export * from "./lib/api";
+export { Puck } from "./components/Puck";
+export { Wordmark } from "./components/Wordmark";
+export { AppShell, type Section } from "./components/AppShell";
+export { VoiceList } from "./voices/VoiceList";
+export { VoiceEditor } from "./voices/VoiceEditor";
+export { ConversationList } from "./conversations/ConversationList";
+export { ConversationDetail } from "./conversations/ConversationDetail";
+export { TalkButton } from "./conversations/TalkButton";
+export { InlineAudioPlayer } from "./conversations/InlineAudioPlayer";
+export { SurfaceList } from "./surfaces/SurfaceList";
 export {
   BrowserAudioIoClient,
   type BrowserClientEvent,
   type BrowserClientStatus,
   type BrowserClientOpts,
-} from "./audio_io/client.ts";
+} from "./audio_io/client";

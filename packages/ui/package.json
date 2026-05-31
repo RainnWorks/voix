@@ -1,0 +1,30 @@
+{
+  "name": "@voix/ui",
+  "private": true,
+  "version": "0.0.0",
+  "description": "voix shared UI — RN-flavoured components consumed by the web (voix-backend/ui), iOS, and macOS shells. Source-only; bundlers transpile from TS.",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "react-native": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@voix/protocol": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "19.1.4",
+    "react-native": "0.81.6"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.4",
+    "react": "19.1.4",
+    "react-native": "0.81.6",
+    "react-native-web": "^0.21.0",
+    "typescript": "5.9.3"
+  }
+}

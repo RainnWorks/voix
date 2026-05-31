@@ -9,6 +9,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@voix/protocol": "workspace:*",
+    "@voix/ui": "workspace:*",
     "react": "19.1.4",
     "react-dom": "19.1.4",
     "react-native": "0.81.6",
@@ -19,6 +21,7 @@
     "@types/react-dom": "^19.1.4",
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "5.9.3",
-    "vite": "^6.0.5"
+    "vite": "^6.0.5",
+    "vite-tsconfig-paths": "^5.1.4"
   }
 }

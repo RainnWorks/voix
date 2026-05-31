@@ -13,10 +13,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { Puck } from "../components/Puck";
-import { historyApi, type HistoryEntry, type Voice, voicesApi } from "../lib/api";
-import { colors, fontFamily, nearestSwatch, radius, spacing } from "../lib/theme";
-import { TalkButton } from "./TalkButton";
+import { Puck } from "../components/Puck.tsx";
+import { historyApi, type HistoryEntry, type Voice, voicesApi } from "../lib/api.ts";
+import { colors, fontFamily, nearestSwatch, radius, spacing } from "../lib/theme.ts";
+import { TalkButton } from "./TalkButton.tsx";
 
 type Props = {
   onPickEntry: (entryId: string) => void;

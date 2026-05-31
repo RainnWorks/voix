@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { colors, fontFamily, radius, spacing } from "../lib/theme";
-import { Puck } from "./Puck";
-import { Wordmark } from "./Wordmark";
+import { colors, fontFamily, radius, spacing } from "../lib/theme.ts";
+import { Puck } from "./Puck.tsx";
+import { Wordmark } from "./Wordmark.tsx";
 
 /**
  * Sidebar + main-area shell, matching the desktop guide's screen

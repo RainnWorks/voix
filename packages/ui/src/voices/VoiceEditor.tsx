@@ -8,8 +8,8 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Puck } from "../components/Puck";
-import { type Voice, type VoiceUpdate, voicesApi } from "../lib/api";
+import { Puck } from "../components/Puck.tsx";
+import { type Voice, type VoiceUpdate, voicesApi } from "../lib/api.ts";
 import {
   colors,
   fontFamily,
@@ -18,7 +18,7 @@ import {
   paletteOrder,
   radius,
   spacing,
-} from "../lib/theme";
+} from "../lib/theme.ts";
 
 type Props = {
   voiceId: string;

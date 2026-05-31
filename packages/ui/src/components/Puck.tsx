@@ -1,5 +1,5 @@
 import { View } from "react-native";
-import { colors } from "../lib/theme";
+import { colors } from "../lib/theme.ts";
 
 /**
  * The Voix puck icon. Two concentric shapes:

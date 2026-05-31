@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
-import { Puck } from "../components/Puck";
-import { type Device, type Voice, devicesApi, voicesApi } from "../lib/api";
-import { colors, fontFamily, nearestSwatch, radius, spacing } from "../lib/theme";
+import { Puck } from "../components/Puck.tsx";
+import { type Device, type Voice, devicesApi, voicesApi } from "../lib/api.ts";
+import { colors, fontFamily, nearestSwatch, radius, spacing } from "../lib/theme.ts";
 
 type Props = {
   onPickVoice: (voiceId: string) => void;

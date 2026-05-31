@@ -42,3 +42,9 @@ export { InlineAudioPlayer } from "./inlineAudio";
 export { PlatformWebSocket, type PlatformWebSocketInstance } from "./websocket";
 export { createAudioCapture } from "./audioCapture";
 export { createAudioPlayback } from "./audioPlayback";
+export {
+  SafeAreaProvider,
+  SafeAreaView,
+  useSafeAreaInsets,
+  type Edge,
+} from "./safeArea";

@@ -1,4 +1,28 @@
-# voix · Current State (2026-05-31, M22 implementer landed)
+# voix · Current State (2026-05-31, M22 closed; ~98 commits this session)
+
+## Tom-pending hands-on list (accumulated across M19–M22)
+
+These are the only items requiring Tom's physical hands. Code-side
+shipped + verified clean otherwise.
+
+1. **macOS visual confirm with live Metro** — M22 step 1 shipped
+   `scripts/macos-screenshot.sh`. M20's previous screenshot caught
+   the no-Metro-stalled state. Run after `bun run start` is live.
+2. **iOS PTT hold-button round-trip** — M21 close. iOS sim
+   visually confirmed rendering @voix/ui via daemon-fetch
+   (`/tmp/voix-smoke-screenshots/ios-after-boot.png` +
+   `m21-step5.png`). Hold-to-talk is mechanically wired through
+   `react-native-audio-api` but never end-to-end-tested.
+3. **macOS hotkey + paste smoke** — M22 close. ⌃⌥Space →
+   overlay → release → paste in TextEdit. First run will need
+   Accessibility grant (System Settings → Privacy & Security →
+   Accessibility → voix). Pre-explanation banner now ships in
+   M22 fix-pass.
+
+Recovery, screenshots, and per-step expectations are in
+`docs/phase-6/m20-manual.md`, `m21-manual.md`, `m22-manual.md`.
+
+
 
 ## Read this first
 

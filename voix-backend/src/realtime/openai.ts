@@ -1,17 +1,23 @@
 /**
- * OpenAI Realtime client — thin lifecycle wrapper over the official SDK.
+ * OpenAI Realtime adapter — the translation layer behind the neutral
+ * `RealtimeProvider` seam (M-Arch Wave B / refactor #1).
  *
  * Owns:
  *   • Session config building (GA `type: "realtime"` shape).
- *   • Connect handshake (await `session.created` before returning).
- *   • A few compound actions that map to >1 SDK send (e.g.
- *     `sendToolResult` = `conversation.item.create` + `response.create`).
+ *   • Connect handshake (await `session.created` before `open()` resolves).
+ *   • INBOUND translation: SDK events → neutral `RealtimeEvent` (the
+ *     `rt.on(...)` subscriptions that used to live in
+ *     `pipeline/realtime.ts:wireRealtimeEvents`).
+ *   • OUTBOUND translation: neutral `ToolSpec` → `RealtimeFunctionTool`
+ *     (`toOpenAiTool`); compound sends (e.g. `sendFunctionResult` =
+ *     `conversation.item.create`).
  *
- * Does NOT translate the SDK's events into our own union — that was
- * dead weight. Subscribers reach the typed emitter via `client.rt.on(
- * "response.output_audio.delta", e => …)` and get the SDK's exact
- * event type back. Adding a layer here would just duplicate the SDK's
- * type surface.
+ * Wave A left this file deliberately un-translated ("subscribers reach
+ * the typed emitter via `client.rt.on(...)`"). Wave B reverses that
+ * call: the SDK's event names now stop HERE, so `RealtimePipeline` and
+ * the orchestrator deal only in the neutral union and a second realtime
+ * provider (Gemini Live, Azure Speech, …) can slot in behind the same
+ * `RealtimeProvider` interface.
  *
  * GA session schema (post May 2026):
  *   { type: "realtime", output_modalities: ["audio"|"text"],
@@ -33,12 +39,19 @@ import type {
 } from "openai/resources/realtime/realtime";
 import type { ToolSpec } from "../context/types.ts";
 import { log } from "../log.ts";
+import type {
+  RealtimeEvent,
+  RealtimeEventHandler,
+  RealtimeProvider,
+  RealtimeProviderSessionConfig,
+  RealtimeSession,
+} from "../pipeline/providers/realtime/types.ts";
 
 /** M-Arch Wave A #4: translate a neutral `ToolSpec` to the OpenAI
- *  Realtime function-tool shape. Adapter lives next to the realtime
- *  client because this is the natural provider boundary — once Wave B
- *  makes the realtime seam load-bearing, every realtime provider will
- *  own a translation like this. */
+ *  Realtime function-tool shape. The translation lives here — the
+ *  natural provider boundary — so the neutral tool shape is all that
+ *  ever crosses the `RealtimeProvider` seam. Also drops the internal
+ *  `__source` field (it isn't part of OpenAI's tool schema). */
 export function toOpenAiTool(spec: ToolSpec): RealtimeFunctionTool {
   return {
     type: "function",
@@ -48,47 +61,47 @@ export function toOpenAiTool(spec: ToolSpec): RealtimeFunctionTool {
   };
 }
 
-export type RealtimeSessionConfig = {
-  /** Model ID. e.g. `gpt-realtime-2` for full bidir, `gpt-4o-mini-transcribe`
-   *  for transcription-only sessions. */
-  model: string;
-  /** "audio" for full bidirectional voice, "text" for transcription-only
-   *  (dictation). */
-  outputModalities: ["audio"] | ["text"];
-  /** System prompt sent in session.update. Empty string = let OpenAI use
-   *  its default. */
-  instructions: string;
-  /** Inner transcription model. Always set in practice — we want user
-   *  transcripts on every session, even the audio ones. */
-  transcribeModel?: string;
-  /** Voice for `output_modalities: ["audio"]`. Ignored for text-only. */
-  voice?: string;
-  /** semantic_vad eagerness. Higher = the model stops listening sooner
-   *  after a pause. "high" works for short dictation; "low" is more
-   *  patient for ramble-y inputs. */
-  vadEagerness?: "low" | "medium" | "high";
-  /** Tool specs to register up front. Empty array = no tools. Populated
-   *  by the context registry once MCP sources are wired. */
-  tools?: RealtimeFunctionTool[];
-};
+/**
+ * OpenAI realtime provider. Stateless beyond the bound API key — each
+ * `open()` dials a fresh connected session.
+ */
+export class OpenAIRealtimeProvider implements RealtimeProvider {
+  readonly name = "openai";
 
-export class OpenAIRealtimeClient {
-  /** The SDK instance. Public so callers can subscribe to typed events
-   *  directly (`client.rt.on("response.output_audio.delta", e => …)`).
-   *  Null until `connect()` resolves. */
-  rt: OpenAIRealtimeWS | null = null;
+  constructor(private readonly apiKey: string) {}
+
+  async open(config: RealtimeProviderSessionConfig): Promise<RealtimeSession> {
+    const session = new OpenAIRealtimeSession(this.apiKey, config);
+    await session.connect();
+    return session;
+  }
+}
+
+/** Factory matching the registry's `() => Promise<RealtimeProvider>`
+ *  shape (orchestrator registers this under kind "realtime"). */
+export function createOpenAiRealtimeProvider(apiKey: string): RealtimeProvider {
+  return new OpenAIRealtimeProvider(apiKey);
+}
+
+/**
+ * One connected OpenAI realtime session. Translates the SDK's typed
+ * event stream into neutral `RealtimeEvent`s for subscribers.
+ */
+class OpenAIRealtimeSession implements RealtimeSession {
+  private rt: OpenAIRealtimeWS | null = null;
   private closed = false;
+  private readonly handlers: RealtimeEventHandler[] = [];
 
   constructor(
     private readonly apiKey: string,
-    private readonly cfg: RealtimeSessionConfig,
+    private readonly cfg: RealtimeProviderSessionConfig,
   ) {}
 
   /**
-   * Open the WS, wait for `session.created`, then send the initial
-   * `session.update` with our mode config. Caller can subscribe to
-   * `this.rt.on(...)` either before or after this resolves — the SDK
-   * buffers handlers across the handshake.
+   * Open the WS, wait for `session.created`, send the initial
+   * `session.update`, then wire the inbound event translation. Resolves
+   * once the session is live; subscribers added afterwards still get
+   * every subsequent event.
    */
   async connect(): Promise<void> {
     const client = new OpenAI({ apiKey: this.apiKey });
@@ -119,6 +132,92 @@ export class OpenAIRealtimeClient {
     });
 
     rt.send({ type: "session.update", session: this.buildSessionBody() });
+    this.wireTranslation(rt);
+  }
+
+  subscribe(handler: RealtimeEventHandler): void {
+    this.handlers.push(handler);
+  }
+
+  private emit(event: RealtimeEvent): void {
+    for (const h of this.handlers) h(event);
+  }
+
+  /** INBOUND translation: SDK events → neutral `RealtimeEvent`. This is
+   *  the body that used to live in `RealtimePipeline.wireRealtimeEvents`
+   *  as raw `rt.on("response.output_audio.delta", …)` subscriptions. */
+  private wireTranslation(rt: OpenAIRealtimeWS): void {
+    rt.on("input_audio_buffer.speech_started", () => {
+      this.emit({ type: "user_speech_start" });
+    });
+
+    rt.on("input_audio_buffer.speech_stopped", () => {
+      this.emit({ type: "user_speech_stop" });
+    });
+
+    rt.on("conversation.item.input_audio_transcription.delta", (event) => {
+      const text = event.delta ?? "";
+      if (!text) return;
+      this.emit({ type: "user_transcript_delta", text });
+    });
+
+    rt.on("conversation.item.input_audio_transcription.completed", (event) => {
+      this.emit({ type: "user_transcript_complete", text: event.transcript ?? "" });
+    });
+
+    rt.on("response.output_audio_transcript.delta", (event) => {
+      const text = event.delta ?? "";
+      if (!text) return;
+      this.emit({ type: "assistant_transcript_delta", text });
+    });
+
+    rt.on("response.output_audio.delta", (event) => {
+      if (!event.delta) return;
+      // OpenAI Realtime emits 24 kHz PCM16 LE base64.
+      this.emit({ type: "assistant_audio", pcm: Buffer.from(event.delta, "base64") });
+    });
+
+    rt.on("response.done", () => {
+      this.emit({ type: "assistant_done" });
+    });
+
+    rt.on("response.function_call_arguments.done", (event) => {
+      let argsJson: Record<string, unknown> = {};
+      try {
+        const parsed = JSON.parse(event.arguments);
+        if (parsed && typeof parsed === "object") {
+          argsJson = parsed as Record<string, unknown>;
+        }
+      } catch (err) {
+        // Bad args: reply with an error result so the model isn't left
+        // hanging, and DON'T surface a function_call (the tool never
+        // runs with garbage args). Behaviour preserved from the old
+        // pipeline-side parse.
+        log.warn(`realtime(openai): tool ${event.name} bad JSON args`, err);
+        this.sendFunctionResult(
+          event.call_id,
+          JSON.stringify({ error: "could not parse arguments" }),
+        );
+        return;
+      }
+      this.emit({ type: "function_call", callId: event.call_id, name: event.name, argsJson });
+    });
+
+    rt.on("error", (err) => {
+      const message = err.error?.message ?? err.message ?? String(err);
+      this.emit({ type: "error", message });
+    });
+
+    rt.socket.addEventListener("close", (ev) => {
+      // A close WE initiated (watchdog / teardown) sets `closed` first —
+      // don't surface that as an error. An unexpected upstream close is
+      // an error the pipeline tears down on.
+      if (this.closed) return;
+      this.emit({
+        type: "error",
+        message: `realtime connection closed code=${ev.code} reason=${ev.reason ?? ""}`,
+      });
+    });
   }
 
   private buildSessionBody(): RealtimeSessionCreateRequest {
@@ -146,15 +245,33 @@ export class OpenAIRealtimeClient {
       output_modalities: this.cfg.outputModalities,
       audio,
       ...(this.cfg.instructions && { instructions: this.cfg.instructions }),
-      ...(this.cfg.tools && this.cfg.tools.length > 0 && { tools: this.cfg.tools }),
+      ...(this.cfg.tools &&
+        this.cfg.tools.length > 0 && { tools: this.cfg.tools.map(toOpenAiTool) }),
     };
   }
 
   /**
-   * Send a chunk of 24 kHz PCM16 audio. Caller is responsible for
-   * upsampling from the device's native 16 kHz before calling.
+   * Replace the session's tools + (optionally) refresh instructions.
+   * Used after context-gather completes — the daemon registers tools
+   * at session.update#1 with placeholder instructions, then issues a
+   * second session.update once context has been gathered. Tools are the
+   * neutral shape; translated here.
    */
-  sendAudio(pcm24kBytes: Buffer): void {
+  updateSession(patch: { instructions?: string; tools?: ToolSpec[] }): void {
+    if (!this.rt || this.closed) return;
+    const session: RealtimeSessionCreateRequest = {
+      type: "realtime",
+      ...(patch.instructions !== undefined && { instructions: patch.instructions }),
+      ...(patch.tools !== undefined && { tools: patch.tools.map(toOpenAiTool) }),
+    };
+    this.safeSend({ type: "session.update", session });
+  }
+
+  /**
+   * Push a chunk of 24 kHz PCM16 audio. Caller upsamples from the
+   * device's native 16 kHz before calling.
+   */
+  pushMicPcm(pcm24kBytes: Buffer): void {
     if (!this.rt || this.closed || pcm24kBytes.length === 0) return;
     this.safeSend({
       type: "input_audio_buffer.append",
@@ -162,14 +279,17 @@ export class OpenAIRealtimeClient {
     });
   }
 
-  /**
-   * Tell OpenAI to commit the current input audio buffer and produce
-   * a response. Most useful for explicit end-of-turn signalling when
-   * semantic VAD isn't doing the right thing.
-   */
-  commitAndRespond(): void {
+  /** Commit the current input audio buffer (manual end-of-turn). Most
+   *  useful when semantic VAD isn't doing the right thing. */
+  commitInput(): void {
     if (!this.rt || this.closed) return;
     this.safeSend({ type: "input_audio_buffer.commit" });
+  }
+
+  /** Ask the model to begin a response. Paired with `commitInput()` for
+   *  manual turn control. */
+  sendAssistantStart(): void {
+    if (!this.rt || this.closed) return;
     this.safeSend({ type: "response.create" });
   }
 
@@ -182,11 +302,9 @@ export class OpenAIRealtimeClient {
    * result lands and is incorporated into the in-flight response.
    * Sending `response.create` after every tool result causes
    * "Conversation already has an active response in progress" errors
-   * when the model parallel-calls multiple tools — the first call's
-   * `response.create` starts the response, then the second tool result
-   * tries to start ANOTHER response while the first is still streaming.
+   * when the model parallel-calls multiple tools.
    */
-  sendToolResult(callId: string, output: string): void {
+  sendFunctionResult(callId: string, output: string): void {
     if (!this.rt || this.closed) return;
     this.safeSend({
       type: "conversation.item.create",
@@ -198,29 +316,13 @@ export class OpenAIRealtimeClient {
     });
   }
 
-  /**
-   * Replace the session's tools + (optionally) refresh instructions.
-   * Used after context-gather completes — the daemon registers tools
-   * at session.update#1 with placeholder instructions, then issues a
-   * second session.update once context has been gathered.
-   */
-  updateSession(patch: { instructions?: string; tools?: RealtimeFunctionTool[] }): void {
-    if (!this.rt || this.closed) return;
-    const session: RealtimeSessionCreateRequest = {
-      type: "realtime",
-      ...(patch.instructions !== undefined && { instructions: patch.instructions }),
-      ...(patch.tools !== undefined && { tools: patch.tools }),
-    };
-    this.safeSend({ type: "session.update", session });
-  }
-
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
     try {
       this.rt?.close({ code: 1000, reason: "client close" });
     } catch (e) {
-      log.debug("realtime: close threw", e);
+      log.debug("realtime(openai): close threw", e);
     }
   }
 
@@ -236,7 +338,7 @@ export class OpenAIRealtimeClient {
     try {
       this.rt.send(event);
     } catch (e) {
-      log.debug("realtime: send swallowed", e);
+      log.debug("realtime(openai): send swallowed", e);
     }
   }
 }

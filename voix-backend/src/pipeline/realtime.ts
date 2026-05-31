@@ -1,9 +1,12 @@
 /**
- * OpenAI Realtime pipeline implementation.
+ * Realtime pipeline implementation.
  *
- * One instance per capture. Owns the upstream OpenAI Realtime WS, the
- * 16→24 kHz resample state, the (optional) software echo gate, the
- * watchdog, tool routing, and the dictation post-process handoff.
+ * One instance per capture. Owns a neutral `RealtimeSession` (resolved
+ * from a `RealtimeProvider` — Wave B / refactor #1), the 16→24 kHz
+ * resample state, the (optional) software echo gate, the watchdog, tool
+ * routing, and the dictation post-process handoff. It reacts only to
+ * neutral `RealtimeEvent`s — no provider (OpenAI) event name appears in
+ * this file; the adapter in `src/realtime/openai.ts` translates them.
  *
  * Talks to the endpoint only through `PipelineCallbacks` — no WS, no
  * Elysia, no audio-io protocol shapes. M07 carved this out of the old
@@ -14,10 +17,6 @@
  *   • intent=discuss → realtime audio in + out, tools enabled
  *   • intent=dictate → realtime model in text-only mode (STT only),
  *     then voice.donePrompt over the raw transcript on completion
- *
- * Subsequent provider work (Phase 4) replaces the always-OpenAI-Realtime
- * choice with a Provider abstraction; this file becomes the "premium"
- * realtime provider implementation behind that interface.
  */
 
 import { EchoGate } from "../audio/echo_gate.ts";
@@ -28,11 +27,6 @@ import { voixSource } from "../context/sources/voix.ts";
 import type { ContextEntry, ToolSpec } from "../context/types.ts";
 import { appendHistory } from "../history/store.ts";
 import { log } from "../log.ts";
-import {
-  type OpenAIRealtimeClient,
-  type RealtimeSessionConfig,
-  toOpenAiTool,
-} from "../realtime/openai.ts";
 import { SessionRecorder } from "../recordings/store.ts";
 import {
   forget as forgetTranscript,
@@ -42,6 +36,11 @@ import {
 } from "../transcripts/store.ts";
 import type { Voice } from "../voices/types.ts";
 import { type PostProcessKeys, postProcess } from "./providers/llm/index.ts";
+import type {
+  RealtimeProvider,
+  RealtimeProviderSessionConfig,
+  RealtimeSession,
+} from "./providers/realtime/types.ts";
 import type { Pipeline, PipelineCallbacks, PipelineStart } from "./types.ts";
 import { SessionWatchdog } from "./watchdog.ts";
 
@@ -82,16 +81,17 @@ function computeRms(pcm16: Buffer): number {
 /** Dependencies the orchestrator (or a test) injects into a
  *  RealtimePipeline at construction. Wave A #5 removes the
  *  vendor-named `openaiApiKey` from `PipelineStart`; instead, the
- *  orchestrator constructs the OpenAI client via the factory closure
- *  below + supplies any keys needed for done-phase post-process.
+ *  orchestrator resolves a `RealtimeProvider` (Wave B) + supplies any
+ *  keys needed for done-phase post-process.
  *
- *  Wave B (refactor #1) replaces this with a neutral RealtimeProvider
- *  interface; today the factory still returns the concrete OpenAI
- *  client because the realtime seam isn't load-bearing yet. */
+ *  Wave B (refactor #1) makes the seam load-bearing: the pipeline holds
+ *  a neutral `RealtimeProvider` resolved from the registry and never
+ *  names OpenAI. The provider's `open()` returns a connected session;
+ *  every event the pipeline reacts to is a neutral `RealtimeEvent`. */
 export type RealtimePipelineDeps = {
-  /** Build an OpenAI Realtime client from a session config. Constructed
-   *  by the orchestrator with the appropriate API key bound. */
-  realtimeClientFactory: (cfg: RealtimeSessionConfig) => OpenAIRealtimeClient;
+  /** Neutral realtime provider. The orchestrator resolves this from the
+   *  registry ("openai" today); tests inject a `StubRealtimeProvider`. */
+  realtimeProvider: RealtimeProvider;
   /** Keys for the dictate done-phase LLM call. Open-shaped — keyed by
    *  provider name; the post-process facade looks up the key matching
    *  `voice.postProcessProvider`. */
@@ -99,7 +99,7 @@ export type RealtimePipelineDeps = {
 };
 
 export class RealtimePipeline implements Pipeline {
-  private openai: OpenAIRealtimeClient | null = null;
+  private session: RealtimeSession | null = null;
   private upsample: ReturnType<typeof createResampler>;
   private echoGate: EchoGate | null;
   private startedAt = Date.now();
@@ -118,6 +118,9 @@ export class RealtimePipeline implements Pipeline {
 
   /** Accumulated user transcript across delta events. */
   private userPartial = "";
+  /** Accumulated assistant transcript for the current response turn;
+   *  flushed to the recorder + log on `assistant_done`, then reset. */
+  private assistantPartial = "";
   /** First error message we observed — included in history so silent
    *  upstream failures aren't invisible. */
   private lastError: string | null = null;
@@ -166,13 +169,12 @@ export class RealtimePipeline implements Pipeline {
     const toolsPromise = listAllTools();
 
     const cfg = this.buildRealtimeConfig(this.voice);
-    this.openai = this.deps.realtimeClientFactory(cfg);
 
     try {
-      await this.openai.connect();
+      this.session = await this.deps.realtimeProvider.open(cfg);
     } catch (err) {
-      log.warn(`pipeline ${this.deviceId}: openai connect failed`, err);
-      this.cb.sendEvent({ type: "error", message: "openai connect failed" });
+      log.warn(`pipeline ${this.deviceId}: realtime connect failed`, err);
+      this.cb.sendEvent({ type: "error", message: "realtime connect failed" });
       this.cb.close();
       return;
     }
@@ -186,13 +188,12 @@ export class RealtimePipeline implements Pipeline {
     this.contextSnapshot = contextEntries;
 
     if (this.intent === "discuss") {
-      // Translate neutral ToolSpecs into the OpenAI Realtime function-tool
-      // shape at the provider boundary (Wave A #4). `toOpenAiTool`
-      // also drops the internal `__source` field — that used to be the
-      // job of `stripInternalSourceField`, now handled by adapter.
-      this.openai.updateSession({
+      // Push composed instructions + the neutral ToolSpecs across the
+      // seam. The provider adapter (Wave B) translates tools into its
+      // native shape; the pipeline never sees an OpenAI tool type.
+      this.session.updateSession({
         instructions: this.composeRealtimeInstructions(this.voice, contextEntries),
-        tools: tools.map(toOpenAiTool),
+        tools,
       });
       log.info(
         `pipeline ${this.deviceId}: ctx_entries=${contextEntries.length} tools=${tools.length}`,
@@ -215,7 +216,7 @@ export class RealtimePipeline implements Pipeline {
   }
 
   pushMic(pcm: Buffer): void {
-    if (this.closed || !this.openai || pcm.length === 0) return;
+    if (this.closed || !this.session || pcm.length === 0) return;
     // Note: we do NOT bump the watchdog on raw mic chunks. Pucks
     // stream mic bytes continuously while connected, so using
     // arrival-as-activity means the idle gate never fires when
@@ -247,7 +248,7 @@ export class RealtimePipeline implements Pipeline {
     }
 
     const pcm24k = resampleChunk(pcm, this.upsample);
-    this.openai.sendAudio(pcm24k);
+    this.session.pushMicPcm(pcm24k);
   }
 
   readyForInput(): void {
@@ -261,7 +262,7 @@ export class RealtimePipeline implements Pipeline {
   }
 
   bargeIn(): void {
-    if (this.closed || !this.openai) return;
+    if (this.closed || !this.session) return;
     // Realtime API supports response cancellation; this is the hook
     // for the upcoming barge-in event in the v1 audio-io spec.
     // (No-op today — the OpenAI client doesn't expose cancel yet;
@@ -273,7 +274,7 @@ export class RealtimePipeline implements Pipeline {
     if (this.closed) return;
     this.closed = true;
     this.watchdog.stop();
-    void this.openai?.close();
+    void this.session?.close();
     voixSource.unbindSession(this.deviceId);
     forgetTranscript(this.deviceId, this.sessionId);
     // Best-effort flush of mic + speaker captures to disk. Fire and
@@ -300,7 +301,7 @@ export class RealtimePipeline implements Pipeline {
     return parts.join("\n\n");
   }
 
-  private buildRealtimeConfig(voice: Voice): RealtimeSessionConfig {
+  private buildRealtimeConfig(voice: Voice): RealtimeProviderSessionConfig {
     if (this.intent === "dictate") {
       return {
         // gpt-realtime-2 is the cheapest SKU; transcription model
@@ -324,81 +325,90 @@ export class RealtimePipeline implements Pipeline {
     };
   }
 
+  /**
+   * Subscribe to the provider's neutral event stream and react. This is
+   * the load-bearing seam (Wave B / refactor #1): a switch on the
+   * provider-agnostic `RealtimeEvent` union. No OpenAI event name
+   * appears here — the adapter translated them all away.
+   */
   private wireRealtimeEvents(): void {
-    const rt = this.openai?.rt;
-    if (!rt) return;
+    if (!this.session) return;
 
-    rt.on("input_audio_buffer.speech_started", () => {
-      this.watchdog.setUserSpeaking(true);
-      this.cb.sendEvent({ type: "user_speech_start" });
-    });
+    this.session.subscribe((event) => {
+      switch (event.type) {
+        case "user_speech_start":
+          this.watchdog.setUserSpeaking(true);
+          this.cb.sendEvent({ type: "user_speech_start" });
+          break;
 
-    rt.on("input_audio_buffer.speech_stopped", () => {
-      this.watchdog.setUserSpeaking(false);
-      this.cb.sendEvent({ type: "user_speech_end" });
-    });
+        case "user_speech_stop":
+          this.watchdog.setUserSpeaking(false);
+          this.cb.sendEvent({ type: "user_speech_end" });
+          break;
 
-    rt.on("conversation.item.input_audio_transcription.delta", (event) => {
-      const delta = event.delta ?? "";
-      if (!delta) return;
-      this.userPartial += delta;
-      this.cb.sendEvent({ type: "transcript_delta", text: delta });
-      void writePartialTranscript(this.deviceId, this.sessionId, "user", this.userPartial).catch(
-        (e) => log.debug(`pipeline ${this.deviceId}: partial write failed`, e),
-      );
-    });
+        case "user_transcript_delta": {
+          this.userPartial += event.text;
+          this.cb.sendEvent({ type: "transcript_delta", text: event.text });
+          void writePartialTranscript(
+            this.deviceId,
+            this.sessionId,
+            "user",
+            this.userPartial,
+          ).catch((e) => log.debug(`pipeline ${this.deviceId}: partial write failed`, e));
+          break;
+        }
 
-    rt.on("conversation.item.input_audio_transcription.completed", (event) => {
-      const text = event.transcript ?? "";
-      this.recorder.pushTranscript("user", text);
-      this.handleUserTranscriptComplete(text).catch((err) => {
-        log.warn(`pipeline ${this.deviceId}: handleUserTranscriptComplete failed:`, err);
-      });
-    });
+        case "user_transcript_complete": {
+          this.recorder.pushTranscript("user", event.text);
+          this.handleUserTranscriptComplete(event.text).catch((err) => {
+            log.warn(`pipeline ${this.deviceId}: handleUserTranscriptComplete failed:`, err);
+          });
+          break;
+        }
 
-    rt.on("response.output_audio_transcript.done", (event) => {
-      const t = (event.transcript ?? "").trim();
-      if (!t) return;
-      this.recorder.pushTranscript("assistant", t);
-      log.info(
-        `pipeline ${this.deviceId}: assistant said (${t.length} chars): ` +
-          `${t.slice(0, 100)}${t.length > 100 ? "…" : ""}`,
-      );
-    });
+        case "assistant_transcript_delta":
+          // Accumulate within the turn; flushed on assistant_done.
+          this.assistantPartial += event.text;
+          break;
 
-    rt.on("response.output_audio.delta", (event) => {
-      if (!event.delta) return;
-      const pcm24k = Buffer.from(event.delta, "base64");
-      this.echoGate?.observeSpeaker(pcm24k);
-      this.recorder.pushSpeaker(pcm24k);
-      // OpenAI Realtime emits 24 kHz PCM16 LE; the connection layer
-      // resamples to the endpoint's declared rate (M16 + B1 fix).
-      this.cb.sendSpeaker(pcm24k, OPENAI_RATE);
-      this.watchdog.setAssistantSpeaking(true);
-    });
+        case "assistant_audio":
+          this.echoGate?.observeSpeaker(event.pcm);
+          this.recorder.pushSpeaker(event.pcm);
+          // 24 kHz PCM16 LE; the connection layer resamples to the
+          // endpoint's declared rate (M16 + B1 fix).
+          this.cb.sendSpeaker(event.pcm, OPENAI_RATE);
+          this.watchdog.setAssistantSpeaking(true);
+          break;
 
-    rt.on("response.done", () => {
-      this.watchdog.setAssistantSpeaking(false);
-    });
+        case "assistant_done": {
+          this.watchdog.setAssistantSpeaking(false);
+          const t = this.assistantPartial.trim();
+          this.assistantPartial = "";
+          if (t) {
+            this.recorder.pushTranscript("assistant", t);
+            log.info(
+              `pipeline ${this.deviceId}: assistant said (${t.length} chars): ` +
+                `${t.slice(0, 100)}${t.length > 100 ? "…" : ""}`,
+            );
+          }
+          break;
+        }
 
-    rt.on("response.function_call_arguments.done", (event) => {
-      this.handleFunctionCall(event.call_id, event.name, event.arguments).catch((err) => {
-        log.warn(`pipeline ${this.deviceId}: handleFunctionCall failed:`, err);
-      });
-    });
+        case "function_call":
+          this.handleFunctionCall(event.callId, event.name, event.argsJson).catch((err) => {
+            log.warn(`pipeline ${this.deviceId}: handleFunctionCall failed:`, err);
+          });
+          break;
 
-    rt.on("error", (err) => {
-      const msg = err.error?.message ?? err.message ?? String(err);
-      log.warn(`pipeline ${this.deviceId}: openai error`, msg);
-      this.lastError = msg;
-      this.cb.sendEvent({ type: "error", message: msg });
-    });
-
-    rt.socket.addEventListener("close", (ev) => {
-      log.info(
-        `pipeline ${this.deviceId}: openai closed code=${ev.code} reason=${ev.reason ?? ""}`,
-      );
-      this.cb.close();
+        case "error":
+          // A realtime error (incl. unexpected upstream close, which the
+          // adapter maps here) is fatal: surface it, then tear down.
+          log.warn(`pipeline ${this.deviceId}: realtime error`, event.message);
+          this.lastError = event.message;
+          this.cb.sendEvent({ type: "error", message: event.message });
+          this.cb.close();
+          break;
+      }
     });
   }
 
@@ -469,26 +479,17 @@ export class RealtimePipeline implements Pipeline {
   private async handleFunctionCall(
     callId: string,
     name: string,
-    argumentsJson: string,
+    argsJson: Record<string, unknown>,
   ): Promise<void> {
-    let parsedArgs: Record<string, unknown> = {};
-    try {
-      const parsed = JSON.parse(argumentsJson);
-      if (parsed && typeof parsed === "object") {
-        parsedArgs = parsed as Record<string, unknown>;
-      }
-    } catch (err) {
-      log.warn(`pipeline ${this.deviceId}: tool ${name} bad JSON args`, err);
-      this.openai?.sendToolResult(callId, JSON.stringify({ error: "could not parse arguments" }));
-      return;
-    }
+    // Args arrive pre-parsed across the neutral seam — the provider
+    // adapter owns JSON parsing + bad-arg replies (Wave B).
     const startedAt = Date.now();
-    const result = await callTool(name, parsedArgs);
+    const result = await callTool(name, argsJson);
     const elapsedMs = Date.now() - startedAt;
     log.info(
       `pipeline ${this.deviceId}: tool ${name} ${result.isError ? "ERR" : "ok"} in ${elapsedMs}ms ` +
         `(out=${result.content.length} chars)`,
     );
-    this.openai?.sendToolResult(callId, result.content);
+    this.session?.sendFunctionResult(callId, result.content);
   }
 }

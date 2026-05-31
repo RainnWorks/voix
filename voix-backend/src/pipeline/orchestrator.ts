@@ -14,9 +14,9 @@
  *   discuss | "traditional"       | (any)                 | TraditionalDiscussPipeline
  *   discuss | "realtime" (∅)      | (any)                 | RealtimePipeline
  *
- * M15 reshapes RealtimePipeline behind a `RealtimeProvider` interface
- * so the dial is symmetric (a Realtime impl per provider, same as
- * STT/LLM/TTS today).
+ * Wave B (#1) reshapes RealtimePipeline behind the neutral
+ * `RealtimeProvider` seam so the dial is symmetric: realtime is a
+ * registry kind resolved by name, same as STT/LLM/TTS.
  *
  * Provider construction is deferred to factory functions registered at
  * boot — letting tests substitute stubs without going near the network
@@ -34,24 +34,25 @@
 
 import { config } from "../env.ts";
 import { log } from "../log.ts";
-import { OpenAIRealtimeClient } from "../realtime/openai.ts";
+import { createOpenAiRealtimeProvider } from "../realtime/openai.ts";
 import { TraditionalDictatePipeline } from "./dictate_traditional.ts";
 import { TraditionalDiscussPipeline } from "./discuss_traditional.ts";
 import type { PostProcessKeys } from "./providers/llm/index.ts";
 import { createOpenAiProvider } from "./providers/llm/openai.ts";
 import { createOpenRouterProvider } from "./providers/llm/openrouter.ts";
 import type { LlmProvider } from "./providers/llm/types.ts";
+import type { RealtimeProvider } from "./providers/realtime/types.ts";
 import { createDeepgramProvider } from "./providers/stt/deepgram.ts";
 import type { SttProvider } from "./providers/stt/types.ts";
 import { createAuraProvider } from "./providers/tts/aura.ts";
 import type { TtsProvider } from "./providers/tts/types.ts";
-import { RealtimePipeline, type RealtimePipelineDeps } from "./realtime.ts";
+import { RealtimePipeline } from "./realtime.ts";
 import type { Pipeline, PipelineFactory, PipelineStart } from "./types.ts";
 
-/** Kinds of providers the registry knows about today. Realtime is
- *  Wave B (the seam isn't load-bearing yet); for now any "realtime"
- *  decision is hard-coded onto `RealtimePipeline` + `OpenAIRealtimeClient`. */
-export type ProviderKind = "stt" | "llm" | "tts";
+/** Kinds of providers the registry knows about. Wave B makes "realtime"
+ *  load-bearing — it's now a registry kind like stt/llm/tts, resolved by
+ *  name through the neutral `RealtimeProvider` seam. */
+export type ProviderKind = "stt" | "llm" | "tts" | "realtime";
 
 /** Provider instance shape per kind. Used by the registry's typed
  *  `get`/`register` so callers don't have to cast. */
@@ -61,7 +62,9 @@ export type ProviderFor<K extends ProviderKind> = K extends "stt"
     ? LlmProvider
     : K extends "tts"
       ? TtsProvider
-      : never;
+      : K extends "realtime"
+        ? RealtimeProvider
+        : never;
 
 export type ProviderFactory<K extends ProviderKind> = () => Promise<ProviderFor<K>>;
 
@@ -94,6 +97,7 @@ class InMemoryRegistry implements ProviderRegistry {
     stt: new Map(),
     llm: new Map(),
     tts: new Map(),
+    realtime: new Map(),
   };
 
   register<K extends ProviderKind>(kind: K, name: string, factory: ProviderFactory<K>): void {
@@ -154,6 +158,14 @@ export function defaultRegistry(): ProviderRegistry {
     reg.register("tts", "aura", () => createAuraProvider(key));
   }
 
+  // Realtime (Wave B #1 — seam is now load-bearing). The OpenAI impl is
+  // the only realtime provider today; a second (Gemini Live, Azure)
+  // would be one more `register("realtime", …)` line here.
+  if (config.openaiApiKey) {
+    const key = config.openaiApiKey;
+    reg.register("realtime", "openai", async () => createOpenAiRealtimeProvider(key));
+  }
+
   return reg;
 }
 
@@ -184,30 +196,28 @@ export function getDefaultRegistry(): ProviderRegistry {
 }
 
 /** Extra wiring the orchestrator threads into pipelines beyond the
- *  registry-resolved STT/LLM/TTS providers. Wave A #5 carved these
- *  off `PipelineStart.openaiApiKey` so the pipeline interface stays
- *  vendor-neutral; the orchestrator owns the env→deps mapping.
+ *  registry-resolved STT/LLM/TTS/realtime providers. Wave A #5 carved
+ *  these off `PipelineStart.openaiApiKey` so the pipeline interface
+ *  stays vendor-neutral; the orchestrator owns the env→deps mapping.
  *
- *  Wave B (refactor #1) makes the realtime seam load-bearing — at
- *  that point `realtimeClientFactory` becomes a registry lookup like
- *  STT/LLM/TTS. */
+ *  Wave B (refactor #1) made the realtime seam load-bearing — the
+ *  realtime provider now resolves from the registry by name (like
+ *  STT/LLM/TTS). `realtimeProviderFactory` overrides that lookup so a
+ *  test can inject a `StubRealtimeProvider` without a registry entry. */
 export type OrchestratorOptions = {
-  /** Build an OpenAI Realtime client for a given session config. The
-   *  default uses `config.openaiApiKey` bound at boot. */
-  realtimeClientFactory?: RealtimePipelineDeps["realtimeClientFactory"];
+  /** Resolve the realtime provider for a session. Default resolves
+   *  "openai" from the registry; tests override with a stub factory. */
+  realtimeProviderFactory?: () => Promise<RealtimeProvider>;
   /** Open-shaped key map for the done-phase post-process facade. The
    *  default seeds the two known providers (openai, openrouter) from
    *  env. */
   postProcessKeys?: PostProcessKeys;
 };
 
-function defaultOrchestratorOptions(): Required<OrchestratorOptions> {
+function defaultPostProcessKeys(): PostProcessKeys {
   return {
-    realtimeClientFactory: (cfg) => new OpenAIRealtimeClient(config.openaiApiKey, cfg),
-    postProcessKeys: {
-      openai: config.openaiApiKey,
-      openrouter: config.openrouterApiKey,
-    },
+    openai: config.openaiApiKey,
+    openrouter: config.openrouterApiKey,
   };
 }
 
@@ -222,12 +232,12 @@ export function createOrchestrator(
   registry: ProviderRegistry = getDefaultRegistry(),
   options: OrchestratorOptions = {},
 ): PipelineFactory {
-  const defaults = defaultOrchestratorOptions();
-  const realtimeClientFactory = options.realtimeClientFactory ?? defaults.realtimeClientFactory;
-  const postProcessKeys = options.postProcessKeys ?? defaults.postProcessKeys;
+  const realtimeProviderFactory =
+    options.realtimeProviderFactory ?? (() => resolveProvider(registry, "realtime", "openai"));
+  const postProcessKeys = options.postProcessKeys ?? defaultPostProcessKeys();
   return (start: PipelineStart): Pipeline => {
     return new OrchestratedPipeline(start, registry, {
-      realtimeClientFactory,
+      realtimeProviderFactory,
       postProcessKeys,
     });
   };
@@ -314,8 +324,9 @@ class OrchestratedPipeline implements Pipeline {
         `orchestrator: device=${this.start_.deviceId} intent=dictate ` +
           `sttProvider=${voice.sttProvider} → RealtimePipeline`,
       );
+      const realtimeProvider = await this.options.realtimeProviderFactory();
       return new RealtimePipeline(this.start_, {
-        realtimeClientFactory: this.options.realtimeClientFactory,
+        realtimeProvider,
         postProcessKeys: this.options.postProcessKeys,
       });
     }
@@ -349,8 +360,9 @@ class OrchestratedPipeline implements Pipeline {
     log.info(
       `orchestrator: device=${this.start_.deviceId} intent=discuss engine=realtime → RealtimePipeline`,
     );
+    const realtimeProvider = await this.options.realtimeProviderFactory();
     return new RealtimePipeline(this.start_, {
-      realtimeClientFactory: this.options.realtimeClientFactory,
+      realtimeProvider,
       postProcessKeys: this.options.postProcessKeys,
     });
   }

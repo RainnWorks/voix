@@ -8,21 +8,22 @@
  *   GET /api/providers?kind=stt → { kind: "stt", providers: ["deepgram"] }
  *   GET /api/providers?kind=llm → { kind: "llm", providers: ["openai", "openrouter"] }
  *   GET /api/providers?kind=tts → { kind: "tts", providers: ["aura"] }
- *   GET /api/providers          → { stt: [...], llm: [...], tts: [...] }
+ *   GET /api/providers?kind=realtime → { kind: "realtime", providers: ["openai"] }
+ *   GET /api/providers          → { stt: [...], llm: [...], tts: [...], realtime: [...] }
  *
  * Returns 400 for an unrecognised `kind`. Empty arrays are normal —
  * they mean "no provider of this kind is configured" (no API key set
  * for any impl of that kind). The UI surfaces that as "add an API key
  * in Add-on options" rather than an error.
  *
- * Wave B will add `kind=realtime` once the realtime seam is
+ * Wave B (#1) added `kind=realtime` once the realtime seam became
  * load-bearing.
  */
 
 import { Elysia } from "elysia";
 import { getDefaultRegistry, type ProviderKind } from "../pipeline/orchestrator.ts";
 
-const KNOWN_KINDS: ProviderKind[] = ["stt", "llm", "tts"];
+const KNOWN_KINDS: ProviderKind[] = ["stt", "llm", "tts", "realtime"];
 
 function isKind(s: string): s is ProviderKind {
   return (KNOWN_KINDS as string[]).includes(s);
@@ -33,7 +34,7 @@ export function providersRoute() {
     const registry = getDefaultRegistry();
     const kindParam = (query as { kind?: string }).kind;
     if (!kindParam) {
-      const out: Record<ProviderKind, string[]> = { stt: [], llm: [], tts: [] };
+      const out: Record<ProviderKind, string[]> = { stt: [], llm: [], tts: [], realtime: [] };
       for (const k of KNOWN_KINDS) out[k] = registry.list(k);
       return out;
     }

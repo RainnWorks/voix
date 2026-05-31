@@ -91,11 +91,40 @@ final class VoixOverlay: NSObject {
             resolve(nil)
         }
     }
+
+    /// Drives the puck's audio-level pulse from JS (Marina BRAND-1).
+    /// `level` is 0.0–1.0; the puck's outer ring scales between the
+    /// rest size and ~+20% with this value. JS hands us an RMS computed
+    /// from the mic frames it forwards to the daemon, so the ring
+    /// breathes with the user's voice.
+    @objc(setLevel:resolver:rejecter:)
+    func setLevel(
+        _ level: NSNumber,
+        resolver resolve: @escaping RCTPromiseResolveBlock,
+        rejecter reject: @escaping RCTPromiseRejectBlock
+    ) {
+        DispatchQueue.main.async { [weak self] in
+            self?.panel?.setAudioLevel(CGFloat(level.doubleValue))
+            resolve(nil)
+        }
+    }
 }
 
 /// The HUD panel itself. Load-bearing overrides: canBecomeKey /
 /// canBecomeMain MUST stay false for the CGEventPost paste flow to
 /// land in the focused editor instead of the overlay.
+///
+/// Brand surface (Marina BRAND-1):
+///   - The puck (charcoal rounded square + HA-blue circle) renders on
+///     the left of the status text. This is the brand-owned moment
+///     per the desktop guide §05 Screen 01 — the puck is the protagonist
+///     of the voix-summoned moment.
+///   - An HA-blue ring around the puck pulses with the mic audio level
+///     ("rings emanate when audio is detected"). Driven from JS via
+///     setLevel().
+///
+/// HA blue source: packages/ui/src/lib/theme.ts colors.haBlue =
+///   "#03A9F4" — keep in sync if either side changes.
 final class VoixOverlayPanel: NSPanel {
 
     // DO NOT CHANGE — load-bearing for paste flow (M22 risk #4).
@@ -106,6 +135,32 @@ final class VoixOverlayPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 
     private var statusLabel: NSTextField?
+    private var puckBody: NSView?
+    private var puckInner: NSView?
+    private var puckRing: NSView?
+    private var ringWidthConstraint: NSLayoutConstraint?
+    private var ringHeightConstraint: NSLayoutConstraint?
+
+    // Brand colours — keep in sync with packages/ui/src/lib/theme.ts.
+    private static let haBlue = NSColor(
+        red: 3.0 / 255.0,
+        green: 169.0 / 255.0,
+        blue: 244.0 / 255.0,
+        alpha: 1.0
+    )
+    private static let inkBody = NSColor(
+        red: 24.0 / 255.0,
+        green: 24.0 / 255.0,
+        blue: 27.0 / 255.0,
+        alpha: 1.0
+    )
+
+    // Puck geometry (matches packages/ui/src/components/Puck.tsx ratios).
+    private static let puckSize: CGFloat = 32
+    private static let puckCornerRadius: CGFloat = puckSize * 0.22
+    private static let puckInnerSize: CGFloat = puckSize * 0.35
+    private static let ringRestSize: CGFloat = puckSize + 8   // ring radius at rest
+    private static let ringMaxSize: CGFloat = puckSize + 24   // ring radius at level=1
 
     static func make() -> VoixOverlayPanel {
         let size = NSSize(width: 360, height: 96)
@@ -146,32 +201,119 @@ final class VoixOverlayPanel: NSPanel {
         effect.layer?.masksToBounds = true
         contentView?.addSubview(effect)
 
+        // Puck + pulse ring. The ring sits underneath the puck body so
+        // its outer edge bleeds out as a halo. Both centered on a
+        // single anchor point on the left of the content area.
+        let ring = NSView()
+        ring.translatesAutoresizingMaskIntoConstraints = false
+        ring.wantsLayer = true
+        ring.layer?.cornerRadius = Self.ringRestSize / 2
+        ring.layer?.backgroundColor = Self.haBlue
+            .withAlphaComponent(0.18).cgColor
+        effect.addSubview(ring)
+
+        let body = NSView()
+        body.translatesAutoresizingMaskIntoConstraints = false
+        body.wantsLayer = true
+        body.layer?.cornerRadius = Self.puckCornerRadius
+        body.layer?.backgroundColor = Self.inkBody.cgColor
+        effect.addSubview(body)
+
+        let inner = NSView()
+        inner.translatesAutoresizingMaskIntoConstraints = false
+        inner.wantsLayer = true
+        inner.layer?.cornerRadius = Self.puckInnerSize / 2
+        inner.layer?.backgroundColor = Self.haBlue.cgColor
+        body.addSubview(inner)
+
         let label = NSTextField(labelWithString: "Listening…")
         label.font = NSFont.systemFont(ofSize: 14, weight: .semibold)
         label.textColor = .labelColor
-        label.alignment = .center
+        label.alignment = .left
         label.translatesAutoresizingMaskIntoConstraints = false
         effect.addSubview(label)
 
         let hint = NSTextField(labelWithString: "Hold ⌃⌥Space — release to send")
         hint.font = NSFont.systemFont(ofSize: 11, weight: .regular)
         hint.textColor = .secondaryLabelColor
-        hint.alignment = .center
+        hint.alignment = .left
         hint.translatesAutoresizingMaskIntoConstraints = false
         effect.addSubview(hint)
 
+        // Layout: puck centered vertically, 24pt from left.
+        // Status label + hint stack vertically to the right of the puck.
+        let ringWidth = ring.widthAnchor.constraint(
+            equalToConstant: Self.ringRestSize
+        )
+        let ringHeight = ring.heightAnchor.constraint(
+            equalToConstant: Self.ringRestSize
+        )
         NSLayoutConstraint.activate([
-            label.centerXAnchor.constraint(equalTo: effect.centerXAnchor),
-            label.topAnchor.constraint(equalTo: effect.topAnchor, constant: 28),
-            hint.centerXAnchor.constraint(equalTo: effect.centerXAnchor),
-            hint.topAnchor.constraint(equalTo: label.bottomAnchor, constant: 6),
+            // Ring centered on (puck center).
+            ring.centerXAnchor.constraint(equalTo: body.centerXAnchor),
+            ring.centerYAnchor.constraint(equalTo: body.centerYAnchor),
+            ringWidth,
+            ringHeight,
+
+            // Puck body
+            body.leadingAnchor.constraint(
+                equalTo: effect.leadingAnchor, constant: 28
+            ),
+            body.centerYAnchor.constraint(equalTo: effect.centerYAnchor),
+            body.widthAnchor.constraint(equalToConstant: Self.puckSize),
+            body.heightAnchor.constraint(equalToConstant: Self.puckSize),
+
+            // Inner voice dot
+            inner.centerXAnchor.constraint(equalTo: body.centerXAnchor),
+            inner.centerYAnchor.constraint(equalTo: body.centerYAnchor),
+            inner.widthAnchor.constraint(equalToConstant: Self.puckInnerSize),
+            inner.heightAnchor.constraint(equalToConstant: Self.puckInnerSize),
+
+            // Status label — top-aligned, to the right of the puck.
+            label.leadingAnchor.constraint(
+                equalTo: body.trailingAnchor, constant: 16
+            ),
+            label.trailingAnchor.constraint(
+                lessThanOrEqualTo: effect.trailingAnchor, constant: -20
+            ),
+            label.topAnchor.constraint(
+                equalTo: effect.topAnchor, constant: 28
+            ),
+
+            // Hint — below label.
+            hint.leadingAnchor.constraint(equalTo: label.leadingAnchor),
+            hint.trailingAnchor.constraint(
+                lessThanOrEqualTo: effect.trailingAnchor, constant: -20
+            ),
+            hint.topAnchor.constraint(
+                equalTo: label.bottomAnchor, constant: 6
+            ),
         ])
 
         statusLabel = label
+        puckBody = body
+        puckInner = inner
+        puckRing = ring
+        ringWidthConstraint = ringWidth
+        ringHeightConstraint = ringHeight
     }
 
     func setStatus(_ s: String) {
         statusLabel?.stringValue = s
+    }
+
+    /// Drive the audio-level ring from JS-side mic RMS.
+    /// `level` is 0..1; clamped here. Animates the ring constraint so
+    /// the pulse feels organic, not stepped.
+    func setAudioLevel(_ level: CGFloat) {
+        let clamped = max(0, min(1, level))
+        let size = Self.ringRestSize
+            + (Self.ringMaxSize - Self.ringRestSize) * clamped
+        ringWidthConstraint?.constant = size
+        ringHeightConstraint?.constant = size
+        puckRing?.layer?.cornerRadius = size / 2
+        // CALayer.opacity also breathes — subtle, brand-only blue.
+        puckRing?.layer?.opacity = Float(0.18 + 0.45 * clamped)
     }
 
     func repositionAtTopCenter() {

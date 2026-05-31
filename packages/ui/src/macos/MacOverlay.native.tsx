@@ -5,15 +5,19 @@
  *   - useGlobalHotkey() — receives ⌃⌥Space down/up events from
  *     VoixHotkey native module.
  *   - NativeModules.VoixOverlay — the borderless NSPanel HUD (shown on
- *     down, hidden on up). The HUD is purely visual; the audio session
- *     runs through the JS BrowserAudioIoClient like any other surface,
- *     with intent: "dictate" per Decision 10.
+ *     down, hidden on up). The HUD now carries the voix brand: puck
+ *     glyph + HA-blue + audio-level pulse (Marina BRAND-1). Audio
+ *     session runs through the JS BrowserAudioIoClient like any other
+ *     surface, with intent: "dictate" per Decision 10.
  *   - BrowserAudioIoClient — opens the WS + mic via the same audio
  *     primitives as the in-app TalkButton, but with `intent: "dictate"`
  *     so the daemon returns transcript output instead of spoken reply.
  *   - VoixPaste (step 8+) — receives the transcript on session end,
  *     writes to clipboard + (if Accessibility granted) CGEventPost's
  *     Cmd+V into the previously focused app.
+ *   - VoixAudioCapture.frame event — subscribed to here for RMS
+ *     metering only. The audio data still flows through the io_client
+ *     as usual; we sample the frames passively for the brand pulse.
  *
  * Lives at the app root so the hotkey is registered for the lifetime
  * of the macOS process, regardless of which screen the user is on.
@@ -22,7 +26,7 @@
  */
 
 import { useCallback, useEffect, useRef } from "react";
-import { NativeModules } from "react-native";
+import { NativeEventEmitter, NativeModules } from "react-native";
 import { BrowserAudioIoClient } from "../audio_io/client";
 import { appInfo } from "../platform";
 import { useGlobalHotkey } from "./useGlobalHotkey";
@@ -33,6 +37,9 @@ type VoixOverlayModule = {
   showOverlay(payload: { label?: string }): Promise<void>;
   hideOverlay(): Promise<void>;
   updateStatus(status: string): Promise<void>;
+  /** Drives the brand pulse ring around the puck. 0..1; called as the
+   *  mic streams in. Best-effort — older builds may not expose this. */
+  setLevel?(level: number): Promise<void>;
 };
 
 type VoixPasteModule = {
@@ -49,6 +56,7 @@ export function MacOverlay(): null {
   const clientRef = useRef<BrowserAudioIoClient | null>(null);
   const transcriptRef = useRef<string>("");
   const holdingRef = useRef<boolean>(false);
+  const levelSubRef = useRef<{ remove: () => void } | null>(null);
 
   const handleDown = useCallback(() => {
     if (clientRef.current) return;
@@ -57,6 +65,34 @@ export function MacOverlay(): null {
 
     const overlay = NativeModules.VoixOverlay as VoixOverlayModule | undefined;
     void overlay?.showOverlay({ label: "Listening…" }).catch(() => {});
+
+    // Marina BRAND-1: subscribe to mic frames to drive the puck pulse.
+    // We tap the NATIVE event stream non-destructively (the io_client
+    // gets its own listener), compute a quick RMS, smooth it, and push
+    // to the overlay panel. Cheap — ~1024 samples per chunk.
+    const audioMod = NativeModules.VoixAudioCapture as
+      | { addListener?: unknown }
+      | undefined;
+    if (audioMod && overlay?.setLevel) {
+      let smoothed = 0;
+      const emitter = new NativeEventEmitter(
+        NativeModules.VoixAudioCapture as unknown as Parameters<
+          typeof NativeEventEmitter
+        >[0],
+      );
+      levelSubRef.current = emitter.addListener(
+        "voixAudioCapture.frame",
+        (event: { base64: string }) => {
+          const rms = rmsFromBase64Pcm16(event.base64);
+          // Single-pole low-pass — the eye sees breathing, not jitter.
+          smoothed = smoothed * 0.7 + rms * 0.3;
+          // Map RMS to a visible 0..1 range. Voice typically lands
+          // 0.02–0.15 RMS for normal speech; scale x4 and clamp.
+          const level = Math.max(0, Math.min(1, smoothed * 4));
+          void overlay.setLevel?.(level).catch(() => {});
+        },
+      );
+    }
 
     void (async () => {
       try {
@@ -129,12 +165,17 @@ export function MacOverlay(): null {
 
   const handleUp = useCallback(() => {
     holdingRef.current = false;
+    // Drop the level subscription — the panel ring will fall to rest
+    // size as soon as no more setLevel calls land.
+    levelSubRef.current?.remove();
+    levelSubRef.current = null;
+    const overlay = NativeModules.VoixOverlay as VoixOverlayModule | undefined;
+    void overlay?.setLevel?.(0).catch(() => {});
     const client = clientRef.current;
     if (client) {
       client.stop();
     } else {
       // Press-too-fast: no client yet, just hide the overlay.
-      const overlay = NativeModules.VoixOverlay as VoixOverlayModule | undefined;
       void overlay?.hideOverlay().catch(() => {});
     }
   }, []);
@@ -178,12 +219,49 @@ export function MacOverlay(): null {
   useEffect(() => {
     return () => {
       clientRef.current?.stop();
+      levelSubRef.current?.remove();
+      levelSubRef.current = null;
       const overlay = NativeModules.VoixOverlay as VoixOverlayModule | undefined;
       void overlay?.hideOverlay().catch(() => {});
     };
   }, []);
 
   return null;
+}
+
+/**
+ * Quick RMS over a base64-encoded PCM16 mono chunk. Used for the
+ * brand pulse only — accuracy isn't critical, but allocations should
+ * be minimised (this runs many times per second per session).
+ *
+ * The native side base64-encodes ~1024 Int16 samples per chunk. We
+ * decode once, square + sum, divide by sample count, then sqrt and
+ * scale to a 0..1 range (Int16 max = 32768 → divide).
+ */
+function rmsFromBase64Pcm16(b64: string): number {
+  const atobFn = (
+    globalThis as { atob?: (s: string) => string }
+  ).atob;
+  if (!atobFn) return 0;
+  let bin: string;
+  try {
+    bin = atobFn(b64);
+  } catch {
+    return 0;
+  }
+  // Each Int16 = 2 bytes; loop over byte pairs.
+  let sum = 0;
+  let count = 0;
+  for (let i = 0; i + 1 < bin.length; i += 2) {
+    const lo = bin.charCodeAt(i);
+    const hi = bin.charCodeAt(i + 1);
+    let sample = (hi << 8) | lo;
+    if (sample & 0x8000) sample = sample - 0x10000; // sign extend
+    sum += sample * sample;
+    count += 1;
+  }
+  if (count === 0) return 0;
+  return Math.sqrt(sum / count) / 32768;
 }
 
 /**

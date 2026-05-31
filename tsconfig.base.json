@@ -1,4 +1,10 @@
 {
+  // Note: no `paths` map in this base. Path mappings resolve relative
+  // to each tsconfig's own baseUrl, so a base-level map becomes dead
+  // code the moment a leaf sets its own baseUrl. Each consuming
+  // workspace declares its own `@voix/*` → `packages/.../src/index.ts`
+  // paths instead (see voix-backend/ui/tsconfig.json,
+  // packages/ui/tsconfig.json).
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
@@ -15,11 +21,6 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "baseUrl": ".",
-    "paths": {
-      "@voix/protocol": ["packages/protocol/src/index.ts"],
-      "@voix/ui": ["packages/ui/src/index.ts"]
-    }
+    "forceConsistentCasingInFileNames": true
   }
 }

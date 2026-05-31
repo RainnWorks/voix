@@ -82,20 +82,31 @@ class IosAudioCapture implements AudioCapture {
     });
     await AudioManager.setAudioSessionActivity(true);
 
-    // AudioContext with the caller's preferred rate. audio-api accepts
-    // 8 kHz - 96 kHz; if the device prefers something else it'll be
-    // honoured by the recorder anyway. Track the actual rate we
-    // negotiated so `sampleRate` reads truthfully.
-    this.audioContext = new AudioContext({ sampleRate: opts.sampleRateHz });
-    this.negotiatedSampleRate = this.audioContext.sampleRate;
+    // Sasha H1 fix: pin the recorder's sample rate at the device's
+    // preferred rate so the hello capability declares what the recorder
+    // *actually* delivers. The caller's opts.sampleRateHz is informational
+    // only — Bluetooth HFP forces 16 kHz, sim coreaudio may differ, etc.
+    // getDevicePreferredSampleRate() returns whatever AVAudioSession is
+    // currently routed to; using that as a single source of truth means
+    // hello.mic.sample_rate_hz === the rate of every frame we emit.
+    //
+    // audio-api docs:
+    // https://docs.swmansion.com/react-native-audio-api/docs/system/audio-manager
+    const deviceRate = AudioManager.getDevicePreferredSampleRate();
 
-    // Set up the recorder. onAudioReady fires with Float32 chunks of
-    // approximately `bufferLength` frames at `sampleRate` Hz. The
-    // exact values may vary per the docs; we honour what's delivered.
+    // AudioContext locked at the device rate so any future graph nodes
+    // run at the same rate as the recorder. Avoids implicit resampling.
+    this.audioContext = new AudioContext({ sampleRate: deviceRate });
+    this.negotiatedSampleRate = deviceRate;
+
+    // Set up the recorder at the SAME rate as the AudioContext.
+    // audio-api docs note "exact values may vary depending on device
+    // capabilities" — but since we asked for the device's own
+    // preferred rate, it should honour it exactly.
     this.recorder = new AudioRecorder();
     this.recorder.onAudioReady(
       {
-        sampleRate: opts.sampleRateHz,
+        sampleRate: deviceRate,
         bufferLength: opts.bufferSize,
         channelCount: 1,
       },

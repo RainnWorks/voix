@@ -119,6 +119,14 @@ function VoiceCard({
             <Text style={styles.cardName}>{voice.name}</Text>
             {active && <Text style={styles.activeTag}>ACTIVE</Text>}
           </View>
+          {/* M23 — italic HA-blue tone one-liner. Voice-identity
+              copy (brand moment), unlike the muted routingHint below
+              which is auto-router metadata. */}
+          {voice.tone && (
+            <Text style={styles.cardTone} numberOfLines={1}>
+              {voice.tone}
+            </Text>
+          )}
           <Text style={styles.cardDesc} numberOfLines={2}>
             {voice.routingHint ||
               (voice.type === "realtime"
@@ -224,6 +232,16 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: 3,
     letterSpacing: 0.5,
+  },
+  // M23 — tone snippet under the voice name. Italic HA-blue earns its
+  // brand colour as voice-identity, distinct from cardDesc (muted
+  // metadata).
+  cardTone: {
+    fontFamily: fontFamily.ui,
+    fontSize: 11,
+    fontStyle: "italic",
+    color: colors.haBlue,
+    lineHeight: 14,
   },
   cardDesc: {
     fontFamily: fontFamily.ui,

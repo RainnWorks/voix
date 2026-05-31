@@ -114,6 +114,14 @@ function SurfaceRow({ surface, voice }: { surface: Surface; voice?: Voice }) {
         <Text style={styles.rowVoice}>
           voice · {voice?.name ?? surface.voiceId}
         </Text>
+        {/* M23 — italic HA-blue tone one-liner directly under the
+            bound voice's name. Same treatment as VoiceList /
+            ConversationList for visual consistency. */}
+        {voice?.tone && (
+          <Text style={styles.rowTone} numberOfLines={1}>
+            {voice.tone}
+          </Text>
+        )}
         <CapabilityChips capabilities={surface.capabilities} />
       </View>
     </View>
@@ -222,6 +230,15 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.ui,
     fontSize: 12,
     color: colors.textBody,
+  },
+  // M23 — voice tone snippet under the bound voice. Brand-coloured
+  // italic to match VoiceList / ConversationList tone rendering.
+  rowTone: {
+    fontFamily: fontFamily.ui,
+    fontSize: 11,
+    fontStyle: "italic",
+    color: colors.haBlue,
+    lineHeight: 14,
   },
   glyphFallback: {
     width: 32,

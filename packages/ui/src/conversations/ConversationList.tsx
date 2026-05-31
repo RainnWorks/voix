@@ -130,6 +130,13 @@ function Row({
           <Text style={styles.rowVoice}>{voice?.name ?? entry.voiceId}</Text>
           {entry.processedText && <Text style={styles.processedTag}>shaped</Text>}
         </View>
+        {/* M23 — italic HA-blue tone snippet under the voice name,
+            same treatment as VoiceList + SurfaceList. */}
+        {voice?.tone && (
+          <Text style={styles.rowTone} numberOfLines={1}>
+            {voice.tone}
+          </Text>
+        )}
         <Text style={styles.rowMeta}>
           {when} · {formatDuration(entry.durationMs)}
         </Text>
@@ -183,6 +190,16 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
     color: colors.ink,
+  },
+  // M23 — italic HA-blue tone snippet under the voice name. Matches
+  // VoiceList.cardTone + SurfaceList.rowTone so the same voice reads
+  // the same wherever it appears.
+  rowTone: {
+    fontFamily: fontFamily.ui,
+    fontSize: 11,
+    fontStyle: "italic",
+    color: colors.haBlue,
+    lineHeight: 14,
   },
   rowMeta: {
     fontFamily: fontFamily.ui,

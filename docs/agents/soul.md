@@ -31,6 +31,22 @@ This doc's §10 scores both against its own rubric.
 > **(§5)** "foundational fit-to-canvas" had no severity bucket above HIGH,
 > so it got folded into a med IA nit.
 
+> **Revision note (M-MobileFit, native-feel pre-check).** Tom added a
+> binding spec: **"the goal is to feel native."** Not "cross-platform that
+> runs on iOS" but *"this is an iOS app that happens to share code with
+> macOS/web."* The §3 precondition check gained a **fourth** pre-check,
+> *native-feel*, at the same severity as canvas-fit: a surface that reads
+> as a generic-RN shell (faked controls, no SF Symbols, Card-stack where a
+> TableView belongs, no native nav/sheet/gesture/haptic grammar) is a
+> **BLOCKER**, independent of canvas-fit. It splits between the personas
+> the way canvas-fit does — **Marina owns the visual half** (controls, SF
+> Symbols, SF Pro Dynamic Type, native lists, scale-on-press, NSToolbar on
+> macOS) and **Wren owns the interaction half** (push nav, sheet detents,
+> tab-bar behaviour, pull-to-refresh, haptics, swipe gestures). §10 re-runs
+> the self-test with the new lens against the un-rebuilt tom-smoke
+> screenshots; both personas now surface a second, independent native-feel
+> BLOCKER beside the canvas-fit one.
+
 ---
 
 ## 1. What a soul IS — and what it ISN'T
@@ -192,10 +208,11 @@ surface you hand it. This is the principled grounding. Rules:
   has. The brand rules in `design-brief-multi-surface.md` §9 are
   pre-loaded method.
 - **The precondition check runs *before* lens 1.** Every method opens
-  with the three pre-checks in §3 — canvas-fit, safe-area, input-modality.
-  A persona that dives into lens 1 without first confirming the surface
-  *belongs on this device* is the exact failure that shipped the
-  tom-smoke miss. The precondition is part of the method, not a preamble.
+  with the four pre-checks in §3 — canvas-fit, safe-area, input-modality,
+  native-feel. A persona that dives into lens 1 without first confirming
+  the surface *belongs on this device* and *reads as native to this
+  platform* is the exact failure that shipped the tom-smoke miss. The
+  precondition is part of the method, not a preamble.
 
 ### 2.5 Vocabulary — how method becomes legible (and testable)
 
@@ -253,7 +270,7 @@ on this canvas?* A lens-level finding about a surface that shouldn't
 exist on this device is worse than useless — it lends false legitimacy to
 the wrong surface by treating it as real enough to critique.
 
-Every persona — UI **and** UX — opens every review by running these three
+Every persona — UI **and** UX — opens every review by running these four
 pre-checks, in order, against the actual device class shown:
 
 1. **Canvas-fit.** Is this layout *pattern* appropriate for the device
@@ -275,6 +292,27 @@ pre-checks, in order, against the actual device class shown:
    right-click where there's no cursor; keyboard accelerators (`⌘N`) must
    not be the *only* path to an action on a touch surface. (Anchor: HIG
    *Touch targets* / pointer vs touch; Material *touch target* 48dp.)
+4. **Native-feel / platform-nativeness.** Does this surface read as a
+   *native app for this platform*, or as a *generic cross-platform shell
+   that happens to run here*? The binding spec from Tom is **"the goal is
+   to feel native"** — not "cross-platform that runs on iOS" but *"this is
+   an iOS app that happens to share code with macOS/web."* A surface where
+   iOS controls are faked (a `Pressable` styled to look like a `UIButton`,
+   a custom toggle where a `Switch` belongs, a Card stack where a
+   `TableView` belongs), where SF Symbols are swapped for custom glyphs,
+   where SF Pro / Dynamic Type is replaced by a webfont, or where the
+   platform's own transitions are absent (push slide-from-right, pull-up
+   sheets with detents, swipe-back) is a *generic-RN app wearing the wrong
+   clothes* — even when it fits the canvas perfectly. This pre-check
+   **splits cleanly between the two personas**, the same way canvas-fit
+   does: **Marina owns the visual half** (controls render as iOS controls,
+   SF Symbols, SF Pro at Apple Text Styles via Dynamic Type, native list
+   rendering, scale-on-press), **Wren owns the interaction half** (push
+   navigation, sheet detents, tab-bar behaviour, pull-to-refresh, haptics,
+   swipe gestures). (Anchor: Apple HIG *Components* / *SF Symbols* /
+   *Typography — Dynamic Type*; macOS HIG *NSToolbar*, AppKit controls and
+   vibrancy; Material where Android applies — each platform's own component
+   set, never a lowest-common-denominator shell.)
 
 **The rule.** If *any* pre-check fails, that finding is **BLOCKER**
 (§5), and the report **opens with it** — before any lens-level pixel or
@@ -284,13 +322,29 @@ that is about to change shape. A persona that buries a failed pre-check at
 position 5, or scores it as a mid-severity nit, has repeated the
 tom-smoke miss.
 
+**Canvas-fit and native-feel are *independent* BLOCKERs.** A surface can
+pass one and fail the other: a single-column phone layout (canvas-fit
+passes) whose every row is a `Pressable`-styled fake control (native-feel
+fails), or a correctly-native control set crammed into a desktop split
+(native-feel passes, canvas-fit fails). They do **not** collapse into each
+other — fixing the column count does not make a Card stack of custom
+buttons render as a `TableView`. So a surface may legitimately open with
+*two* precondition BLOCKERs (one canvas-fit, one native-feel); that is the
+exception to §5's "normally one BLOCKER" rule, because neither is
+downstream of the other.
+
 **Worked example (the miss this section prevents).** On
 `/tmp/voix-tom-smoke/ios-05`: pre-check 1 fails (a desktop two-column
 sidebar-plus-content split on an iPhone), pre-check 2 fails (the "Voix
-/vwa/ 22:35" header sits at the status-bar / Dynamic Island row), and the
-squeezed pane clips text mid-word. That is **one BLOCKER finding that
-opens both Marina's and Wren's reports.** The twelve pixel findings and
-the flow findings are all downstream of it.
+/vwa/ 22:35" header sits at the status-bar / Dynamic Island row), the
+squeezed pane clips text mid-word, **and pre-check 4 fails independently**
+— the mode list is a stack of rounded **Cards** each carrying a tinted
+"Activate" *link* (a `Pressable` faked as a button), not a native
+`TableView` of rows with row chevrons and a real `UIButton`/`Switch`; this
+native-feel BLOCKER *survives even after the column split is fixed*. That
+is **two BLOCKERs that open both Marina's and Wren's reports** (canvas-fit
++ native-feel). The twelve pixel findings and the flow findings are all
+downstream of them.
 
 ---
 
@@ -334,12 +388,17 @@ other findings are even about. The scale is now four buckets:
 
 - **BLOCKER** — a failed precondition (§3): the surface under review is
   the wrong surface for this canvas (wrong layout pattern, safe-area
-  violation, or input-modality mismatch). **A BLOCKER invalidates the
-  downstream findings until it is fixed**, because they evaluate pixels
-  and flows on a surface that is about to be replaced. There is normally
-  *one* BLOCKER — the wrong-surface fact — and it opens the report. If you
-  find yourself filing five BLOCKERs, most are downstream consequences of
-  one; collapse them.
+  violation, or input-modality mismatch) **or reads as a generic
+  cross-platform shell rather than a native app for this platform**
+  (faked controls, no SF Symbols, no native list/nav idiom — the
+  native-feel pre-check). **A BLOCKER invalidates the downstream findings
+  until it is fixed**, because they evaluate pixels and flows on a surface
+  that is about to be replaced. There is normally *one* BLOCKER — the
+  wrong-surface fact — and it opens the report; the one sanctioned
+  exception is a surface that fails **both** canvas-fit *and* native-feel,
+  which are independent (§3) and may both open the report. Beyond those,
+  if you find yourself filing five BLOCKERs, most are downstream
+  consequences of one; collapse them.
 - **HIGH** — a real defect *on an otherwise-appropriate surface*: a
   broken brand moment, a dead primary action, an inverted hierarchy. HIGH
   means "this surface is right for the canvas but this thing on it is
@@ -476,6 +535,7 @@ the precondition BLOCKER** (§3). Diagnostics:
 | Symptom | Verdict |
 |---|---|
 | Bullet 1 is the canvas-fit / safe-area BLOCKER when the surface is wrong for the device | precondition ran |
+| A native-feel BLOCKER (faked control, no SF Symbol, Card-stack-not-TableView, no swipe-back) sits beside the canvas-fit one | the native-feel pre-check ran |
 | Report opens with an inbox block acknowledging inbound handoffs | handoff protocol ran |
 | Bullets name file:line or a precise screen region | method ran |
 | Bullets cite a named heuristic / brand rule by name | grounded |
@@ -501,7 +561,9 @@ first move so the wrong-surface fact can never again hide at position 5.
 - [ ] Method is named, ordered, surface-agnostic, framework-anchored,
       and voix-specific (§2.4)
 - [ ] **Method opens with the §3 precondition check** (canvas-fit /
-      safe-area / input-modality) before lens 1
+      safe-area / input-modality / native-feel) before lens 1 — and the
+      persona owns its declared half of the native-feel pre-check (Marina
+      visual, Wren interaction)
 - [ ] Vocabulary section exists and the method actually uses it (§2.5)
 - [ ] Failure modes named — you know when to discount this persona (§2.6)
 - [ ] Output rubric includes the BLOCKER bucket, the inbox + precondition
@@ -520,19 +582,25 @@ first move so the wrong-surface fact can never again hide at position 5.
 
 Honest application of §8 to the two souls shipped alongside this doc. If
 either failed, it was fixed before this section was written. **This pass
-is the re-run after the §3–§5 rewrite, against the SAME screenshots that
-exposed the miss** (`/tmp/voix-tom-smoke/ios-01..09`), so the test is
-exactly: *do the updated personas now lead with the canvas-fit BLOCKER
-the original pass buried?*
+is the re-run after the §3–§5 rewrite *and* the native-feel pre-check
+addition (§3 pre-check 4), against the SAME screenshots that exposed the
+miss** (`/tmp/voix-tom-smoke/ios-01..09`, which have *not* been rebuilt),
+so the test is now twofold: *do the updated personas (a) still lead with
+the canvas-fit BLOCKER the original pass buried, and (b) now also surface
+the native-feel BLOCKER — visual for Marina, interaction for Wren — that
+neither persona had a lens for before?* If the native-feel lens surfaced
+nothing on these un-rebuilt screenshots, it would be too weak to ship.
 
 ### 10.1 Method — how the scoring was done
 
 For each persona I simulated its opening volley on `ios-05` (the main app
-screen — the one that exposed the iPad-split-on-iPhone), took the first
-five bullets *including the inbox + precondition block*, and asked of
-each: *does bullet 1 surface the BLOCKER, and could a generic LLM that
-never read the soul file have produced these?* A buried BLOCKER, or three
-or more generic bullets, = fail.
+screen — the one that exposed the iPad-split-on-iPhone), cross-referenced
+`ios-08` (the conversation list + pressed TalkButton) for the interaction
+lenses, took the first five bullets *including the inbox + precondition
+block*, and asked of each: *do the BLOCKERs (canvas-fit **and**
+native-feel) open the report, and could a generic LLM that never read the
+soul file have produced these?* A buried BLOCKER, a missing native-feel
+finding, or three or more generic bullets, = fail.
 
 ### 10.2 Marina (UI craft) on `ios-05` — re-run
 
@@ -554,21 +622,32 @@ Simulated first five bullets:
    below the safe-area inset. The sidebar squeezes content to ~60% of the
    canvas, clipping "Talks back. Knows…", "ACTIV[E]", and "puck-1 ·
    Realtime" mid-word (Wren's handoff, confirmed). This is the wrong
-   design on this canvas; findings 2–5 are provisional until it's fixed.
+   design on this canvas; findings below are provisional until it's fixed.
    Fix: adopt an adaptive layout — sidebar → drawer/push-nav, content
    full-width, header inset below the safe area. **[severity: BLOCKER]***
-2. *TalkButton / sidebar / CTAs wear HA blue (`#03A9F4`) as chrome, not
+2. *🚫 **Precondition fail (native-feel — visual, independent of #1).**
+   The Voices list is a stack of rounded **Cards**, each with a coloured
+   status dot and a tinted "Activate" *link*, where iOS wants a native
+   `TableView`: grouped rows, hairline row separators, a trailing row
+   chevron, and a real `UIButton`/`Switch` for the action — not a
+   `Pressable` faked as a button. The status glyphs are custom dots, not
+   **SF Symbols**; the type is a flat webfont ramp, not **SF Pro at Apple
+   Text Styles via Dynamic Type** (Title 2 / Headline / Subhead / Footnote
+   are indistinguishable here). This reads as a generic-RN shell, and it
+   **survives the canvas-fix** — collapsing to one column still leaves a
+   Card-stack-of-Pressables. Fix: render the modes as a native grouped
+   list with SF Symbols, the Apple text-style ramp, and platform controls.
+   **[severity: BLOCKER]***
+3. *TalkButton / sidebar / CTAs wear HA blue (`#03A9F4`) as chrome, not
    reserved for the voix moment — the listening state can't signal because
    chrome already owns the colour (brand §9). [high]*
-3. *Onboarding titles render in tertiary grey-on-black, the same value as
-   body copy, so the screen title reads as disabled; hierarchy inverted
-   (Refactoring UI: hierarchy by colour). [high]*
 4. *Daemon URL field styled as a plain label — no border, fill, or focus
    affordance — an input dressed as a label (HIG controls). [high]*
 5. *"Connected" painted in brand blue instead of a semantic `success`
    token — mis-codes the state and adds to the blue pile. [med]*
 
-Scoring: **bullet 1 is the canvas-fit BLOCKER**, the report opens with an
+Scoring: **bullet 1 is the canvas-fit BLOCKER and bullet 2 is the
+independent native-feel BLOCKER** (the new lens), the report opens with an
 acknowledged inbox handoff, and 0 of 5 are generic (each carries a
 file/region, a named unit, and a brand/HIG citation). **PASS.**
 
@@ -592,37 +671,54 @@ Simulated first five bullets:
    pixel-level receipts for this BLOCKER."* Closeout verifies Marina
    acknowledged. Fix: collapse to a single-column phone layout, sidebar as
    a drawer, content full-width. **[severity: BLOCKER]***
-2. *`+ New conversation` is bound to `⌘N` — a key the phone can't press —
+2. *🚫 **Precondition fail (native-feel — interaction, independent of
+   #1).** The interaction grammar is web/RN, not iOS: a mode row carries
+   an inline "Activate" link instead of **tap-to-drill push navigation**
+   (slide-from-right) into the mode; the conversation rows (`ios-08`) have
+   **no swipe-to-delete** destructive action; the pressed TalkButton
+   (`ios-08`, "Hold to talk to voix") fires **no haptic** where a
+   press-to-talk wants `impactMedium` and session-open wants a success
+   tap; and "Connecting…" is an inline pill, not a pull-up **sheet with
+   detents**. None of these is fixed by the re-layout — the *gestures and
+   transitions* are absent regardless of column count. **Handoff →
+   Marina:** the faked-control / Card-not-TableView pixels are her half of
+   this same BLOCKER. Fix: native push nav, swipe actions, haptics on the
+   talk/session beats, sheet presentation. **[severity: BLOCKER]***
+3. *`+ New conversation` is bound to `⌘N` — a key the phone can't press —
    so the product's front door does nothing on tap (Norman affordance +
    mapping; Nielsen #1). [high]*
-3. *After "Connecting…" there's no listening / terminal state — the WS
+4. *After "Connecting…" there's no listening / terminal state — the WS
    closed at 0.8s with 0 chunks and the UI never says so; listening must
    be distinguishable from connecting/failed (Nielsen #1, voice-first).
    [high]*
-4. *Net-new user has no path to talk: the TalkButton lives inside an
-   existing conversation, and the one button that mints one is dead (JTBD
-   / gulf of execution). [high]*
 5. *Modes rendered as activate-rows with a single global ACTIVE binary,
    and "NOW · puck-1" assumes the user acts on the puck, not the phone
    they're holding (per-surface active-mode, brief §7). [med]*
 
 Scoring: **bullet 1 is the canvas-fit BLOCKER** (upgraded from the
-original report's *med* F5), it carries an **explicit pixel-level handoff
-prompt** to Marina (not a bare "→ Marina") with a closeout-verification
-commitment, and 0 of 5 are generic. **PASS.**
+original report's *med* F5) and **bullet 2 is the independent interaction
+native-feel BLOCKER** (the new lens — push nav, swipe-to-delete, haptics,
+sheet detents), both carry **explicit handoffs** to Marina (not a bare
+"→ Marina") with a closeout-verification commitment, and 0 of 5 are
+generic. **PASS.**
 
 ### 10.4 What changed vs the original tom-smoke pass
 
-| | Original pass | After §3–§5 rewrite |
+| | Original pass | After §3–§5 rewrite + native-feel pre-check |
 |---|---|---|
 | Marina's bullet 1 | "HA blue is chrome" (a real HIGH, but the surface is wrong) | **the canvas-fit BLOCKER** |
+| Marina's bullet 2 | (no native-feel lens existed) | **the visual native-feel BLOCKER** — Card-stack-of-Pressables, no SF Symbols, no Dynamic Type ramp |
 | Wren's fit-to-canvas finding | F5, **med**, buried at position 5 | **BLOCKER, bullet 1** |
+| Wren's bullet 2 | (no native-feel lens existed) | **the interaction native-feel BLOCKER** — no push nav, no swipe-to-delete, no haptics, no sheet detents |
 | Wren→Marina handoff | bare "→ Marina", never received | explicit prompt + Marina's inbox **acknowledges** it |
 | Truncation / safe-area | in *neither* report | the **shared** pixel receipt for the BLOCKER |
 
-The rewrite passes its own test: on the exact screenshots that beat the
-original souls, both updated personas now lead with the foundational
-"wrong design rendered on this canvas" BLOCKER, and the handoff that was
+The rewrite passes its own test: on the exact (un-rebuilt) screenshots
+that beat the original souls, both updated personas now lead with the
+foundational "wrong design rendered on this canvas" BLOCKER **and** a
+second, independent "this is a generic-RN shell, not a native app"
+BLOCKER — split cleanly (Marina's faked-control/SF-Symbol/type pixels,
+Wren's missing gestures/transitions/haptics) — and the handoff that was
 dropped is now sent explicitly and received.
 
 ### 10.5 Honest notes
@@ -639,6 +735,16 @@ dropped is now sent explicitly and received.
   pre-check is *device-class-relative* — a sidebar on a Mac window is
   correct; the same sidebar on a 393pt phone is the BLOCKER. Scope the
   dispatch to the surface and its real device class.
+- The native-feel pre-check (§3 #4) is the same double-edged tool one
+  layer in, and it is *platform-relative*. On **macOS** the correct
+  "native" is NSToolbar + AppKit vibrancy sidebars (the M22 baseline), not
+  iOS controls — Marina/Wren must grade against the *platform's* idiom, not
+  iOS everywhere. On the **web** surface there is no native control set to
+  fake, so the lens softens to "web-considered, no native faking" — a
+  Pressable on web is not a BLOCKER. The lens is sharpest, and the binding
+  spec strongest, on **iOS**, where "feel native" means the surface must
+  read as an iOS app that *happens* to share code, not RN that happens to
+  run. Scope the dispatch to the surface and its real platform.
 - The §10.2/§10.3 simulations re-derive findings the historical audit
   files reached, plus the BLOCKER they missed. The repeat-vs-rederive risk
   from prior versions still stands: prime with a *new* suspicion each pass

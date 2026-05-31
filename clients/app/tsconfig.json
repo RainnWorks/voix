@@ -2,11 +2,15 @@
   "extends": "@react-native/typescript-config",
   "compilerOptions": {
     "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
+    "allowJs": true,
+    "types": [],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "paths": {
       "@voix/ui": ["../../packages/ui/src/index.ts"],
       "@voix/protocol": ["../../packages/protocol/src/index.ts"]
     }
   },
-  "include": ["**/*.ts", "**/*.tsx"],
+  "include": ["index.js", "**/*.ts", "**/*.tsx"],
   "exclude": ["**/node_modules", "**/Pods"]
 }

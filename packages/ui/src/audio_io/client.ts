@@ -245,7 +245,11 @@ export class BrowserAudioIoClient {
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
       const ch = e.inputBuffer.getChannelData(0);
       const pcm = floatToPcm16(ch);
-      this.ws.send(pcm.buffer);
+      // ArrayBufferLike → ArrayBuffer cast: under TS5.x strict-DOM lib
+      // (used when packages/ui is traversed via the RN-CLI app's
+      // tsconfig in M20), WebSocket.send rejects ArrayBufferLike. The
+      // runtime payload is always a fresh non-shared buffer.
+      this.ws.send(pcm.buffer as ArrayBuffer);
     };
     src.connect(node);
     // ScriptProcessor needs to be in the audio graph to fire its

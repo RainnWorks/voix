@@ -2459,6 +2459,8 @@ PODS:
     - SocketRocket
     - Yoga
   - SocketRocket (0.7.1)
+  - VoixNative (0.1.0):
+    - React-Core
   - Yoga (0.0.0)
 
 DEPENDENCIES:
@@ -2537,6 +2539,7 @@ DEPENDENCIES:
   - ReactCommon/turbomodule/core (from `../node_modules/react-native-macos/ReactCommon`)
   - RNWorklets (from `../node_modules/react-native-worklets`)
   - SocketRocket (~> 0.7.1)
+  - VoixNative (from `./VoixNative`)
   - Yoga (from `../node_modules/react-native-macos/ReactCommon/yoga`)
 
 SPEC REPOS:
@@ -2691,6 +2694,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native-macos/ReactCommon"
   RNWorklets:
     :path: "../node_modules/react-native-worklets"
+  VoixNative:
+    :path: "./VoixNative"
   Yoga:
     :path: "../node_modules/react-native-macos/ReactCommon/yoga"
 
@@ -2769,8 +2774,9 @@ SPEC CHECKSUMS:
   ReactCommon: b2b6ff304cf01e1b67d8e9646e34d58320be0964
   RNWorklets: b198e96cb33d1837bf169e6aa1c46e9f29c7a627
   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
+  VoixNative: 2f668a58362c77496ab2dfbe8170163060e385a4
   Yoga: 8a0df683a71bee13fe0b9d8b653d1a062ff65b2e
 
-PODFILE CHECKSUM: 50802a955595af1313ccc49b81c1fd2d40e870b9
+PODFILE CHECKSUM: ec9157e3914b9f2d818ec3a92a8d18e886558ddd
 
 COCOAPODS: 1.15.2

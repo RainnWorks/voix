@@ -22,6 +22,17 @@ target 'voix-macOS' do
     :app_path => "#{Pod::Config.instance.installation_root}/.."
   )
 
+  # voix-macOS native modules (M22): in-tree pod containing the Swift
+  # TurboModule bridges for AVAudioEngine capture/playback, global
+  # hotkey, paste, and the overlay window controller.
+  #
+  # Lives in-tree (not on a registry) because:
+  #   - The Swift sources reference RN headers; an external package
+  #     would need to declare React-Core as an external dep + pin
+  #     RN-macOS version compatibility.
+  #   - It's voix-specific glue, not a reusable library.
+  pod 'VoixNative', :path => './VoixNative'
+
   post_install do |installer|
     react_native_post_install(installer)
   end

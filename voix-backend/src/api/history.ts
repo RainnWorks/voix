@@ -17,7 +17,7 @@
 
 import { readFile } from "node:fs/promises";
 import { Elysia, t } from "elysia";
-import { getHistoryEntry, listHistory } from "../history/store.ts";
+import { deleteHistoryEntry, getHistoryEntry, listHistory } from "../history/store.ts";
 import { log } from "../log.ts";
 
 export function historyRoute() {
@@ -46,6 +46,18 @@ export function historyRoute() {
         return { error: `unknown history entry: ${params.id}` };
       }
       return entry;
+    })
+    .delete("/api/history/:id", async ({ params, set }) => {
+      // Swipe-to-delete on the Conversations list (A1 iOS nativeness).
+      // Idempotent-ish: a 404 on an already-gone entry lets the client
+      // treat "deleted" and "never existed" the same. 200 with the id
+      // on success so the client can confirm what it removed.
+      const removed = await deleteHistoryEntry(params.id);
+      if (!removed) {
+        set.status = 404;
+        return { error: `unknown history entry: ${params.id}` };
+      }
+      return { deleted: params.id };
     })
     .get("/api/history/:id/transcript", async ({ params, set }) => {
       const entry = getHistoryEntry(params.id);

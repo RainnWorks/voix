@@ -12,7 +12,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { log } from "../log.ts";
 import { paths } from "../storage/paths.ts";
@@ -87,4 +87,35 @@ export function listHistory(opts?: {
 
 export function getHistoryEntry(id: string): HistoryEntry | undefined {
   return entries.find((e) => e.id === id);
+}
+
+/**
+ * Delete one entry by id. Returns true if it existed, false otherwise.
+ *
+ * The store is otherwise append-only, so a delete is the one operation
+ * that has to rewrite the whole JSONL file. We splice the in-memory
+ * mirror synchronously (so the very next listHistory reflects the
+ * delete) and then rewrite the file through the same serialised
+ * `writeQueue` the appends use, so a delete can't interleave a partial
+ * line with a concurrent session-end append. The rewrite is a single
+ * `writeFile` (atomic-enough for a single-process daemon on tmpfs/ext4).
+ */
+export async function deleteHistoryEntry(id: string): Promise<boolean> {
+  const idx = entries.findIndex((e) => e.id === id);
+  if (idx === -1) return false;
+  entries.splice(idx, 1);
+  // Snapshot the post-delete set for the rewrite. Capturing here (not
+  // inside the queued closure) pins exactly what we list right now;
+  // any append queued after this delete chains on and re-adds itself.
+  const snapshot = entries.map((e) => `${JSON.stringify(e)}\n`).join("");
+  writeQueue = writeQueue.then(async () => {
+    try {
+      await mkdir(dirname(paths.historyFile), { recursive: true });
+      await writeFile(paths.historyFile, snapshot);
+    } catch (err) {
+      log.warn("history: delete rewrite failed:", err);
+    }
+  });
+  await writeQueue;
+  return true;
 }

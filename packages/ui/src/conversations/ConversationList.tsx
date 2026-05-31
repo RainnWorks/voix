@@ -23,6 +23,7 @@ import {
 } from "react-native";
 import type { Intent } from "@voix/protocol";
 import { Puck } from "../components/Puck";
+import { SwipeableRow } from "../components/SwipeableRow";
 import {
   type Device,
   type HistoryEntry,
@@ -79,6 +80,23 @@ export function ConversationList({ onPickEntry }: Props) {
     setRefreshing(true);
     void refresh().finally(() => setRefreshing(false));
   }, [refresh]);
+
+  // Swipe-to-delete (A1 iOS nativeness). Optimistically drops the row so
+  // the list closes the gap immediately, then issues the DELETE. On
+  // failure we re-fetch to restore truth rather than trying to splice the
+  // entry back at its old index — `refresh` is the canonical source and
+  // avoids guessing ordering after a concurrent puck session may have
+  // appended.
+  const onDeleteEntry = useCallback(
+    (id: string) => {
+      setEntries((prev) => (prev ? prev.filter((e) => e.id !== id) : prev));
+      void historyApi.delete(id).catch((e) => {
+        setError(e instanceof Error ? e.message : String(e));
+        void refresh();
+      });
+    },
+    [refresh],
+  );
 
   useEffect(() => {
     refresh();
@@ -152,12 +170,17 @@ export function ConversationList({ onPickEntry }: Props) {
     <ScrollView contentContainerStyle={styles.scroll} refreshControl={refreshControl}>
       <TalkButton intent={intent} onSessionEnded={onSessionEnded} />
       {entries.map((entry) => (
-        <Row
+        <SwipeableRow
           key={entry.id}
-          entry={entry}
-          voice={voiceById[entry.voiceId]}
-          onPress={() => onPickEntry(entry.id)}
-        />
+          onDelete={() => onDeleteEntry(entry.id)}
+          deleteAccessibilityLabel={`Delete conversation from ${entry.voiceName || entry.voiceId}`}
+        >
+          <Row
+            entry={entry}
+            voice={voiceById[entry.voiceId]}
+            onPress={() => onPickEntry(entry.id)}
+          />
+        </SwipeableRow>
       ))}
     </ScrollView>
   );

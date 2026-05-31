@@ -189,4 +189,10 @@ export const historyApi = {
   get: (id: string) => api<HistoryEntry>(`api/history/${encodeURIComponent(id)}`),
   transcript: (id: string) =>
     api<TranscriptResponse>(`api/history/${encodeURIComponent(id)}/transcript`),
+  /** Swipe-to-delete on the Conversations list (A1 iOS nativeness).
+   *  Resolves with the deleted id; throws on 404 / network error. */
+  delete: (id: string) =>
+    api<{ deleted: string }>(`api/history/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
 };

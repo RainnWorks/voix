@@ -22,7 +22,7 @@ import {
   type BrowserClientErrorKind,
   type BrowserClientStatus,
 } from "../audio_io/client";
-import { appInfo } from "../platform";
+import { appInfo, haptics } from "../platform";
 import { Icon } from "../components/Icon";
 import { colors, fontFamily, radius, spacing } from "../lib/theme";
 
@@ -89,6 +89,11 @@ export function TalkButton({
   const handlePressIn = async () => {
     if (clientRef.current) return;
     holdingRef.current = true;
+    // Taptic "you grabbed it" cue the instant the button depresses — fired
+    // before the async auth/mic/WS work so the tap feels acknowledged even
+    // while the session is still opening (A1 iOS nativeness). No-op on
+    // web/macOS via the platform shim.
+    haptics.talkPressIn();
     setError(null);
     // Reset the session bookkeeping + clear any lingering terminal cue
     // from the previous session.
@@ -112,6 +117,10 @@ export function TalkButton({
             setStatus(ev.status);
             // Track session lifecycle for the terminal cue.
             if (ev.status === "ready" || ev.status === "listening") {
+              // Success thunk the moment the mic actually reaches the floor —
+              // fired once on the false→true transition so a ready→listening
+              // status change doesn't double-buzz (A1 iOS nativeness).
+              if (!openedRef.current) haptics.talkSessionOpen();
               openedRef.current = true;
             }
             if (ev.status === "speaking") exchangedRef.current = true;

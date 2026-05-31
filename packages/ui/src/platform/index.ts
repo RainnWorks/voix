@@ -36,6 +36,7 @@ export type {
 } from "./types";
 
 export { storage } from "./storage";
+export { haptics } from "./haptics";
 export { appInfo, validateDaemonUrl, InvalidDaemonUrlError } from "./appInfo";
 export { permissions } from "./permissions";
 export { InlineAudioPlayer } from "./inlineAudio";

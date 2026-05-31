@@ -19,6 +19,7 @@
     "react-native": "0.81.6",
     "react-native-audio-api": "^0.12.2",
     "react-native-device-info": "^15.0.0",
+    "react-native-haptic-feedback": "^3.0.0",
     "react-native-macos": "0.81.7",
     "react-native-safe-area-context": "^5.5.2",
     "react-native-svg": "15.15.5",

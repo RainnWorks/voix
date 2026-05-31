@@ -51,17 +51,18 @@ export class VoixContextSource implements ContextSource {
   async listTools(): Promise<ToolSpec[]> {
     return [
       {
-        type: "function",
         name: "end_session",
         description:
           "Close the current voice session. Call this when the conversation has " +
           "naturally concluded and there's no obvious follow-up — don't drag the " +
           "turn out asking 'is there anything else'.",
+        // Neutral ToolSpec carries the raw JSON Schema for the args.
         // OpenAI requires a parameters object even for nullary tools.
         // Empty `properties` + `additionalProperties: false` is the
         // canonical shape; without `additionalProperties` some models
-        // happily invent random arguments.
-        parameters: {
+        // happily invent random arguments. The OpenAI adapter copies
+        // this verbatim into `parameters`.
+        inputSchemaJson: {
           type: "object",
           properties: {},
           additionalProperties: false,

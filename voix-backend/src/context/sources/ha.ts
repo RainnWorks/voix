@@ -105,16 +105,17 @@ export class HAContextSource implements ContextSource {
 
     try {
       const resp = await this.client.listTools();
+      // Wave A #4: neutral ToolSpec — HA's MCP server already ships
+      // JSON Schema for the tool args; we round-trip it verbatim
+      // through `inputSchemaJson`. The OpenAI adapter (or any future
+      // provider adapter) translates to the provider's native shape
+      // at the boundary; this source stays provider-agnostic.
       const specs: ToolSpec[] = resp.tools.map((t) => ({
-        type: "function" as const,
         name: t.name,
         description: t.description ?? "",
-        // HA's MCP tools use JSON Schema for parameters. OpenAI
-        // Realtime's function_call accepts the same JSON Schema
-        // dialect under `parameters`, so the schema round-trips
-        // verbatim. Strip the `$schema` field if present — OpenAI
-        // doesn't want it.
-        parameters: stripJsonSchemaMeta(t.inputSchema ?? {}),
+        // Strip the `$schema` field if present — OpenAI doesn't want
+        // it, and other providers don't care.
+        inputSchemaJson: stripJsonSchemaMeta(t.inputSchema ?? {}),
       }));
       this.toolsCache = specs;
       log.info(`ha context: ${specs.length} tools loaded`);

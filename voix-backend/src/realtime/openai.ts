@@ -31,7 +31,22 @@ import type {
   RealtimeFunctionTool,
   RealtimeSessionCreateRequest,
 } from "openai/resources/realtime/realtime";
+import type { ToolSpec } from "../context/types.ts";
 import { log } from "../log.ts";
+
+/** M-Arch Wave A #4: translate a neutral `ToolSpec` to the OpenAI
+ *  Realtime function-tool shape. Adapter lives next to the realtime
+ *  client because this is the natural provider boundary — once Wave B
+ *  makes the realtime seam load-bearing, every realtime provider will
+ *  own a translation like this. */
+export function toOpenAiTool(spec: ToolSpec): RealtimeFunctionTool {
+  return {
+    type: "function",
+    name: spec.name,
+    description: spec.description ?? "",
+    parameters: spec.inputSchemaJson,
+  };
+}
 
 export type RealtimeSessionConfig = {
   /** Model ID. e.g. `gpt-realtime-2` for full bidir, `gpt-4o-mini-transcribe`

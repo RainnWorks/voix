@@ -29,7 +29,11 @@ import type { ContextEntry, ToolSpec } from "../context/types.ts";
 import { config } from "../env.ts";
 import { appendHistory } from "../history/store.ts";
 import { log } from "../log.ts";
-import { OpenAIRealtimeClient, type RealtimeSessionConfig } from "../realtime/openai.ts";
+import {
+  OpenAIRealtimeClient,
+  type RealtimeSessionConfig,
+  toOpenAiTool,
+} from "../realtime/openai.ts";
 import { SessionRecorder } from "../recordings/store.ts";
 import {
   forget as forgetTranscript,
@@ -74,13 +78,6 @@ function computeRms(pcm16: Buffer): number {
     sumSq += s * s;
   }
   return Math.sqrt(sumSq / n);
-}
-
-/** Drop the `__source` field before sending tool specs to OpenAI —
- *  internal routing metadata that the realtime API rejects. */
-function stripInternalSourceField(spec: ToolSpec): Omit<ToolSpec, "__source"> {
-  const { __source: _, ...rest } = spec;
-  return rest;
 }
 
 export class RealtimePipeline implements Pipeline {
@@ -168,9 +165,13 @@ export class RealtimePipeline implements Pipeline {
     this.contextSnapshot = contextEntries;
 
     if (this.intent === "discuss") {
+      // Translate neutral ToolSpecs into the OpenAI Realtime function-tool
+      // shape at the provider boundary (Wave A #4). `toOpenAiTool`
+      // also drops the internal `__source` field — that used to be the
+      // job of `stripInternalSourceField`, now handled by adapter.
       this.openai.updateSession({
         instructions: this.composeRealtimeInstructions(this.voice, contextEntries),
-        tools: tools.map(stripInternalSourceField),
+        tools: tools.map(toOpenAiTool),
       });
       log.info(
         `pipeline ${this.deviceId}: ctx_entries=${contextEntries.length} tools=${tools.length}`,

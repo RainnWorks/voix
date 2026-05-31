@@ -34,17 +34,44 @@ export type ContextEntry = {
   data: Record<string, unknown>;
 };
 
-/** Tool spec in OpenAI Realtime's `type: "function"` shape — what the
- *  model sees in session.tools. Each context source can publish zero
- *  or more of these; the daemon registers them all up front. */
+/** Neutral tool spec (M-Arch Wave A #4) — provider-agnostic shape every
+ *  context source produces. Each context source can publish zero or
+ *  more of these; the daemon registers them all up front.
+ *
+ *  Provider adapters (OpenAI Realtime today, Anthropic / Gemini Live
+ *  tomorrow) translate to their native function-call shape at the
+ *  provider boundary — see `toOpenAiTool` in `src/realtime/openai.ts`.
+ *  Keeping the neutral shape inside the daemon means the context
+ *  sources don't need to know which provider will consume their tools.
+ *
+ *  - OpenAI Realtime: `{ type: "function", name, description, parameters }`.
+ *  - Anthropic: `{ name, description, input_schema }`.
+ *  - Gemini: `{ name, description, parameters }` with a different schema dialect.
+ *
+ *  `inputSchemaJson` is whatever JSON-Schema-shaped object the source
+ *  publishes. HA's MCP server already ships JSON Schema, so it
+ *  round-trips through unchanged.
+ */
 export type ToolSpec = {
+  name: string;
+  description?: string;
+  inputSchemaJson: Record<string, unknown>;
+  /** Internal: which source owns this tool. Not part of any provider
+   *  wire shape — the registry uses it for routing, then strips it
+   *  before any provider sees the tool. */
+  __source?: string;
+};
+
+/** Legacy OpenAI Realtime function-call tool shape — what
+ *  `session.tools` accepts on the wire. Kept as a separate type so the
+ *  OpenAI realtime adapter can produce it explicitly via
+ *  `toOpenAiTool(ToolSpec)`; no other provider should depend on this
+ *  shape leaking past `src/realtime/openai.ts`. */
+export type OpenAiRealtimeToolSpec = {
   type: "function";
   name: string;
   description: string;
   parameters: Record<string, unknown>;
-  /** Internal: which source owns this tool. Not sent to OpenAI. The
-   *  daemon strips it before forwarding. */
-  __source?: string;
 };
 
 export type ToolResult = {

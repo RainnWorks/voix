@@ -1,6 +1,6 @@
-# voix · Current State (2026-05-31, M22 closed; ~98 commits this session)
+# voix · Current State (2026-05-31, M23 implementer landed; ~108 commits this session)
 
-## Tom-pending hands-on list (accumulated across M19–M22)
+## Tom-pending hands-on list (accumulated across M19–M23)
 
 These are the only items requiring Tom's physical hands. Code-side
 shipped + verified clean otherwise.
@@ -18,9 +18,23 @@ shipped + verified clean otherwise.
    Accessibility grant (System Settings → Privacy & Security →
    Accessibility → voix). Pre-explanation banner now ships in
    M22 fix-pass.
+4. **iOS onboarding + tone + intent + settings + PTT** — M23 close.
+   See `docs/phase-6/m23-manual.md` step 5 (load-bearing). Wipes
+   AsyncStorage, walks the 3-screen onboarding, tone-snippet
+   visual on every card, intent dial switching with active voice,
+   PTT round-trips on both Realtime and Dictation. Plus Settings
+   smoke (daemon URL edit + recovery) and macOS regression
+   (status item appears + behaves; HUD chord hint reflects active
+   chord).
+5. **iOS background-audio survival** — M23 Decision 6. Hold PTT,
+   swipe to background, speak 30s, return. Either session alive
+   or cleanly captured. If neither, M23.5 follow-up:
+   AVAudioSession.setCategory(.playAndRecord, .voiceChat, [.allowBluetooth,
+   .duckOthers]) at PTT start.
 
 Recovery, screenshots, and per-step expectations are in
-`docs/phase-6/m20-manual.md`, `m21-manual.md`, `m22-manual.md`.
+`docs/phase-6/m20-manual.md`, `m21-manual.md`, `m22-manual.md`,
+`m23-manual.md`.
 
 
 
@@ -50,7 +64,94 @@ Recovery, screenshots, and per-step expectations are in
 
 ---
 
-## Status — Phase 6 (M22 implementer landed; verify trio pending); macOS first-class
+## Status — Phase 6 (M23 implementer landed; manual smoke pending); iOS shippable
+
+**M23 implementer landed (2026-05-31)** — iOS becomes the shippable
+phone app. 10 commits per Decision 7 of
+`docs/phase-6/architecture-m23.md`:
+
+- Step 1 (`88d6cb7`): voix-backend `tone: string | null` on Voice with
+  daemon-side trim/clamp (≤80 chars) + built-in defaults seeded.
+  Migration only refreshes built-ins whose on-disk tone matches a
+  known prior built-in value (KNOWN_BUILTIN_TONES set, mirrors
+  KNOWN_BUILTIN_PROMPTS); user voices never auto-fill (Risk 1).
+  20 new tests pass.
+- Step 2 (`954b532`): packages/ui mirrors tone on the Voice client
+  type so TS consumers see the field without ambient any.
+- Step 3 (`7a37db7`): VoiceEditor tone input — italic 11pt HA-blue
+  field between name and routingHint. maxLength={80} + onBlur trim.
+  routingHint placeholder re-labelled to make its auto-router role
+  explicit.
+- Step 4 (`7b50468`): tone displays on VoiceList + SurfaceList +
+  ConversationList as italic HA-blue one-liner under the voice
+  name (cardTone / rowTone). Hidden when null/empty.
+- Step 5 (`400d9ce`): TalkButton.intent is now a **required** prop;
+  ConversationList computes it from active voice's type
+  (realtime → discuss, dictation → dictate). Hint copy + speaking
+  label switch with intent. Closes Wren's M21 carry-forward.
+- Step 6 (`26cffed`): Settings screen + AppShell fourth Section.
+  Daemon connection (URL probe), Default voice (chips), Microphone
+  (status + open settings + re-prompt), Accessibility (macOS only),
+  About. Shared `<DaemonUrlInput />` reusable by onboarding.
+  Permissions shim grows `getMicrophoneStatus` +
+  `openMicrophoneSettings` (iOS via `Linking.openURL("app-settings:")`,
+  macOS via new VoixAudioPermissions.openMicrophoneSettings bridge).
+- Step 7 (`b4fcdd3`): 3-screen onboarding (welcome / mic prompt /
+  daemon URL probe) for iOS + macOS, gated by
+  `voix.onboarding.completed`. Web always skips. AppState observer
+  re-checks mic perm on resume (Risk 4). Skip-setup link on every
+  screen.
+- Step 8 (`6a250ea`): macOS status item. New VoixStatusItem Swift
+  bridge installs an NSStatusItem with "Talk to voix",
+  "Hotkey: ⌃⌥Space" (greyed; activates on conflict with
+  "(conflict — open Settings)" call-to-action), Quit. MacOverlay
+  drives the "•" badge while overlay is visible.
+- Step 9 (`373eb9c`): MacOverlay HUD `setHint` — VoixOverlayPanel's
+  puck + pulse already shipped in M22 fix-pass; M23 step 9 makes
+  the hint line drivable from JS so the chord-rebind UI (M23.5)
+  can stamp the registered chord into the HUD.
+- Step 10 (this commit): `docs/phase-6/m23-manual.md` + STATE
+  close-out.
+
+**M23 smoke (every step, all green)**:
+- `bun install` — no changes (cached)
+- `cd voix-backend/ui && bun run build` — 338 modules, ~590ms
+- `bun run check` — native-siblings OK; protocol-sync OK; pin-bounds OK
+- `cd voix-backend && timeout 5 bun src/index.ts` — boots cleanly
+- `cd .. && bunx tsc -p clients/app/tsconfig.json --noEmit` — clean
+- `(cd clients/app/macos && xcodebuild ...)` — built; same pre-existing
+  warnings (Swift 6 deprecation note on RCTEventEmitter overrides,
+  Pods script-phase warnings — both inherited from M22).
+
+**Tom-pending for M23 close-out**:
+- Step 4 onboarding flow on a fresh iOS sim (AsyncStorage wipe →
+  3 screens → AppShell lands).
+- Step 5 load-bearing tone + intent + PTT smoke.
+- Step 6 background-audio Decision 6 smoke.
+- Step 7 Settings smoke (daemon URL recovery loop).
+- Step 8 macOS regression (status item + chord hint).
+- Step 9 web regression (tone, gear, intent dial switch).
+
+**M23 deltas surfaced (0 within the hard ceiling of 3)**:
+- Step 1 entitlement-style precedent: M22 found CODE_SIGN_ENTITLEMENTS
+  was missing entirely. M23 didn't hit the same class of surprise —
+  the daemon types are well-isolated, the tone field is purely
+  daemon-API (no wire-protocol bump needed), and the persistence
+  migration cleanly extends the existing KNOWN_BUILTIN_PROMPTS
+  pattern.
+- Step 9 architect-vs-state mismatch: the brief listed Puck glyph
+  + pulse as a JS-side delta, but M22 fix-pass already moved this
+  into VoixOverlayPanel (NSView puck + HA-blue ring matching
+  Puck.tsx ratios). M23 step 9 was repurposed to add a
+  `setHint` bridge method so the hint line can be driven from JS
+  (chord rebind in M23.5). Acceptance criterion #12 is satisfied.
+
+**M23 verify trio pending** (Tester, Adversary, Product) — implementer
+report at `docs/phase-6/verify-results/M23-implementer-report.md`.
+
+---
+
+## Status — Phase 6 (M22 closed); macOS first-class
 
 **M22 implementer landed (2026-05-31)** — macOS becomes a first-class
 voix client. 12 commits per Decision 7 of `docs/phase-6/architecture-m22.md`:

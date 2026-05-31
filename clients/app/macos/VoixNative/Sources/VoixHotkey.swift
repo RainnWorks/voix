@@ -7,13 +7,30 @@
 /// posture as KeyboardShortcuts. If M23 wants in-app rebind UI, swapping
 /// to KeyboardShortcuts is a localised change.
 ///
-/// Why Carbon over NSEvent.addGlobalMonitorForEvents:
+/// Why Carbon over NSEvent.addGlobalMonitorForEvents (for KEY DOWN):
 ///   - addGlobalMonitor fires AFTER the focused app receives the key
 ///     (Decision 2 receipt) — Cmd+V would land before we could intercept.
 ///   - addGlobalMonitor requires Accessibility; we don't want that as a
 ///     prerequisite for the hotkey to work (only for paste).
 ///   - Carbon RegisterEventHotKey works inside app-sandbox with no extra
 ///     entitlements. Bear, Things, Raycast-alts all use it.
+///
+/// Why a flagsChanged FALLBACK for KEY UP:
+///   - `kEventHotKeyReleased` is documented but empirically flaky on
+///     macOS 13/14/15 when voix isn't focused (Yuki B3). Carbon emits
+///     release only when the modifiers + chord key all go up AND voix
+///     receives the focus chain — but our use case is precisely "voix
+///     isn't focused" (user is in TextEdit).
+///   - NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) does
+///     NOT require Accessibility (only .keyDown / .keyUp do), so it's a
+///     safe sandbox-friendly fallback.
+///   - We track the chord state: when Carbon's keyDown fires we set a
+///     down flag; if Carbon's release hasn't fired within ~50 ms of any
+///     subsequent flagsChanged event showing that the chord modifiers
+///     (control + option) are no longer pressed, we synthesize the up
+///     ourselves. Whichever path fires first wins; the other is
+///     suppressed via a "down" gate. Carbon stays primary; the monitor
+///     is a safety net.
 ///
 /// Default chord: ⌃⌥Space (Ctrl-Option-Space). Decision 2 picked this
 /// because:
@@ -45,6 +62,17 @@ final class VoixHotkey: RCTEventEmitter {
     // instance method). Internal so the file-local trampoline below
     // can reach it.
     fileprivate static var sharedInstance: VoixHotkey?
+
+    // Yuki B3 fallback: NSEvent global monitor for .flagsChanged.
+    // Carbon's kEventHotKeyReleased is unreliable when voix isn't the
+    // focused app. We track chord-is-down ourselves and synthesize an
+    // up event if Carbon's release doesn't fire within 50 ms of the
+    // modifier flags being released.
+    private var flagsMonitor: Any?
+    private var chordIsDown: Bool = false
+    // Required modifier flags for our chord (Ctrl + Option).
+    private let requiredModifierMask: NSEvent.ModifierFlags =
+        [.control, .option]
 
     // Key code 0x31 = Space (kVK_Space). Modifiers as Carbon flags.
     private let keyCode: UInt32 = UInt32(kVK_Space)
@@ -121,6 +149,19 @@ final class VoixHotkey: RCTEventEmitter {
                 }
             }
 
+            // Install the .flagsChanged global monitor (Yuki B3 fallback).
+            // Sandbox-friendly; does NOT require Accessibility. Fires
+            // every time the user presses or releases a modifier key
+            // anywhere in the system. We only care about the moment
+            // BOTH control and option go up while our chord is down.
+            if self.flagsMonitor == nil {
+                self.flagsMonitor = NSEvent.addGlobalMonitorForEvents(
+                    matching: .flagsChanged
+                ) { [weak self] event in
+                    self?.handleFlagsChanged(event)
+                }
+            }
+
             // Register the hotkey itself. If another app already owns
             // ⌃⌥Space, RegisterEventHotKey returns eventHotKeyExistsErr;
             // we resolve with ok:false so JS can surface a clear log.
@@ -158,16 +199,51 @@ final class VoixHotkey: RCTEventEmitter {
             UnregisterEventHotKey(ref)
             hotKeyRef = nil
         }
+        if let monitor = flagsMonitor {
+            NSEvent.removeMonitor(monitor)
+            flagsMonitor = nil
+        }
+        chordIsDown = false
         // Leave eventHandlerRef installed — re-register reuses it.
     }
 
     // MARK: Carbon callback bridge
 
     fileprivate func handleHotKeyEvent(_ kind: UInt32) {
-        guard hasListeners else { return }
         if kind == UInt32(kEventHotKeyPressed) {
+            chordIsDown = true
+            guard hasListeners else { return }
             sendEvent(withName: "voixHotkey.down", body: nil)
         } else if kind == UInt32(kEventHotKeyReleased) {
+            // Carbon's release path is the happy path. Suppress
+            // duplicate emits if the flagsChanged fallback already
+            // fired (chordIsDown gate).
+            if chordIsDown {
+                chordIsDown = false
+                guard hasListeners else { return }
+                sendEvent(withName: "voixHotkey.up", body: nil)
+            }
+        }
+    }
+
+    /// Fallback release detection (Yuki B3). NSEvent.flagsChanged fires
+    /// when the user presses or releases any modifier key. If our chord
+    /// was pressed and we see the user has now released BOTH ctrl AND
+    /// option (the required modifiers), treat that as the release —
+    /// Carbon may never emit kEventHotKeyReleased reliably when voix
+    /// isn't the focused app.
+    ///
+    /// Race-safety: chordIsDown flag is the single source of truth.
+    /// Whichever path fires first wins; the other is a no-op.
+    fileprivate func handleFlagsChanged(_ event: NSEvent) {
+        guard chordIsDown else { return }
+        // Did the user release the required modifiers? event.modifierFlags
+        // reports the CURRENT state of all modifiers — so if either of
+        // ctrl/option is no longer held, the chord can't still be down.
+        let current = event.modifierFlags.intersection(requiredModifierMask)
+        if current != requiredModifierMask {
+            chordIsDown = false
+            guard hasListeners else { return }
             sendEvent(withName: "voixHotkey.up", body: nil)
         }
     }

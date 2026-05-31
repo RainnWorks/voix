@@ -106,7 +106,14 @@ export type Voice = {
    * dropped once the M04 voice-editor rewrite lands.
    */
   postProcessPrompt: string;
-  postProcessProvider: "openai" | "openrouter";
+  /** Done-phase / post-process LLM provider name. M-Arch Wave A #2:
+   *  open `string`, resolved at session-start via the provider registry
+   *  (`pipeline/orchestrator.ts`). Unknown names throw
+   *  `UnknownProviderError`; the post-process facade falls back to raw
+   *  text on any failure so the user still gets their dictation. The
+   *  closed `"openai" | "openrouter"` union was a 2-provider artefact —
+   *  see Arvid's swappability audit (refactor #2). */
+  postProcessProvider: string;
   postProcessModel: string;
 
   /** One-line description for auto-routing. The router shows these to

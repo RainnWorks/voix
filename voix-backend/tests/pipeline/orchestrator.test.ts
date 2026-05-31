@@ -1,8 +1,9 @@
 /**
- * M13 orchestrator tests.
+ * M13 + M-Arch Wave A #2 orchestrator tests.
  *
  * Drives the orchestrator's selection logic against stub providers
- * and verifies the wrapper's lifecycle:
+ * (registered through the new `ProviderRegistry`) and verifies the
+ * wrapper's lifecycle:
  *   - mic frames received before inner.start() resolves get queued
  *     and drained in order on resolve
  *   - close() before inner is built cancels cleanly (inner that
@@ -10,15 +11,20 @@
  *   - selection picks TraditionalDictatePipeline only for
  *     intent=dictate + voice.sttProvider="deepgram"
  *   - everything else falls through to the realtime pipeline
+ *   - unknown providers raise `UnknownProviderError` (typed, not a
+ *     string-includes match)
  *
  * We can't instantiate RealtimePipeline against real OpenAI here,
  * so the "non-deepgram" test stops at the orchestrator's pick
- * function (exported indirectly via the constructed Pipeline's
- * runtime shape).
+ * function (exercised via the constructed Pipeline's runtime shape).
  */
 
 import { describe, expect, test } from "bun:test";
-import { createOrchestrator } from "../../src/pipeline/orchestrator.ts";
+import {
+  createOrchestrator,
+  createProviderRegistry,
+  UnknownProviderError,
+} from "../../src/pipeline/orchestrator.ts";
 import type { SttProvider, SttSession } from "../../src/pipeline/providers/stt/types.ts";
 import type { Pipeline, PipelineCallbacks, PipelineStart } from "../../src/pipeline/types.ts";
 import type { Voice } from "../../src/voices/types.ts";
@@ -46,6 +52,7 @@ function fakeVoice(overrides: Partial<Voice> = {}): Voice {
     postProcessModel: "gpt-4o-mini",
     routingHint: "",
     isBuiltin: false,
+    tone: null,
     ...overrides,
   };
 }
@@ -95,10 +102,19 @@ class StubSttProvider implements SttProvider {
   }
 }
 
+/** Registry pre-populated with a Deepgram STT factory backed by the
+ *  given stub. Tests that need a different shape build their own
+ *  registry inline. */
+function registryWithDeepgram(stub: StubSttProvider) {
+  const reg = createProviderRegistry();
+  reg.register("stt", "deepgram", async () => stub);
+  return reg;
+}
+
 describe("orchestrator pick", () => {
   test("intent=dictate + sttProvider=deepgram → TraditionalDictatePipeline opens STT", async () => {
     const stub = new StubSttProvider();
-    const factory = createOrchestrator({ stt: async () => stub });
+    const factory = createOrchestrator(registryWithDeepgram(stub));
     const pipeline = factory(fakeStart());
     await pipeline.start();
     expect(stub.sessions).toHaveLength(1);
@@ -107,7 +123,7 @@ describe("orchestrator pick", () => {
 
   test("intent=discuss falls through to RealtimePipeline (does not open STT)", async () => {
     const stub = new StubSttProvider();
-    const factory = createOrchestrator({ stt: async () => stub });
+    const factory = createOrchestrator(registryWithDeepgram(stub));
     // RealtimePipeline tries to open OpenAI Realtime in start();
     // we don't want to hit the network in tests, so we exercise
     // the pick by close()ing before start() actually returns.
@@ -122,7 +138,7 @@ describe("orchestrator pick", () => {
 
   test("dictate but non-deepgram STT provider falls through to RealtimePipeline", async () => {
     const stub = new StubSttProvider();
-    const factory = createOrchestrator({ stt: async () => stub });
+    const factory = createOrchestrator(registryWithDeepgram(stub));
     const pipeline = factory(
       fakeStart({
         intent: "dictate",
@@ -138,7 +154,7 @@ describe("orchestrator pick", () => {
 describe("orchestrator wrapper lifecycle", () => {
   test("early mic frames are queued and drained on inner.start", async () => {
     const stub = new StubSttProvider();
-    const factory = createOrchestrator({ stt: async () => stub });
+    const factory = createOrchestrator(registryWithDeepgram(stub));
     const pipeline = factory(fakeStart());
     // Push frames before start completes.
     const startPromise = pipeline.start();
@@ -159,12 +175,16 @@ describe("orchestrator wrapper lifecycle", () => {
     // inner.start().
     const stub = new StubSttProvider();
     let resolveStt!: (p: SttProvider) => void;
-    const factory = createOrchestrator({
-      stt: () =>
+    const reg = createProviderRegistry();
+    reg.register(
+      "stt",
+      "deepgram",
+      () =>
         new Promise<SttProvider>((res) => {
           resolveStt = res;
         }),
-    });
+    );
+    const factory = createOrchestrator(reg);
     const pipeline = factory(fakeStart());
     const startPromise = pipeline.start();
     pipeline.close();
@@ -182,12 +202,16 @@ describe("orchestrator wrapper lifecycle", () => {
     // frames before inner.start() drains them.
     const stub = new StubSttProvider();
     let resolveStt!: (p: SttProvider) => void;
-    const factory = createOrchestrator({
-      stt: () =>
+    const reg = createProviderRegistry();
+    reg.register(
+      "stt",
+      "deepgram",
+      () =>
         new Promise<SttProvider>((res) => {
           resolveStt = res;
         }),
-    });
+    );
+    const factory = createOrchestrator(reg);
     const pipeline = factory(fakeStart());
     const startPromise = pipeline.start();
     // 6 seconds of 16 kHz mono PCM16 = 192 KB. Cap is 5 s = 160 KB.
@@ -206,12 +230,66 @@ describe("orchestrator wrapper lifecycle", () => {
 
 describe("orchestrator factory error surfacing", () => {
   test("STT factory throws → pipeline start propagates the error", async () => {
-    const factory = createOrchestrator({
-      async stt() {
-        throw new Error("no deepgram key");
-      },
+    const reg = createProviderRegistry();
+    reg.register("stt", "deepgram", async () => {
+      throw new Error("no deepgram key");
     });
+    const factory = createOrchestrator(reg);
     const pipeline: Pipeline = factory(fakeStart());
     await expect(pipeline.start()).rejects.toThrow(/no deepgram key/);
+  });
+
+  test("unknown STT provider name → UnknownProviderError (typed)", async () => {
+    // Empty registry — no factories at all. `voice.sttProvider="deepgram"`
+    // routes through the registry and the absence surfaces as a typed
+    // error rather than a string-includes assertion.
+    const reg = createProviderRegistry();
+    const factory = createOrchestrator(reg);
+    const pipeline: Pipeline = factory(fakeStart());
+    let caught: unknown;
+    try {
+      await pipeline.start();
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(UnknownProviderError);
+    const typed = caught as UnknownProviderError;
+    expect(typed.kind).toBe("stt");
+    expect(typed.providerName).toBe("deepgram");
+  });
+});
+
+describe("provider registry", () => {
+  test("register + list reflects registered providers", () => {
+    const reg = createProviderRegistry();
+    expect(reg.list("llm")).toEqual([]);
+    reg.register("llm", "openai", async () => ({
+      name: "openai",
+      async complete() {
+        return { text: "" };
+      },
+    }));
+    reg.register("llm", "openrouter", async () => ({
+      name: "openrouter",
+      async complete() {
+        return { text: "" };
+      },
+    }));
+    expect(reg.list("llm").sort()).toEqual(["openai", "openrouter"]);
+    expect(reg.list("stt")).toEqual([]);
+    expect(reg.list("tts")).toEqual([]);
+  });
+
+  test("get returns the registered factory; unknown name returns undefined", () => {
+    const reg = createProviderRegistry();
+    reg.register("stt", "deepgram", async () => ({
+      name: "deepgram",
+      async open() {
+        throw new Error("not implemented");
+      },
+    }));
+    expect(reg.get("stt", "deepgram")).toBeTypeOf("function");
+    expect(reg.get("stt", "whisper")).toBeUndefined();
+    expect(reg.get("llm", "deepgram")).toBeUndefined();
   });
 });

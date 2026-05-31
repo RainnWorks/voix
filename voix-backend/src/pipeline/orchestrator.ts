@@ -1,5 +1,5 @@
 /**
- * Pipeline orchestrator (M13 + M14).
+ * Pipeline orchestrator (M13 + M14 + M-Arch Wave A #2).
  *
  * Decides which `Pipeline` impl runs for a given (intent, voice)
  * combination, wires the provider dependencies, and hands the
@@ -18,10 +18,18 @@
  * so the dial is symmetric (a Realtime impl per provider, same as
  * STT/LLM/TTS today).
  *
- * Provider construction is deferred to factory functions injected at
- * boot — letting tests substitute stubs without going near the
- * network and letting the production wiring lazy-import providers
- * that pull large deps (`ws` for Deepgram + Aura).
+ * Provider construction is deferred to factory functions registered at
+ * boot — letting tests substitute stubs without going near the network
+ * and letting the production wiring lazy-import providers that pull
+ * large deps (`ws` for Deepgram + Aura).
+ *
+ * Wave A #2 swaps the closed-string `OrchestratorProviders` factory
+ * bundle for a `ProviderRegistry`. Adding a provider is now boot-time
+ * registration (`registry.register("llm", "anthropic", () => …)`); no
+ * type-level edits to the orchestrator. The closed `"openai" |
+ * "openrouter"` enum on `voice.postProcessProvider` is now `string` —
+ * unknown names throw a typed `UnknownProviderError` at session-start
+ * (or boot-time, if the registry is built strict).
  */
 
 import { config } from "../env.ts";
@@ -38,67 +46,153 @@ import type { TtsProvider } from "./providers/tts/types.ts";
 import { RealtimePipeline } from "./realtime.ts";
 import type { Pipeline, PipelineFactory, PipelineStart } from "./types.ts";
 
-/** Factory bundle the orchestrator uses to construct provider
- *  instances. Each factory is async because Deepgram/Aura factories
- *  lazy-import `ws`. */
-export type OrchestratorProviders = {
-  stt(name: string): Promise<SttProvider>;
-  llm(name: string): Promise<LlmProvider>;
-  tts(name: string): Promise<TtsProvider>;
-};
+/** Kinds of providers the registry knows about today. Realtime is
+ *  Wave B (the seam isn't load-bearing yet); for now any "realtime"
+ *  decision is hard-coded onto `RealtimePipeline` + `OpenAIRealtimeClient`. */
+export type ProviderKind = "stt" | "llm" | "tts";
+
+/** Provider instance shape per kind. Used by the registry's typed
+ *  `get`/`register` so callers don't have to cast. */
+export type ProviderFor<K extends ProviderKind> = K extends "stt"
+  ? SttProvider
+  : K extends "llm"
+    ? LlmProvider
+    : K extends "tts"
+      ? TtsProvider
+      : never;
+
+export type ProviderFactory<K extends ProviderKind> = () => Promise<ProviderFor<K>>;
+
+/** Thrown when something asks the registry for a name no factory was
+ *  registered under. Distinct from a network/auth error so the caller
+ *  can decide whether to fall back or surface a "wrong config" warning. */
+export class UnknownProviderError extends Error {
+  constructor(
+    readonly kind: ProviderKind,
+    readonly providerName: string,
+  ) {
+    super(`orchestrator: unknown ${kind} provider ${providerName}`);
+    this.name = "UnknownProviderError";
+  }
+}
+
+/** Boot-time registry of provider factories, keyed by (kind, name).
+ *  Factories run lazily on first lookup so a configured-but-unused
+ *  provider doesn't pay the cost of dialling its dep until something
+ *  actually calls it. */
+export interface ProviderRegistry {
+  register<K extends ProviderKind>(kind: K, name: string, factory: ProviderFactory<K>): void;
+  get<K extends ProviderKind>(kind: K, name: string): ProviderFactory<K> | undefined;
+  list(kind: ProviderKind): string[];
+}
+
+/** Concrete in-memory ProviderRegistry. */
+class InMemoryRegistry implements ProviderRegistry {
+  private maps: Record<ProviderKind, Map<string, ProviderFactory<ProviderKind>>> = {
+    stt: new Map(),
+    llm: new Map(),
+    tts: new Map(),
+  };
+
+  register<K extends ProviderKind>(kind: K, name: string, factory: ProviderFactory<K>): void {
+    this.maps[kind].set(name, factory as ProviderFactory<ProviderKind>);
+    log.info(`orchestrator: registered ${kind} provider "${name}"`);
+  }
+
+  get<K extends ProviderKind>(kind: K, name: string): ProviderFactory<K> | undefined {
+    return this.maps[kind].get(name) as ProviderFactory<K> | undefined;
+  }
+
+  list(kind: ProviderKind): string[] {
+    return Array.from(this.maps[kind].keys());
+  }
+}
+
+/** Build an empty registry. Callers (boot wiring in tests / index.ts)
+ *  call `.register(...)` for each available provider. */
+export function createProviderRegistry(): ProviderRegistry {
+  return new InMemoryRegistry();
+}
 
 /**
- * Default provider bundle wired against the real env credentials.
- * Tests substitute a stub bundle.
+ * Default provider registry wired against the real env credentials.
+ * Each `register` only fires if the relevant key is present — missing
+ * keys at boot mean the provider is simply absent from the registry,
+ * which surfaces as `UnknownProviderError` if a voice tries to use it
+ * (clear "configure this in add-on options" UX) rather than as a
+ * silent fallback or a mid-session crash.
+ *
+ * Wave A #9 (deferred): move provider registration entirely to
+ * `index.ts` so the orchestrator stops touching `config`. Doing it
+ * here for now preserves the "drop-in replacement for defaultProviders"
+ * call site in `audio_io/route.ts`.
  */
-export function defaultProviders(): OrchestratorProviders {
-  return {
-    async stt(name) {
-      if (name === "deepgram") {
-        if (!config.deepgramApiKey) {
-          throw new Error("orchestrator: deepgram selected but DEEPGRAM_API_KEY missing");
-        }
-        return createDeepgramProvider(config.deepgramApiKey);
-      }
-      throw new Error(`orchestrator: unknown STT provider ${name}`);
-    },
-    async llm(name) {
-      if (name === "openai") {
-        if (!config.openaiApiKey) {
-          throw new Error("orchestrator: openai LLM selected but OPENAI_API_KEY missing");
-        }
-        return createOpenAiProvider(config.openaiApiKey);
-      }
-      if (name === "openrouter") {
-        if (!config.openrouterApiKey) {
-          throw new Error("orchestrator: openrouter selected but OPENROUTER_API_KEY missing");
-        }
-        return createOpenRouterProvider(config.openrouterApiKey);
-      }
-      throw new Error(`orchestrator: unknown LLM provider ${name}`);
-    },
-    async tts(name) {
-      if (name === "aura") {
-        // Aura uses the Deepgram API key.
-        if (!config.deepgramApiKey) {
-          throw new Error("orchestrator: aura selected but DEEPGRAM_API_KEY missing");
-        }
-        return createAuraProvider(config.deepgramApiKey);
-      }
-      throw new Error(`orchestrator: unknown TTS provider ${name}`);
-    },
-  };
+export function defaultRegistry(): ProviderRegistry {
+  const reg = createProviderRegistry();
+
+  // STT
+  if (config.deepgramApiKey) {
+    const key = config.deepgramApiKey;
+    reg.register("stt", "deepgram", () => createDeepgramProvider(key));
+  }
+
+  // LLM
+  if (config.openaiApiKey) {
+    const key = config.openaiApiKey;
+    reg.register("llm", "openai", async () => createOpenAiProvider(key));
+  }
+  if (config.openrouterApiKey) {
+    const key = config.openrouterApiKey;
+    reg.register("llm", "openrouter", async () => createOpenRouterProvider(key));
+  }
+
+  // TTS (Aura reuses the Deepgram key)
+  if (config.deepgramApiKey) {
+    const key = config.deepgramApiKey;
+    reg.register("tts", "aura", () => createAuraProvider(key));
+  }
+
+  return reg;
+}
+
+/** Resolve a provider through the registry, raising a typed error if
+ *  the name isn't registered. Centralised so every call site gets the
+ *  same error message + the same exception type. */
+async function resolveProvider<K extends ProviderKind>(
+  registry: ProviderRegistry,
+  kind: K,
+  name: string,
+): Promise<ProviderFor<K>> {
+  const factory = registry.get(kind, name);
+  if (!factory) throw new UnknownProviderError(kind, name);
+  return factory();
+}
+
+/** Process-global default registry. Lazily built on first access so
+ *  tests that don't go through `createOrchestrator()` don't pay the
+ *  env-read cost, and so a stray `defaultRegistry()` call in test code
+ *  doesn't trample a registry the suite already populated. The
+ *  `/api/providers` route reads this. */
+let _defaultRegistrySingleton: ProviderRegistry | null = null;
+export function getDefaultRegistry(): ProviderRegistry {
+  if (!_defaultRegistrySingleton) {
+    _defaultRegistrySingleton = defaultRegistry();
+  }
+  return _defaultRegistrySingleton;
 }
 
 /**
  * Build the orchestrator's PipelineFactory. The factory is what the
  * audio-io route hands to its connection — one call per capture.
+ *
+ * Tests pass a pre-populated registry with stub factories; production
+ * gets the env-driven `defaultRegistry()` (via `getDefaultRegistry`).
  */
 export function createOrchestrator(
-  providers: OrchestratorProviders = defaultProviders(),
+  registry: ProviderRegistry = getDefaultRegistry(),
 ): PipelineFactory {
   return (start: PipelineStart): Pipeline => {
-    return new OrchestratedPipeline(start, providers);
+    return new OrchestratedPipeline(start, registry);
   };
 }
 
@@ -117,7 +211,7 @@ class OrchestratedPipeline implements Pipeline {
 
   constructor(
     private readonly start_: PipelineStart,
-    private readonly providers: OrchestratorProviders,
+    private readonly registry: ProviderRegistry,
   ) {}
 
   async start(): Promise<void> {
@@ -168,7 +262,7 @@ class OrchestratedPipeline implements Pipeline {
     const { intent, voice } = this.start_;
     if (intent === "dictate") {
       if (voice.sttProvider === "deepgram") {
-        const sttProvider = await this.providers.stt("deepgram");
+        const sttProvider = await resolveProvider(this.registry, "stt", "deepgram");
         log.info(
           `orchestrator: device=${this.start_.deviceId} intent=dictate → ` +
             `TraditionalDictatePipeline(stt=${sttProvider.name})`,
@@ -194,9 +288,9 @@ class OrchestratedPipeline implements Pipeline {
       const llmName = voice.postProcessProvider || "openai";
       const ttsName = voice.ttsProvider || "aura";
       const [sttProvider, llmProvider, ttsProvider] = await Promise.all([
-        this.providers.stt(sttName),
-        this.providers.llm(llmName),
-        this.providers.tts(ttsName),
+        resolveProvider(this.registry, "stt", sttName),
+        resolveProvider(this.registry, "llm", llmName),
+        resolveProvider(this.registry, "tts", ttsName),
       ]);
       log.info(
         `orchestrator: device=${this.start_.deviceId} intent=discuss engine=traditional → ` +

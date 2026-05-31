@@ -19,11 +19,23 @@ import { createOpenAiProvider } from "./openai.ts";
 import { createOpenRouterProvider } from "./openrouter.ts";
 import type { LlmProvider } from "./types.ts";
 
-export type ProviderName = "openai" | "openrouter";
+/** Open string after M-Arch Wave A #2 — consumers (voice editor,
+ *  orchestrator) query the provider registry; this facade still
+ *  accepts a name + key for tests + the dictate-done call site that
+ *  hasn't migrated to the registry yet (see TraditionalDictatePipeline
+ *  and RealtimePipeline). The legacy `"openai" | "openrouter"` union
+ *  is gone; built-in factories cover those two names. */
+export type ProviderName = string;
 
+/** Per-provider API keys for the dictate done-phase. The orchestrator
+ *  carries this struct so the post-process facade can fall back to
+ *  raw text if the configured provider has no key. Open shape — Wave A
+ *  intentionally keeps the two existing entries; future providers
+ *  add their own key slot. */
 export type PostProcessKeys = {
   openai?: string;
   openrouter?: string;
+  [providerName: string]: string | undefined;
 };
 
 export type PostProcessArgs = {
@@ -41,7 +53,14 @@ export type PostProcessArgs = {
 };
 
 function defaultFactory(provider: ProviderName, key: string): LlmProvider {
-  return provider === "openrouter" ? createOpenRouterProvider(key) : createOpenAiProvider(key);
+  if (provider === "openrouter") return createOpenRouterProvider(key);
+  if (provider === "openai") return createOpenAiProvider(key);
+  // Unknown provider name: log + fall back to OpenAI-compatible shape so
+  // the caller still gets *something*. The post-process facade's
+  // raw-text fallback handles the case where this then fails on bad
+  // auth — see comments at the top of this file.
+  log.warn(`post_process: unknown provider name "${provider}", using OpenAI factory`);
+  return createOpenAiProvider(key);
 }
 
 export async function postProcess(args: PostProcessArgs): Promise<string> {
@@ -50,7 +69,13 @@ export async function postProcess(args: PostProcessArgs): Promise<string> {
   const system = (args.systemPrompt ?? "").trim();
   if (!system) return rawText;
 
-  const key = args.provider === "openrouter" ? args.keys.openrouter : args.keys.openai;
+  // Wave A #2: keys is open-shaped — look up by provider name first,
+  // then fall back to the legacy "openai"/"openrouter" slots so
+  // existing call sites that pass `keys: { openai, openrouter }`
+  // continue to work for those two names.
+  const key =
+    args.keys[args.provider] ??
+    (args.provider === "openrouter" ? args.keys.openrouter : args.keys.openai);
   if (!key) {
     log.warn(`post_process: no API key for provider ${args.provider} — returning raw`);
     return rawText;

@@ -185,26 +185,40 @@ M10-M12 parallelise. M13 needs all three to be ready.
 
 These parallelise once M15 is in.
 
-### Phase 6 — Desktop client (Mac, Path A)
+### Phase 6 — RN end-to-end (the client foundation)
+
+**Decision (2026-05-31):** Drop the Tauri shell. The pre-pivot
+`app/` Tauri code is a relic. The voix UI is already
+RN-shaped (9 files import from `react-native`, rendered today
+via `react-native-web`). React Native covers all three real
+targets — HA iframe (RN-web), macOS desktop (react-native-macos),
+iOS app + keyboard (RN-iOS) — with one component layer. Tauri
+would force a desktop/mobile split for no gain. See
+`docs/agent-team-workflow.md` for how this phase is run.
 
 | # | Milestone | Deliverable | Acceptance |
 |---|---|---|---|
-| M19 | Tauri shell embeds the daemon | `clients/desktop/` (was `app/`). Tauri app bundles the `bun` binary, child-processes the core on launch, talks to it on localhost. Existing menu/tray/paste Rust code stays. | Open the .app, see the same UI as HA ingress, talk to it; no separate daemon process needed. |
-| M20 | Hotkey + paste flow | Global hotkey opens a press-to-talk overlay; talking phase + done phase; produced entry is pasted into the focused app. | End-to-end dictate flow on Mac, no puck needed. |
+| M19 | Monorepo shape + shared UI package | `packages/ui/` holds every component currently in `voix-backend/ui/src/`. `voix-backend/ui/` becomes a thin web-target consumer of it. Existing daemon ingress UI renders identically. | `bun run build` in voix-backend/ui produces the same UI; HA add-on Open Web UI works unchanged. |
+| M20 | RN app scaffold (`clients/app/`) | Replace the `app/` Tauri relic with an RN-CLI app. iOS + macOS targets enabled; metro bundler points at `packages/ui`. Pre-pivot Tauri code archived to `legacy/tauri-clipboard/` branch. | `npx react-native run-ios` boots; `npx react-native run-macos` boots; shared UI renders on both. |
+| M21 | Platform shims | Abstract the web-only leaks (`window.location`, `document.title`, `AudioContext`, `getUserMedia`) behind a `packages/ui/platform/` interface. Web impl, RN-iOS impl, RN-macOS impl. | One source set; all three targets compile. Shim coverage: fetch, WebSocket, audio capture, audio playback, friendly name, base URL. |
+| M22 | macOS shell: hotkey + paste | Global hotkey opens PTT overlay; produced entry hits clipboard + (with Accessibility) pastes into the focused app. | Cold-launch app, press hotkey, dictate, see paste. |
+| M23 | iOS app shell | Full app: Conversations, Voices, Surfaces screens; press-to-talk works. Background audio mode for in-session continuity. | Cold-launch on iPhone, dictate a session, see it in Conversations. |
+| M24 | iOS keyboard extension | Swift keyboard bounces to the host app for capture (Apple constraint), returns text to the original field via shared App Group + UIPasteboard. | Tap keyboard button in Notes → app opens → speak → text appears in Notes. |
+
+M19 unblocks everything. M20-M21 run in tight sequence. M22-M24
+parallelise once M21 is in.
 
 ### Phase 7 — HA connector finishing
 
 | # | Milestone | Deliverable | Acceptance |
 |---|---|---|---|
-| M21 | HA connector trim to spec | Final reduction of `ha-integration/custom_components/voix/` to ~600-800 LOC: discovery + adoption push + light/sensor/button/text entities + MCP tool exposure. | HA UI shows the right entities; the connector is the right shape for the architecture. |
+| M25 | HA connector trim to spec | Final reduction of `ha-integration/custom_components/voix/` to ~600-800 LOC: discovery + adoption push + light/sensor/button/text entities + MCP tool exposure. | HA UI shows the right entities; the connector is the right shape for the architecture. |
 
-### Phase 8 — Mobile (deferred until M19 lands)
+### Phase 8 — Android (deferred until iOS lands)
 
 | # | Milestone | Deliverable | Acceptance |
 |---|---|---|---|
-| M22 | iOS app: notebook + dictate | RN tree consuming `clients/shared/`. Browser-style capture client (mic + audio out + paste-to-app via share extension). | Press-to-talk works on iPhone; entries sync. |
-| M23 | iOS keyboard launcher | Swift extension that bounces to the app for capture (Apple constraint), then back to the field with the produced text. | Tap the keyboard button → app opens → speak → text appears in the original field. |
-| M24 | Android app + IME | RN tree for the app; native IME with in-keyboard capture (Android allows it). | Dictate + paste flow on Android. |
+| M26 | Android app + IME | RN target for Android; in-keyboard capture (Android allows it natively, unlike iOS). | Dictate + paste flow on Android. |
 
 ### Phase 9 — Power-user context (deferred)
 

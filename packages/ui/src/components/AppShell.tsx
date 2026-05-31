@@ -2,6 +2,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, fontFamily, radius, spacing } from "../lib/theme";
 import { useResponsive } from "../lib/useResponsive";
 import { SafeAreaView } from "../platform";
+import { Icon } from "./Icon";
 import { Puck } from "./Puck";
 import { Wordmark } from "./Wordmark";
 
@@ -293,13 +294,19 @@ function TabItem({
   );
 }
 
-/** Tab glyphs reuse the chrome vocabulary the sidebar established:
- *  Voices → puck, Surfaces → ◇, Settings → ⚙ (M23 Decision 2).
- *  Conversations → ▤ (a stacked-rows / history glyph). */
+/** Tab glyphs are SF-Symbol-equivalent monochrome icons on iOS (Marina
+ *  v3 #1), system-tinted so the active tab picks up the iOS accent:
+ *  Conversations → bubble, Surfaces → radiowaves, Settings → gear. The
+ *  Voices tab keeps the brand puck — the one sanctioned custom glyph. */
 function TabGlyph({ section, tint }: { section: Section; tint: string }) {
   if (section === "voices") return <Puck size={16} />;
-  const glyph = section === "conversations" ? "▤" : section === "surfaces" ? "◇" : "⚙";
-  return <Text style={[styles.tabGlyph, { color: tint }]}>{glyph}</Text>;
+  const name =
+    section === "conversations"
+      ? "conversations"
+      : section === "surfaces"
+        ? "surfaces"
+        : "settings";
+  return <Icon name={name} size={22} color={tint} />;
 }
 
 const styles = StyleSheet.create({

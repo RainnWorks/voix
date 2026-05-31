@@ -23,6 +23,7 @@ import {
   type BrowserClientStatus,
 } from "../audio_io/client";
 import { appInfo } from "../platform";
+import { Icon } from "../components/Icon";
 import { colors, fontFamily, radius, spacing } from "../lib/theme";
 
 const WS_TOKEN_PATH = "api/auth/ws-token";
@@ -199,7 +200,15 @@ export function TalkButton({
         accessibilityHint={hintCopy}
         accessibilityState={{ busy: active }}
       >
-        <Text style={styles.glyph}>🎙</Text>
+        {/* SF-Symbol mic (mic.fill), not the 🎙 emoji that read as the
+            loudest RN tell on the product's front door (Marina v3 #1).
+            Tinted to state: voix blue when active, white over the
+            speaking fill, ink at rest. */}
+        <Icon
+          name="mic"
+          size={16}
+          color={speaking ? colors.bgElevated : active ? colors.haBlue : colors.ink}
+        />
         {/* Mic-live indicator — a filled voix-blue dot while listening so
             "I'm listening" is unmistakable from "Connecting…". */}
         {listening && <View style={styles.liveDot} />}

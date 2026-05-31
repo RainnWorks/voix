@@ -85,4 +85,25 @@ final class VoixAudioPermissions: NSObject {
             resolve(nil)
         }
     }
+
+    /// M23 — opens the Microphone pane in System Settings → Privacy.
+    /// Mirrors openAccessibilitySettings() above; JS-side Settings
+    /// screen surfaces this when the cached mic status is denied.
+    @objc(openMicrophoneSettings:rejecter:)
+    func openMicrophoneSettings(
+        _ resolve: @escaping RCTPromiseResolveBlock,
+        rejecter reject: @escaping RCTPromiseRejectBlock
+    ) {
+        let url = URL(
+            string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+        )
+        guard let u = url else {
+            reject("EBADURL", "could not form Microphone settings URL", nil)
+            return
+        }
+        DispatchQueue.main.async {
+            NSWorkspace.shared.open(u)
+            resolve(nil)
+        }
+    }
 }

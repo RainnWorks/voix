@@ -147,6 +147,15 @@ export type PermissionResult =
  */
 export interface Permissions {
   requestMicrophone(): Promise<PermissionResult>;
+  /** M23 — current permission status without prompting. Web returns
+   *  `ok: true` (browser-chrome gated). Native reads the cached
+   *  AVAudioSession status. */
+  getMicrophoneStatus(): Promise<PermissionResult>;
+  /** M23 — open the platform's settings page for this app's mic
+   *  permission. iOS: `app-settings:`. macOS: System Settings →
+   *  Privacy → Microphone. Web: no-op (returns false). Returns true
+   *  if the open was attempted. */
+  openMicrophoneSettings(): Promise<boolean>;
 }
 
 // ─── Inline audio (history playback) ────────────────────────────────

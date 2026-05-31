@@ -4,6 +4,7 @@ import { ConversationDetail } from "./conversations/ConversationDetail";
 import { ConversationList } from "./conversations/ConversationList";
 import { MacAccessibilityBanner } from "./macos/MacAccessibilityBanner";
 import { MacOverlay } from "./macos/MacOverlay";
+import { SettingsScreen } from "./settings/SettingsScreen";
 import { SurfaceList } from "./surfaces/SurfaceList";
 import { VoiceEditor } from "./voices/VoiceEditor";
 import { VoiceList } from "./voices/VoiceList";
@@ -33,6 +34,9 @@ export function App() {
       title = "Conversation";
       content = <ConversationDetail entryId={openEntryId} onClose={() => setOpenEntryId(null)} />;
     }
+  } else if (section === "settings") {
+    title = "Settings";
+    content = <SettingsScreen />;
   } else {
     title = "Surfaces";
     content = <SurfaceList />;

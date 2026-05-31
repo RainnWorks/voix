@@ -16,7 +16,7 @@ import { Wordmark } from "./Wordmark";
  * browser tab.
  */
 
-export type Section = "conversations" | "voices" | "surfaces";
+export type Section = "conversations" | "voices" | "surfaces" | "settings";
 
 type Props = {
   section: Section;
@@ -81,11 +81,20 @@ function Sidebar({
           selected={section === "voices"}
           onPress={() => onPickSection("voices")}
         />
+        {/* M23 Decision 2 — Surfaces gives up the gear glyph so
+            Settings can claim it. ◇ reads as a generic surface /
+            slot icon without competing for "configuration" affordance. */}
         <SidebarFlatItem
-          icon={<Text style={styles.gearIcon}>⚙</Text>}
+          icon={<Text style={styles.surfaceIcon}>◇</Text>}
           label="Surfaces"
           selected={section === "surfaces"}
           onPress={() => onPickSection("surfaces")}
+        />
+        <SidebarFlatItem
+          icon={<Text style={styles.gearIcon}>⚙</Text>}
+          label="Settings"
+          selected={section === "settings"}
+          onPress={() => onPickSection("settings")}
         />
       </View>
     </View>
@@ -267,6 +276,10 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   gearIcon: {
+    fontSize: 13,
+    color: colors.textMuted,
+  },
+  surfaceIcon: {
     fontSize: 13,
     color: colors.textMuted,
   },

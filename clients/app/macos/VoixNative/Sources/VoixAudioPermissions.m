@@ -16,4 +16,7 @@ RCT_EXTERN_METHOD(isAccessibilityTrusted:(RCTPromiseResolveBlock)resolve
 RCT_EXTERN_METHOD(openAccessibilitySettings:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(openMicrophoneSettings:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 @end

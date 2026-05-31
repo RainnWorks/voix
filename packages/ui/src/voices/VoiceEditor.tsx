@@ -113,18 +113,28 @@ export function VoiceEditor({ voiceId, onClose }: Props) {
               and routingHint because tone is the *user-facing*
               identity copy; routingHint is the auto-router cue (M14)
               and reads as a different kind of metadata. 80-char cap
-              keeps cards from wrapping (Marina line-height rule). */}
-          <TextInput
-            value={voice.tone ?? ""}
-            placeholder="A one-line personality snippet."
-            placeholderTextColor={colors.textQuiet}
-            maxLength={80}
-            onChangeText={(t) => setVoice({ ...voice, tone: t })}
-            onBlur={() =>
-              save({ tone: (voice.tone ?? "").trim() || null })
-            }
-            style={styles.toneInput}
-          />
+              keeps cards from wrapping (Marina line-height rule).
+              Wren F2 (M23 fix-pass): visible char counter so the
+              user knows when they're close to the cap — silent
+              truncation at maxLength feels broken. */}
+          <View style={styles.toneRow}>
+            <TextInput
+              value={voice.tone ?? ""}
+              placeholder="A one-line personality snippet."
+              placeholderTextColor={colors.textQuiet}
+              maxLength={80}
+              onChangeText={(t) => setVoice({ ...voice, tone: t })}
+              onBlur={() =>
+                save({ tone: (voice.tone ?? "").trim() || null })
+              }
+              style={[styles.toneInput, styles.toneInputFlex]}
+              accessibilityLabel="Voice tone"
+              accessibilityHint="A one-line personality snippet shown under the voice name on every card. Max 80 characters."
+            />
+            <Text style={styles.toneCounter}>
+              {(voice.tone ?? "").length}/80
+            </Text>
+          </View>
           <TextInput
             value={voice.routingHint}
             placeholder="A one-line routing cue for auto-pick."
@@ -717,6 +727,22 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.ruleSoft,
     paddingVertical: spacing.xs,
     backgroundColor: "transparent",
+  },
+  // Wren F2 (M23 fix-pass): inline counter sits at the trailing edge
+  // of the tone field. Same small-metadata gray + 11pt as the existing
+  // textMuted rows.
+  toneRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  toneInputFlex: { flex: 1 },
+  toneCounter: {
+    fontFamily: fontFamily.mono,
+    fontSize: 11,
+    color: colors.textMuted,
+    minWidth: 36,
+    textAlign: "right",
   },
 
   sectionLabel: {

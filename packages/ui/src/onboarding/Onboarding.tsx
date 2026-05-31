@@ -208,8 +208,8 @@ function Welcome({ onNext }: { onNext: () => void }) {
       <Text style={styles.body}>
         Press, speak, paste. Or hold to have a full conversation. voix is a
         push-to-talk dictation and chat surface for your Home Assistant
-        Voice PE — but it also works on its own with the daemon you'll
-        wire up in the next two screens.
+        Voice PE. It also works on its own with the daemon you'll wire up
+        in the next two screens.
       </Text>
       <Pressable
         onPress={onNext}
@@ -310,7 +310,7 @@ function DaemonStep({
         Where's your daemon?
       </Text>
       <Text style={styles.body}>
-        voix talks to a small daemon running on your network — usually the
+        voix talks to a small daemon running on your network. Usually the
         Home Assistant box. We've pre-filled the dev address; edit if
         yours lives elsewhere.
       </Text>

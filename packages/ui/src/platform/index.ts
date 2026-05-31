@@ -3,7 +3,7 @@
  *
  * One import path for every consumer:
  *
- *     import { createAudioCapture, storage, appInfo, permissions }
+ *     import { storage, appInfo, permissions, InlineAudioPlayer }
  *       from "../platform";
  *
  * Re-exports the per-primitive `.ts` files. Each of those has a
@@ -11,10 +11,9 @@
  * barrel itself has NO `.native.ts` twin; both bundlers shake named
  * exports through it.
  *
- * Step 1 (this commit) only re-exports the TYPES — value re-exports
- * (createAudioCapture, storage, etc.) land alongside their impls in
- * steps 2-4. Keeping the type-only barrel in step 1 means typecheck
- * passes everywhere from commit 1 onward.
+ * Step 2 (this commit) wires the non-audio web impls (storage,
+ * appInfo, permissions, inlineAudio, websocket). Audio capture +
+ * playback land in step 4; native impls in steps 3 + 5.
  *
  * Why barrel + per-primitive split: keeps the surface stable while
  * letting Metro/Vite resolve each primitive's platform variant
@@ -35,3 +34,9 @@ export type {
   HelloCapabilities,
   HelloClientInfo,
 } from "./types";
+
+export { storage } from "./storage";
+export { appInfo } from "./appInfo";
+export { permissions } from "./permissions";
+export { InlineAudioPlayer } from "./inlineAudio";
+export { PlatformWebSocket, type PlatformWebSocketInstance } from "./websocket";

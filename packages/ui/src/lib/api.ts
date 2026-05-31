@@ -49,7 +49,12 @@ export type Voice = {
   addendum: string;
   /** @deprecated kept in sync with `donePrompt`. */
   postProcessPrompt: string;
-  postProcessProvider: "openai" | "openrouter";
+  /** Done-phase LLM provider. Open string (M-Arch Wave A #2):
+   *  resolved against the daemon's provider registry via
+   *  `providersApi.list("llm")`. The "openai" / "openrouter" literals
+   *  the UI editor used to hardcode are still valid names — they're
+   *  the default registered factories. */
+  postProcessProvider: string;
   postProcessModel: string;
   routingHint: string;
   /** M14 — which engine drives the discuss path. Optional; missing
@@ -94,6 +99,19 @@ export const voicesApi = {
       method: "PATCH",
       body: JSON.stringify(patch),
     }),
+};
+
+/** M-Arch Wave A #13 — provider registry surface. The voice editor
+ *  queries `list(kind)` to render its provider segmented controls
+ *  instead of hardcoding ["openai", "openrouter"] etc. Mirrors
+ *  voix-backend/src/api/providers.ts. */
+export type ProviderKind = "stt" | "llm" | "tts";
+
+export const providersApi = {
+  list: (kind: ProviderKind) =>
+    api<{ kind: ProviderKind; providers: string[] }>(
+      `api/providers?kind=${encodeURIComponent(kind)}`,
+    ).then((r) => r.providers),
 };
 
 /** Capability snapshot, mirroring `audio_io/protocol.ts` Capabilities. */

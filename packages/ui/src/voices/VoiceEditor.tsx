@@ -9,7 +9,7 @@ import {
   View,
 } from "react-native";
 import { Puck } from "../components/Puck";
-import { type Voice, type VoiceUpdate, voicesApi } from "../lib/api";
+import { type ProviderKind, type Voice, type VoiceUpdate, voicesApi } from "../lib/api";
 import {
   colors,
   fontFamily,
@@ -19,6 +19,22 @@ import {
   radius,
   spacing,
 } from "../lib/theme";
+import { useProviders } from "../lib/useProviders";
+
+/** Human-readable label for a registered provider name. Falls back to
+ *  the name verbatim so an as-yet-unknown provider still renders
+ *  something sensible in the segmented control. */
+const PROVIDER_LABELS: Record<string, string> = {
+  openai: "OpenAI",
+  openrouter: "OpenRouter",
+  deepgram: "Deepgram",
+  aura: "Aura",
+  "openai-realtime": "OpenAI",
+};
+
+function providerLabel(name: string): string {
+  return PROVIDER_LABELS[name] ?? name;
+}
 
 type Props = {
   voiceId: string;
@@ -339,12 +355,9 @@ export function VoiceEditor({ voiceId, onClose }: Props) {
                 label="STT provider"
                 desc="Where mic audio gets transcribed."
                 control={
-                  <Segmented
+                  <ProviderSegmented
+                    kind="stt"
                     value={voice.sttProvider}
-                    options={[
-                      { value: "openai-realtime", label: "OpenAI" },
-                      { value: "deepgram", label: "Deepgram" },
-                    ]}
                     onChange={(v) => {
                       setVoice({ ...voice, sttProvider: v });
                       void save({ sttProvider: v });
@@ -409,12 +422,9 @@ export function VoiceEditor({ voiceId, onClose }: Props) {
             label="STT provider"
             desc="Where mic audio gets transcribed."
             control={
-              <Segmented
+              <ProviderSegmented
+                kind="stt"
                 value={voice.sttProvider}
-                options={[
-                  { value: "openai-realtime", label: "OpenAI" },
-                  { value: "deepgram", label: "Deepgram" },
-                ]}
                 onChange={(v) => {
                   setVoice({ ...voice, sttProvider: v });
                   void save({ sttProvider: v });
@@ -589,6 +599,53 @@ function SettingRow({
   );
 }
 
+/** Segmented control whose options come from the daemon's provider
+ *  registry (`GET /api/providers?kind=…`). Wave A #13 — replaces the
+ *  hardcoded `[{value:"openai",label:"OpenAI"},{value:"openrouter",...}]`
+ *  arrays in the editor. Shows a loading spinner while the registry
+ *  query is in flight and a no-providers hint when the kind has no
+ *  registered factories (typically missing API key in add-on options). */
+function ProviderSegmented({
+  kind,
+  value,
+  onChange,
+}: {
+  kind: ProviderKind;
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  const { providers, loading, error } = useProviders(kind);
+
+  if (loading) {
+    return (
+      <View style={styles.segmented}>
+        <ActivityIndicator size="small" />
+      </View>
+    );
+  }
+  if (error) {
+    return <Text style={styles.sectionHint}>Failed to load providers: {error}</Text>;
+  }
+  if (providers.length === 0) {
+    return (
+      <Text style={styles.sectionHint}>
+        No {kind.toUpperCase()} providers configured — add an API key in Add-on options.
+      </Text>
+    );
+  }
+  // Render the current value even if it isn't in the registry (e.g.
+  // user typed it manually previously, or the relevant API key was
+  // removed). Otherwise the editor would silently lose the selection.
+  const options = providers.includes(value) ? providers : [value, ...providers];
+  return (
+    <Segmented
+      value={value}
+      options={options.map((p) => ({ value: p, label: providerLabel(p) }))}
+      onChange={onChange}
+    />
+  );
+}
+
 function Segmented<T extends string>({
   value,
   options,
@@ -636,16 +693,12 @@ function OutputProviderRows({
         label="Provider"
         desc="Where the output-phase model runs."
         control={
-          <Segmented
+          <ProviderSegmented
+            kind="llm"
             value={voice.postProcessProvider}
-            options={[
-              { value: "openai", label: "OpenAI" },
-              { value: "openrouter", label: "OpenRouter" },
-            ]}
             onChange={(v) => {
-              const next = v as Voice["postProcessProvider"];
-              setVoice({ ...voice, postProcessProvider: next });
-              void save({ postProcessProvider: next });
+              setVoice({ ...voice, postProcessProvider: v });
+              void save({ postProcessProvider: v });
             }}
           />
         }

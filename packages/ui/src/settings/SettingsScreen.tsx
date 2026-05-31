@@ -27,6 +27,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   AppState,
+  Linking,
   type NativeEventSubscription,
   Platform,
   Pressable,
@@ -152,6 +153,30 @@ export function SettingsScreen({ onResetOnboarding }: Props = {}) {
     await permissions.openMicrophoneSettings();
   }, []);
 
+  // Wren MED — the keyboard's Full Access "Open Settings" CTA lands on
+  // voix's own Settings page (the only deep-link Apple exposes from an
+  // extension), and Architecture Decision 5 relied on THIS row to walk
+  // the user the rest of the way to Keyboards → voix → Allow Full
+  // Access. The row was never built, so the onboarding CTA dead-ended.
+  //
+  // iOS has no public deep-link to the Keyboards pane. `App-Prefs:` is a
+  // private scheme — App-Review-risky and unreliable on iOS 17/18
+  // (2026) — so try it best-effort, then fall back to the public
+  // `Linking.openSettings()` which opens voix's own Settings page as a
+  // jumping-off point. Either way the description spells out the exact
+  // tap-path so the user is never stranded.
+  const handleOpenKeyboardSettings = useCallback(async () => {
+    try {
+      await Linking.openURL("App-Prefs:root=General&path=Keyboard/KEYBOARDS");
+    } catch {
+      try {
+        await Linking.openSettings();
+      } catch {
+        // Nothing more we can do; the tap-path text in the row covers it.
+      }
+    }
+  }, []);
+
   // Priya H1 — clear the one-shot onboarding flag so the user can
   // re-walk the three screens. We do NOT confirm before clearing
   // (cheap action — worst case the user re-walks 3 screens). The
@@ -165,6 +190,9 @@ export function SettingsScreen({ onResetOnboarding }: Props = {}) {
   const activeVoiceId = devices[0]?.voiceId;
   const showDaemonUrlRow = Platform.OS !== "web";
   const showMicRow = Platform.OS !== "web";
+  // The voix keyboard extension is iOS-only — the adoption row only
+  // makes sense there.
+  const showKeyboardSetupRow = Platform.OS === "ios";
   const showAccessibilityRow = Platform.OS === "macos";
   // Developer row is native-only (the web build never runs Onboarding).
   const showDeveloperRow = Platform.OS !== "web";
@@ -241,6 +269,26 @@ export function SettingsScreen({ onResetOnboarding }: Props = {}) {
                   </Pressable>
                 )}
               </View>
+            }
+          />
+        </Section>
+      )}
+
+      {showKeyboardSetupRow && (
+        <Section title="voix keyboard">
+          <Row
+            label="Set up voix keyboard"
+            desc="Add the voix keyboard to dictate into any text field. In Settings: General → Keyboard → Keyboards → Add New Keyboard → voix, then tap voix again and turn on Allow Full Access (needed to record and return your text)."
+            control={
+              <Pressable
+                onPress={handleOpenKeyboardSettings}
+                style={({ pressed }) => [styles.btn, pressed && styles.btnPressed]}
+                accessibilityRole="button"
+                accessibilityLabel="Open Settings to set up the voix keyboard"
+                accessibilityHint="Opens the system Settings app at the Keyboard pane so you can add the voix keyboard and allow Full Access."
+              >
+                <Text style={styles.btnLabel}>Open Settings</Text>
+              </Pressable>
             }
           />
         </Section>

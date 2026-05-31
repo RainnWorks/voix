@@ -1,19 +1,30 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, fontFamily, radius, spacing } from "../lib/theme";
+import { useResponsive } from "../lib/useResponsive";
+import { SafeAreaView } from "../platform";
 import { Puck } from "./Puck";
 import { Wordmark } from "./Wordmark";
 
 /**
- * Sidebar + main-area shell, matching the desktop guide's screen
- * atlas pattern. Title bar across the top (system mac-ish, traffic
- * lights mocked), 200px sidebar on the left, main content on the
- * right.
+ * App shell — adaptive across canvases (M-MobileFit).
  *
- * When this app gets wrapped in a real native shell (Tauri / iOS),
- * those shells provide the actual title bar — this component
- * collapses to just sidebar+main. For now we draw our own to look
- * approximately right inside HA's ingress iframe and the standalone
- * browser tab.
+ * **Desktop / iPad / wide browser (≥ 768pt):** the master-detail split
+ * the desktop guide's screen atlas specifies — title bar across the
+ * top, 220px conversation sidebar on the left, content pane on the
+ * right. This is the correct idiom for a wide canvas and the default.
+ *
+ * **Phone (< 768pt):** a single-column layout with a bottom tab bar.
+ * The fixed sidebar is an iPad/desktop idiom; on a 393pt iPhone it
+ * squeezed the content pane to ~60% and clipped copy mid-word. On a
+ * phone there is one context at a time — the conversation list moves
+ * to its own "Conversations" tab and the content pane goes full width
+ * (soul §3 precondition 1, canvas-fit). The top chrome insets below the
+ * status bar / Dynamic Island and the tab bar insets above the home
+ * indicator (precondition 2, safe-area) via SafeAreaView.
+ *
+ * When wrapped in a real native shell (Tauri / iOS), those shells
+ * provide the OS chrome; on web we draw our own to look approximately
+ * right inside HA's ingress iframe and a standalone browser tab.
  */
 
 export type Section = "conversations" | "voices" | "surfaces" | "settings";
@@ -21,19 +32,43 @@ export type Section = "conversations" | "voices" | "surfaces" | "settings";
 type Props = {
   section: Section;
   onPickSection: (s: Section) => void;
+  /** Start a new conversation: lands on the Conversations surface with
+   *  the talk button ready. Wired to the desktop "+New conversation"
+   *  row and the phone header "＋" action. */
+  onNewConversation: () => void;
   title: string;
   toolbarRight?: React.ReactNode;
   children: React.ReactNode;
 };
 
-export function AppShell({ section, onPickSection, title, toolbarRight, children }: Props) {
+export function AppShell(props: Props) {
+  const { isPhone } = useResponsive();
+  return isPhone ? <PhoneShell {...props} /> : <DesktopShell {...props} />;
+}
+
+// ─── Desktop / iPad — master-detail split ───────────────────────────
+
+function DesktopShell({
+  section,
+  onPickSection,
+  onNewConversation,
+  title,
+  toolbarRight,
+  children,
+}: Props) {
   return (
     <View style={styles.app}>
-      <View style={styles.titlebar}>
+      {/* edges=['top'] is a no-op on macOS/web (zero inset) and insets
+          correctly under an iPad status bar. */}
+      <SafeAreaView edges={["top"]} style={styles.titlebar}>
         <Wordmark />
-      </View>
+      </SafeAreaView>
       <View style={styles.body}>
-        <Sidebar section={section} onPickSection={onPickSection} />
+        <Sidebar
+          section={section}
+          onPickSection={onPickSection}
+          onNewConversation={onNewConversation}
+        />
         <View style={styles.main}>
           <View style={styles.toolbar}>
             <Text style={styles.toolbarTitle}>{title}</Text>
@@ -49,13 +84,21 @@ export function AppShell({ section, onPickSection, title, toolbarRight, children
 function Sidebar({
   section,
   onPickSection,
+  onNewConversation,
 }: {
   section: Section;
   onPickSection: (s: Section) => void;
+  onNewConversation: () => void;
 }) {
   return (
     <View style={styles.sidebar}>
-      <Pressable style={styles.newButton}>
+      <Pressable
+        style={({ pressed }) => [styles.newButton, pressed && styles.newButtonPressed]}
+        onPress={onNewConversation}
+        accessibilityRole="button"
+        accessibilityLabel="New conversation"
+        accessibilityHint="Start a new conversation and open the talk button."
+      >
         <Text style={styles.newButtonPlus}>＋</Text>
         <Text style={styles.newButtonText}>New conversation</Text>
         <Text style={styles.kbd}>⌘N</Text>
@@ -158,16 +201,117 @@ function SidebarFlatItem({
   );
 }
 
+// ─── Phone — single column + bottom tab bar ─────────────────────────
+
+const TABS: Array<{ key: Section; label: string }> = [
+  { key: "conversations", label: "Conversations" },
+  { key: "voices", label: "Voices" },
+  { key: "surfaces", label: "Surfaces" },
+  { key: "settings", label: "Settings" },
+];
+
+function PhoneShell({
+  section,
+  onPickSection,
+  onNewConversation,
+  toolbarRight,
+  children,
+}: Props) {
+  return (
+    <View style={styles.app}>
+      {/* Top chrome insets below the status bar / Dynamic Island so the
+          wordmark no longer collides with the OS clock (soul §3.2). */}
+      <SafeAreaView edges={["top"]} style={styles.phoneHeaderSafe}>
+        <View style={styles.phoneHeader}>
+          <Wordmark />
+          <View style={styles.phoneHeaderRight}>
+            {toolbarRight}
+            <Pressable
+              onPress={onNewConversation}
+              hitSlop={8}
+              style={({ pressed }) => [
+                styles.phoneNewButton,
+                pressed && styles.phoneNewButtonPressed,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="New conversation"
+              accessibilityHint="Start a new conversation and open the talk button."
+            >
+              <Text style={styles.phoneNewPlus}>＋</Text>
+            </Pressable>
+          </View>
+        </View>
+      </SafeAreaView>
+
+      <View style={styles.content}>{children}</View>
+
+      {/* Bottom tab bar insets above the home indicator (soul §3.2). One
+          context at a time — the conversation list is the Conversations
+          tab, not a competing sidebar. */}
+      <SafeAreaView edges={["bottom"]} style={styles.tabBarSafe}>
+        <View style={styles.tabBar}>
+          {TABS.map((tab) => (
+            <TabItem
+              key={tab.key}
+              label={tab.label}
+              section={tab.key}
+              selected={section === tab.key}
+              onPress={() => onPickSection(tab.key)}
+            />
+          ))}
+        </View>
+      </SafeAreaView>
+    </View>
+  );
+}
+
+function TabItem({
+  label,
+  section,
+  selected,
+  onPress,
+}: {
+  label: string;
+  section: Section;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const tint = selected ? colors.sysAccent : colors.textMuted;
+  return (
+    <Pressable
+      onPress={onPress}
+      style={styles.tabItem}
+      accessibilityRole="tab"
+      accessibilityState={{ selected }}
+      accessibilityLabel={label}
+    >
+      <TabGlyph section={section} tint={tint} />
+      <Text style={[styles.tabLabel, { color: tint }]} numberOfLines={1}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+/** Tab glyphs reuse the chrome vocabulary the sidebar established:
+ *  Voices → puck, Surfaces → ◇, Settings → ⚙ (M23 Decision 2).
+ *  Conversations → ▤ (a stacked-rows / history glyph). */
+function TabGlyph({ section, tint }: { section: Section; tint: string }) {
+  if (section === "voices") return <Puck size={16} />;
+  const glyph = section === "conversations" ? "▤" : section === "surfaces" ? "◇" : "⚙";
+  return <Text style={[styles.tabGlyph, { color: tint }]}>{glyph}</Text>;
+}
+
 const styles = StyleSheet.create({
   app: {
     flex: 1,
     backgroundColor: colors.bg,
   },
   titlebar: {
-    height: 38,
     paddingHorizontal: 14,
     flexDirection: "row",
     alignItems: "center",
+    minHeight: 38,
     borderBottomWidth: 0.5,
     borderBottomColor: colors.ruleSoft,
     backgroundColor: colors.bgElevated,
@@ -194,6 +338,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.04)",
     borderRadius: radius.md,
   },
+  newButtonPressed: { backgroundColor: colors.bgHover },
   newButtonPlus: {
     fontSize: 13,
     color: colors.textMuted,
@@ -304,5 +449,65 @@ const styles = StyleSheet.create({
     color: colors.ink,
   },
   toolbarRight: { flexDirection: "row", alignItems: "center" },
-  content: { flex: 1 },
+  content: { flex: 1, minWidth: 0 },
+
+  // ─── Phone chrome ───
+  phoneHeaderSafe: {
+    backgroundColor: colors.bgElevated,
+    borderBottomWidth: 0.5,
+    borderBottomColor: colors.ruleSoft,
+  },
+  phoneHeader: {
+    minHeight: 44,
+    paddingHorizontal: spacing.lg,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  phoneHeaderRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  phoneNewButton: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.md,
+  },
+  phoneNewButtonPressed: { backgroundColor: colors.bgHover },
+  phoneNewPlus: {
+    fontSize: 22,
+    color: colors.sysAccent,
+    lineHeight: 26,
+  },
+  tabBarSafe: {
+    backgroundColor: colors.bgElevated,
+    borderTopWidth: 0.5,
+    borderTopColor: colors.rule,
+  },
+  tabBar: {
+    flexDirection: "row",
+    minHeight: 49,
+    alignItems: "stretch",
+  },
+  tabItem: {
+    flex: 1,
+    minHeight: 49,
+    paddingTop: 6,
+    paddingBottom: 4,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 3,
+  },
+  tabGlyph: {
+    fontSize: 18,
+    lineHeight: 20,
+  },
+  tabLabel: {
+    fontFamily: fontFamily.ui,
+    fontSize: 10,
+    fontWeight: "500",
+  },
 });

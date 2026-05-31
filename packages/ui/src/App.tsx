@@ -7,6 +7,7 @@ import { KeyboardCaptureScreen } from "./conversations/KeyboardCaptureScreen";
 import { MacAccessibilityBanner } from "./macos/MacAccessibilityBanner";
 import { MacOverlay } from "./macos/MacOverlay";
 import { Onboarding, isOnboardingComplete } from "./onboarding/Onboarding";
+import { SafeAreaProvider } from "./platform";
 import { SettingsScreen } from "./settings/SettingsScreen";
 import { SurfaceList } from "./surfaces/SurfaceList";
 import { VoiceEditor } from "./voices/VoiceEditor";
@@ -35,6 +36,18 @@ function parseKeyboardCaptureUrl(raw: string): KeyboardCaptureRoute | null {
 }
 
 export function App() {
+  // SafeAreaProvider supplies the inset context the phone shell + the
+  // onboarding header read (no-op zero insets on web/macOS). Must wrap
+  // the whole tree — onboarding and keyboard-capture return early
+  // before AppShell, and they inset too.
+  return (
+    <SafeAreaProvider>
+      <AppInner />
+    </SafeAreaProvider>
+  );
+}
+
+function AppInner() {
   const [section, setSection] = useState<Section>("voices");
   const [editingVoiceId, setEditingVoiceId] = useState<string | null>(null);
   const [openEntryId, setOpenEntryId] = useState<string | null>(null);
@@ -144,6 +157,14 @@ export function App() {
         section={section}
         onPickSection={(s) => {
           setSection(s);
+          setEditingVoiceId(null);
+          setOpenEntryId(null);
+        }}
+        onNewConversation={() => {
+          // Front door to the killer flow: land on the Conversations
+          // surface with the talk button ready (Wren F1/F3). The list
+          // view (openEntryId === null) renders the TalkButton at top.
+          setSection("conversations");
           setEditingVoiceId(null);
           setOpenEntryId(null);
         }}

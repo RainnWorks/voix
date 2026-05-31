@@ -133,6 +133,7 @@ export function Onboarding({ onDone }: Props) {
           <Pressable
             onPress={skip}
             style={styles.skipHit}
+            hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
             accessibilityRole="button"
             accessibilityLabel="Skip setup"
             accessibilityHint="Dismiss onboarding and go to the main app."
@@ -439,6 +440,8 @@ const styles = StyleSheet.create({
   ctaRow: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" },
   cta: {
     alignSelf: "flex-start",
+    minHeight: 44, // HIG touch-target floor (M-MobileFit target g)
+    justifyContent: "center",
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     borderRadius: radius.md,
@@ -454,6 +457,8 @@ const styles = StyleSheet.create({
   },
   ctaSecondary: {
     alignSelf: "flex-start",
+    minHeight: 44, // HIG touch-target floor (M-MobileFit target g)
+    justifyContent: "center",
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     borderRadius: radius.md,

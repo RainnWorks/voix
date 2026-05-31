@@ -139,6 +139,12 @@ function VoiceCard({
         <Pressable
           onPress={onActivate}
           disabled={activating}
+          // Visual chip stays compact; hitSlop lifts the tap area to the
+          // ~44pt HIG floor on phone without bloating it on desktop
+          // (M-MobileFit target g).
+          hitSlop={{ top: 12, bottom: 12, left: 10, right: 10 }}
+          accessibilityRole="button"
+          accessibilityLabel={`Activate ${voice.name}`}
           style={({ pressed }) => [
             styles.activateBtn,
             pressed && styles.activateBtnPressed,

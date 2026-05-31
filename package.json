@@ -1,0 +1,21 @@
+{
+  "name": "voix-monorepo",
+  "private": true,
+  "version": "0.0.0",
+  "description": "voix monorepo — daemon + web UI + shared packages (@voix/ui, @voix/protocol). Clients (RN app) land in M20.",
+  "type": "module",
+  "workspaces": [
+    "voix-backend",
+    "voix-backend/ui",
+    "packages/*",
+    "clients/*"
+  ],
+  "scripts": {
+    "dev": "bun run --filter voix-backend dev",
+    "dev:ui": "bun run --filter voix-ui dev",
+    "dev:app": "bun run --filter voix-app start",
+    "build:ui": "bun run --filter voix-ui build",
+    "typecheck": "bun run --filter '*' typecheck",
+    "test": "bun run --filter '*' test"
+  }
+}

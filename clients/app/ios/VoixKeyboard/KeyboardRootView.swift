@@ -29,9 +29,16 @@ struct KeyboardRootView: View {
     let onGlobeTap: () -> Void
     let onGlobeLongPress: () -> Void
 
-    private let haBlue = Color(red: 0x18 / 255.0,
-                               green: 0xBC / 255.0,
-                               blue: 0xF2 / 255.0)
+    // voix HA blue — THE brand colour (puck centre dot, "voix moment"
+    // fills). Must be #03A9F4 to match `voix-brand-guide.html`
+    // (`--ha-blue`) and `packages/ui/src/lib/theme.ts` (`haBlue`). An
+    // earlier build hardcoded #18BCF2 (Home Assistant's *company* blue,
+    // lighter/cyan) which broke colour continuity across the bounce —
+    // the pill disagreed with the capture screen's puck core and every
+    // other voix surface. Keep this byte-identical to the token.
+    private let haBlue = Color(red: 0x03 / 255.0,
+                               green: 0xA9 / 255.0,
+                               blue: 0xF4 / 255.0)
 
     var body: some View {
         ZStack(alignment: .topLeading) {

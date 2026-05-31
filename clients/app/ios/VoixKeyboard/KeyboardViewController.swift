@@ -80,6 +80,16 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        // Tom-day predictor diagnostic (Adversary H-3): log the phase
+        // every time iOS brings the keyboard back to a text field. On
+        // the return leg this is the falsifier — if we see
+        // `phase == .bounced` here we consumed the session; if we see
+        // `.idle`, the extension was recycled and the durable pointer
+        // (H-1) should have already rebuilt `.bounced` in viewDidLoad.
+        os_log(
+            "voix kbd: viewDidAppear phase=%{public}@",
+            log: Self.log, type: .info, String(describing: state.phase)
+        )
         // Decision 6 primary signal: iOS just brought the keyboard
         // back to a text field. If we were mid-bounce, the host
         // either finished and wrote `done`, or it's still working —
@@ -191,6 +201,13 @@ final class KeyboardViewController: UIInputViewController {
         startTimers()
         extensionContext?.open(url) { [weak self] success in
             guard let self else { return }
+            // Tom-day predictor diagnostic (Adversary H-3): the whole
+            // bounce hinges on `extensionContext.open` actually working
+            // for a keyboard on the target iOS. Log the completion
+            // result unconditionally so the first device run can
+            // confirm `opened: true` vs the predicted `false`.
+            os_log("voix kbd: extensionContext.open completion success=%{public}@",
+                   log: Self.log, type: .info, String(describing: success))
             if !success {
                 os_log("voix kbd: extensionContext.open returned false",
                        log: Self.log, type: .error)

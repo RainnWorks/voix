@@ -24,8 +24,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  AccessibilityInfo,
   ActivityIndicator,
   AppState,
+  findNodeHandle,
   type NativeEventSubscription,
   Pressable,
   ScrollView,
@@ -151,7 +153,43 @@ export function Onboarding({ onDone }: Props) {
 
 // ─── Steps ──────────────────────────────────────────────────────────
 
+/**
+ * Apple HIG: "When a new view appears, move focus to the most
+ * informative element — typically the heading or the primary action."
+ * Priya M1 / H4 (M23 fix-pass): without this, VoiceOver lands on the
+ * top-most focusable element in render order, which is the "Skip
+ * setup" link in the header. The user hears "Skip setup" first and
+ * thinks the whole app is a skip option.
+ *
+ * useFocusOnMount refs a heading Text node and on mount programmatically
+ * focuses it via AccessibilityInfo.setAccessibilityFocus. A small
+ * delay lets the screen finish rendering before we attempt focus —
+ * setting focus before the layout pass is a silent no-op.
+ */
+function useFocusOnMount<T>() {
+  const ref = useRef<T | null>(null);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const node = ref.current;
+      if (!node) return;
+      // findNodeHandle's overloads accept a Component/null/number, but
+      // RN's Text/View refs surface as `T` from the consumer side. We
+      // know the runtime value is a host component handle; cast once
+      // here so the call site stays clean.
+      const handle = findNodeHandle(
+        node as unknown as React.Component<unknown, unknown>,
+      );
+      if (handle != null) {
+        AccessibilityInfo.setAccessibilityFocus(handle);
+      }
+    }, 120);
+    return () => clearTimeout(t);
+  }, []);
+  return ref;
+}
+
 function Welcome({ onNext }: { onNext: () => void }) {
+  const titleRef = useFocusOnMount<Text>();
   return (
     <View style={styles.step}>
       <View
@@ -161,6 +199,7 @@ function Welcome({ onNext }: { onNext: () => void }) {
         <Puck size={64} />
       </View>
       <Text
+        ref={titleRef}
         style={styles.title}
         accessibilityRole="header"
       >
@@ -197,9 +236,10 @@ function MicStep({
   onSkip: () => void;
 }) {
   const denied = result && !result.ok && (result.reason === "denied" || result.reason === "restricted");
+  const titleRef = useFocusOnMount<Text>();
   return (
     <View style={styles.step}>
-      <Text style={styles.title} accessibilityRole="header">
+      <Text ref={titleRef} style={styles.title} accessibilityRole="header">
         voix needs your microphone.
       </Text>
       <Text style={styles.body}>
@@ -263,9 +303,10 @@ function DaemonStep({
   // network might just be flaky).
   const canDone =
     url.length > 0 && status !== "probing" && status !== "malformed";
+  const titleRef = useFocusOnMount<Text>();
   return (
     <View style={styles.step}>
-      <Text style={styles.title} accessibilityRole="header">
+      <Text ref={titleRef} style={styles.title} accessibilityRole="header">
         Where's your daemon?
       </Text>
       <Text style={styles.body}>

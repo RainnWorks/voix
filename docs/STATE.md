@@ -1,4 +1,4 @@
-# voix · Current State (2026-05-31, M21 closed)
+# voix · Current State (2026-05-31, M22 implementer landed)
 
 ## Read this first
 
@@ -26,7 +26,105 @@
 
 ---
 
-## Status — Phase 6 (M21 closed); platform shims + iOS audio-api stack
+## Status — Phase 6 (M22 implementer landed; verify trio pending); macOS first-class
+
+**M22 implementer landed (2026-05-31)** — macOS becomes a first-class
+voix client. 12 commits per Decision 7 of `docs/phase-6/architecture-m22.md`:
+
+- Step 1 (`b9af44f`): `tools/voix-window-screenshot/voix-window-screenshot.swift`
+  + `scripts/macos-screenshot.sh` — Swift CLI using ScreenCaptureKit (macOS 15
+  obsoleted CGWindowListCreateImage), with CGSession lock-screen guard so
+  we don't repeat M20's login-window capture.
+- Step 2 (`4cde983`): M20 macOS visual baseline followup. Tool found the
+  voix-macOS process (pid 58092) running but rendering an empty
+  RCTRootView because Metro was killed at M20 teardown — not a M20 bug.
+- Step 3 (`3bfd38a`): VoixNative in-tree pod with skeleton Swift modules
+  (VoixAudioCapture, VoixAudioPlayback, VoixAudioPermissions) via the
+  legacy RCT_EXTERN_MODULE bridge shape (RN 0.81 New Arch interop layer
+  wraps these transparently). 76 pods (up from 73).
+- Step 4 (`d5e706e`): macOS AVAudioEngine capture. inputNode.installTap
+  at 1024 frames using node's native Float32 format; post-engine.start()
+  reads `inputNode.outputFormat(forBus:0).sampleRate` as the negotiated
+  rate (Sasha H1 fix carried to macOS). Render-thread tap copies + batches
+  on a userInteractive queue → PCM16 + base64 → voixAudioCapture.frame
+  event. JS MacosAudioCapture mirrors the iOS shape.
+- Step 5 (`96fc0c9`): macOS AVAudioPlayerNode playback. PlayerNode →
+  mainMixerNode at PCM16 mono daemon rate; gapless via explicit AVAudioTime
+  watermark in player frames.
+- Step 6 (`7e0079a`): global hotkey via Carbon RegisterEventHotKey
+  (Path B from research-m22.md, ~120 LOC, no SPM dep — same Carbon API
+  as the KeyboardShortcuts SPM package the Architect preferred).
+  ⌃⌥Space default chord (unowned by macOS defaults per Decision 2).
+  useGlobalHotkey hook in packages/ui/src/macos/.
+- Step 7 (`c344fbb`): VoixOverlay NSPanel HUD + MacOverlay.tsx. Borderless
+  non-activating panel at top-center; canBecomeKey/canBecomeMain=false
+  (load-bearing for paste flow per Decision 3 + risk #4). NSVisualEffectView
+  for the Dynamic-Island feel. TalkButton gains optional `intent` prop
+  (default "discuss"); MacOverlay passes "dictate" per Decision 10.
+- Step 8 (`9837d6a`): VoixPaste — NSPasteboard.general write.
+- Step 9 (`4e3ee9b`): CGEventPost auto-paste behind
+  AXIsProcessTrustedWithOptions(prompt:false). 50 ms delay between
+  clipboard write + Cmd+V post for the focus pipeline. JS opens
+  System Settings → Accessibility on first untrusted attempt per app
+  session. Trust state logged at boot (risk #3 diagnostic).
+- Step 10 (`f5628f5`): interruption observer (Sasha M21 pushback #1).
+  iOS: AudioManager.observeAudioInterruptions + interruption event →
+  opts.onError. macOS: AVAudioEngineConfigurationChange observer →
+  voixAudioCapture.error → opts.onError. Both surfaces emit a typed
+  `kind: "audio"` error that TalkButton renders the right recovery
+  copy for.
+- Step 11 (`1994c59`): `clientKind = "laptop-mic"` on macOS (Sasha M2
+  closure), `"phone-sat"` stays on iOS. `_comment_worklets` note in
+  package.json (Sasha N1 closure).
+- Step 12 (this commit): `docs/phase-6/m22-manual.md` written + STATE
+  + the M22 risk register inline in the architecture doc remains
+  authoritative.
+
+**M22 smoke (every step, all green)**:
+```
+bun install                                       # workspace OK
+cd voix-backend/ui && bun run build               # web UI OK
+bun run check                                     # protocol + siblings + pin-bounds
+cd voix-backend && timeout 5 bun src/index.ts     # "listening on :8765"
+bunx tsc -p clients/app/tsconfig.json --noEmit    # exit 0
+xcodebuild -workspace voix.xcworkspace            # BUILD SUCCEEDED (per step)
+  -scheme voix-macOS -configuration Debug
+```
+
+**Tom-pending for M22 close-out**:
+- Run `bash scripts/macos-screenshot.sh` after running the macOS app
+  fresh with live Metro (M20-followup-macos.png caught the M20-pid window
+  in its no-Metro-stalled state — useful as a "Metro must be live"
+  receipt but not the M22 acceptance shot).
+- Press ⌃⌥Space → overlay → release → verify paste. Auto-grant
+  Accessibility on first deny attempt.
+- iOS PTT regression.
+- Web PTT regression.
+
+**M22 deltas surfaced (0 within the hard ceiling of 3)**:
+
+None — the architecture-m22 brief was complete enough that every
+decision held. Implementer notes:
+
+- **Note A** (informational): Architect Decision 2 picked Sindre Sorhus's
+  KeyboardShortcuts SPM package; implementer chose Path B (direct Carbon
+  RegisterEventHotKey, ~120 LOC) instead because adding SPM-via-CocoaPods
+  to the macOS Podfile is currently broken on this RN-macOS 0.81 setup
+  (no spm support in the local pod resolver). The Carbon API is what
+  KeyboardShortcuts wraps internally; swapping is a localised M23 change
+  if the recorder UI is desired.
+- **Note B** (informational): Architect Decision 6's screenshot tool
+  specced CGWindowListCreateImage; that API was obsoleted in macOS 15.
+  Implementer used ScreenCaptureKit (`SCScreenshotManager.captureImage`)
+  instead. Requires Screen Recording permission on first run — exit code
+  4 with a clear message if missing.
+
+**M22 verify trio pending** (Tester, Adversary, Product) — implementer
+work is complete; no decisions held back for clarification.
+
+---
+
+## Status — Phase 6 prior milestone (M21 closed); platform shims + iOS audio-api stack
 
 **M21 closed (2026-05-31)** — platform shim layer + iOS audio capture
 and playback via `react-native-audio-api`. Seven commits on main per

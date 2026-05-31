@@ -98,10 +98,43 @@ without Accessibility grants that aren't on this Mac.
   check` gains `scripts/check-pin-bounds.sh` enforcing "stays in
   0.8.x" so a future drift to 0.9.x is caught.
 
+**M21 verify trio + fix-pass landed** (5 commits `18ac561..224df0e`):
+
+- **Sasha H1**: hello declared `audioContext.sampleRate` but recorder
+  may deliver different rate (Bluetooth HFP forces 16 kHz). Daemon
+  would resample wrong → chipmunked STT. Fix: pin recorder rate via
+  `AudioManager.getDevicePreferredSampleRate()` so AudioContext +
+  recorder + hello all agree on a single value.
+- **Sasha H2**: `recorder.start()` returned `success` synchronously
+  even on native failure. Tom's first PTT would hang on "Listening"
+  forever. Fix: subscribe to `recorder.onError()` + `isRecording()`
+  poll with 2s deadline; new `onError` opt plumbs failures through
+  the orchestrator.
+- **Wren FINDING-1**: permission denial rendered as raw red console
+  blob; Decision 13 mandated actionable copy. Fix: new `RecoveryState`
+  sub-component in TalkButton; per-kind copy (deny includes "Settings
+  → voix → Microphone" + "Try again" button); soft `bgSubtle` info
+  treatment; undetermined gets friendly copy; generic "Something went
+  wrong" fallback with dev-detail disclosure.
+- **Wren FINDING-2**: three macOS deferral strings leaked "M22"
+  jargon. Fix: humanized to "voix's microphone on macOS is coming
+  soon" / "Audio playback on macOS is coming soon."
+- **Sasha medium**: `AudioManager.setAudioSessionActivity(false)` on
+  stop so the iOS session doesn't leak into system audio routing.
+
+**M21 carry-forwards to M22+**:
+- Sasha N1: react-native-worklets is documented "optional" peer but
+  isn't optional in practice.
+- Sasha: AudioManager interruption handling (call comes in mid-PTT).
+- Wren hidden gap: iOS TalkButton hardcodes `intent: "discuss"`.
+  voix on iOS talks back; doesn't type. M23 needs intent dial.
+- Sasha M4: press-race flicker (similar to M18 fix shape).
+
 **Phase 6 carry-forwards**:
 - M20a (HA Add-on Docker context shift) — still queued.
 - macOS audio (M22) — by design.
 - iOS settings screen for setApiBase (M23) — by design.
+- macOS visual smoke (Tom: unlock + screenshot the macOS app) — still pending from M20.
 
 ---
 

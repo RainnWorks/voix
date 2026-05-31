@@ -23,6 +23,7 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { type HistoryContextEntry, type HistoryEntry, historyApi } from "../lib/api.ts";
 import { colors, fontFamily, radius, spacing } from "../lib/theme.ts";
+import { InlineAudioPlayer } from "./InlineAudioPlayer.tsx";
 
 type Props = {
   entryId: string;
@@ -118,8 +119,8 @@ export function ConversationDetail({ entryId, onClose }: Props) {
       </Section>
 
       <Section label="Listen back" hint="Mic is your voice. Speaker is what voix said.">
-        <AudioPlayer src={`${recordingsBase}/mic.wav`} label="What I said" />
-        <AudioPlayer src={`${recordingsBase}/speaker.wav`} label="What voix said" />
+        <AudioRow label="What I said" src={`${recordingsBase}/mic.wav`} />
+        <AudioRow label="What voix said" src={`${recordingsBase}/speaker.wav`} />
       </Section>
     </ScrollView>
   );
@@ -182,24 +183,18 @@ function ContextReceipt({ entries }: { entries: HistoryContextEntry[] }) {
   );
 }
 
-/** React Native Web forwards unknown components to DOM. `<audio>` from
- *  the audio element renders natively in the browser. For a future
- *  native Tauri/iOS shell we'd swap this for a native player. */
-function AudioPlayer({ src, label }: { src: string; label: string }) {
-  // React Native Web forwards unknown JSX children to DOM, so a bare
-  // <audio> tag renders the native HTML5 element in the browser.
+/** Label + platform-split inline audio player. The `<InlineAudioPlayer>`
+ *  bit splits across web (HTML `<audio>`) and native (M22 stub) via
+ *  Metro's `.native.tsx` resolution + Vite's ignoreNativeSuffixes
+ *  plugin. The label wrapping stays here so the chrome is shared. */
+function AudioRow({ src, label }: { src: string; label: string }) {
   return (
     <View style={styles.audioRow}>
       <Text style={styles.audioLabel}>{label}</Text>
-      <audio controls preload="metadata" src={src} style={audioStyle} />
+      <InlineAudioPlayer src={src} />
     </View>
   );
 }
-
-const audioStyle = {
-  width: "100%",
-  maxWidth: 480,
-};
 
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms} ms`;

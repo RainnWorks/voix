@@ -37,10 +37,11 @@ export { VoiceEditor } from "./voices/VoiceEditor.tsx";
 export { ConversationList } from "./conversations/ConversationList.tsx";
 export { ConversationDetail } from "./conversations/ConversationDetail.tsx";
 export { TalkButton } from "./conversations/TalkButton.tsx";
+export { InlineAudioPlayer } from "./conversations/InlineAudioPlayer.tsx";
 export { SurfaceList } from "./surfaces/SurfaceList.tsx";
 export {
   BrowserAudioIoClient,
   type BrowserClientEvent,
   type BrowserClientStatus,
   type BrowserClientOpts,
-} from "./audio_io/browserClient.ts";
+} from "./audio_io/client.ts";

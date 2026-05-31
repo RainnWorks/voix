@@ -37,7 +37,7 @@ export { VoiceEditor } from "./voices/VoiceEditor";
 export { ConversationList } from "./conversations/ConversationList";
 export { ConversationDetail } from "./conversations/ConversationDetail";
 export { TalkButton } from "./conversations/TalkButton";
-export { InlineAudioPlayer } from "./conversations/InlineAudioPlayer";
+export { InlineAudioPlayer } from "./platform";
 export { SurfaceList } from "./surfaces/SurfaceList";
 export {
   BrowserAudioIoClient,
@@ -45,3 +45,19 @@ export {
   type BrowserClientStatus,
   type BrowserClientOpts,
 } from "./audio_io/client";
+
+/**
+ * Dev-only API surface (M21 step 6). Tom uses this from Metro's dev
+ * console to set the daemon URL on a fresh device:
+ *
+ *   require("@voix/ui").__dev__.setApiBase("http://192.168.99.86:8765/")
+ *
+ * Persists via the platform's storage adapter (AsyncStorage on
+ * native, localStorage on web). M23 ships a proper settings screen
+ * and this surface can come back out.
+ */
+import { appInfo } from "./platform";
+export const __dev__ = {
+  setApiBase: (url: string) => appInfo.setApiBase(url),
+  getApiBase: () => appInfo.getApiBase(),
+};

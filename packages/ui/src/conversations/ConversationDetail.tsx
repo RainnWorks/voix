@@ -23,7 +23,7 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { type HistoryContextEntry, type HistoryEntry, historyApi } from "../lib/api";
 import { colors, fontFamily, radius, spacing } from "../lib/theme";
-import { InlineAudioPlayer } from "./InlineAudioPlayer";
+import { InlineAudioPlayer } from "../platform";
 
 type Props = {
   entryId: string;

@@ -22,7 +22,7 @@
  * is unchanged).
  */
 
-import { getApiBase } from "./apiBase";
+import { appInfo } from "../platform";
 
 export type Voice = {
   id: string;
@@ -65,7 +65,8 @@ export type Voice = {
 export type VoiceUpdate = Partial<Omit<Voice, "id" | "isBuiltin">>;
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const r = await fetch(getApiBase() + path, {
+  const base = await appInfo.getApiBase();
+  const r = await fetch(base + path, {
     ...init,
     headers: {
       "content-type": "application/json",

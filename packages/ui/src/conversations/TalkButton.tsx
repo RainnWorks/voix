@@ -17,9 +17,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { BrowserAudioIoClient, type BrowserClientStatus } from "../audio_io/client";
+import { appInfo } from "../platform";
 import { colors, fontFamily, radius, spacing } from "../lib/theme";
 
-const WS_TOKEN_URL = "api/auth/ws-token";
+const WS_TOKEN_PATH = "api/auth/ws-token";
 
 export function TalkButton({ onSessionEnded }: { onSessionEnded?: () => void }) {
   const [status, setStatus] = useState<BrowserClientStatus>("idle");
@@ -45,7 +46,8 @@ export function TalkButton({ onSessionEnded }: { onSessionEnded?: () => void }) 
     holdingRef.current = true;
     setError(null);
     try {
-      const tokenResp = await fetch(WS_TOKEN_URL);
+      const base = await appInfo.getApiBase();
+      const tokenResp = await fetch(base + WS_TOKEN_PATH);
       if (!tokenResp.ok) throw new Error(`auth fetch ${tokenResp.status}`);
       const { token } = (await tokenResp.json()) as { token: string };
       // The user could have released by now — if so, don't even open.

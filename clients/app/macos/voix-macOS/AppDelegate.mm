@@ -1,5 +1,6 @@
 #import "AppDelegate.h"
 
+#import <AVFoundation/AVFoundation.h>
 #import <React/RCTBundleURLProvider.h>
 #import <ReactAppDependencyProvider/RCTAppDependencyProvider.h>
 
@@ -12,7 +13,25 @@
   // They will be passed down to the ViewController used by React Native.
   self.initialProps = @{};
   self.dependencyProvider = [RCTAppDependencyProvider new];
-  
+
+  // M22 Fix (Yuki H5): request microphone permission at app boot, not on
+  // the first ⌃⌥Space press. The dialog activates voix, stealing focus
+  // from the user's editor (TextEdit, Notes, etc). When requested at
+  // boot the focus race doesn't compete with hotkey-driven dictation;
+  // by the time Tom presses the hotkey, AV cache is warm and the user's
+  // editor stays focused. AVCaptureDevice.requestAccess is a no-op if
+  // status is anything other than .notDetermined, so safe to call every
+  // launch.
+  if ([AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio]
+      == AVAuthorizationStatusNotDetermined) {
+    [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio
+                             completionHandler:^(BOOL granted) {
+      // Logged for boot diagnostic — Tom will see this in console.
+      NSLog(@"[voix] mic permission %@",
+            granted ? @"granted" : @"denied");
+    }];
+  }
+
   return [super applicationDidFinishLaunching:notification];
 }
 

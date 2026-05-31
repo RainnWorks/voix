@@ -142,10 +142,10 @@ function makeVoice(partial: Omit<Voice, "isBuiltin" | "prompt" | "postProcessPro
  * refresh on disk.
  */
 export const BUILTIN_TONES: Record<string, string> = {
-  "default-realtime": "A calm conversational partner.",
+  "default-realtime": "Talks back. Knows when to shut up.",
   "default-dictation": "Just transcribes. No rewrite.",
   "default-message": "Crisp messages. No fluff.",
-  "default-email": "Polite and professional. Always lands.",
+  "default-email": "Reads like you meant it.",
   "default-note": "Quick capture for future-you.",
   "default-code": "Plain prompts. Comments where they earn it.",
 };
@@ -168,6 +168,15 @@ export const KNOWN_BUILTIN_TONES = new Set<string | null>([
   // touched on this dimension.
   null,
   "",
+
+  // ─── Historical ─────────────────────────────────────────────────────
+  // M23 fix-pass (Wren F4) — Realtime + Email tones rewritten from
+  // their original placeholder-ish copy to sharper brand-register
+  // lines. Keep the originals here so a pre-fix-pass install that
+  // upgrades sees its built-in tones refreshed (per the same
+  // refresh-on-known-built-in rule as KNOWN_BUILTIN_PROMPTS).
+  "A calm conversational partner.",
+  "Polite and professional. Always lands.",
 ]);
 
 export const BUILTIN_VOICES: Voice[] = [

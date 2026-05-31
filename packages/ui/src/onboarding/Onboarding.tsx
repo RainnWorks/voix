@@ -307,7 +307,7 @@ function DaemonStep({
   return (
     <View style={styles.step}>
       <Text ref={titleRef} style={styles.title} accessibilityRole="header">
-        Where's your daemon?
+        Connect to voix
       </Text>
       <Text style={styles.body}>
         voix talks to a small daemon running on your network. Usually the

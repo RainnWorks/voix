@@ -1,8 +1,8 @@
-// SYNC NOTE: this file's wire-protocol types must stay byte-identical
-// to voix-backend/src/audio_io/protocol.ts. If you edit one, edit the
-// other. Production HA Add-on Dockerfile can't see packages/, so the
-// daemon ships its own copy. `scripts/check-protocol-sync.sh` flags
-// drift.
+// Single source of truth for the audio-io wire protocol. The daemon
+// consumes these via `@voix/protocol` (voix-backend/src/audio_io/protocol.ts
+// is now a thin re-export). M20a retired the old parallel copy in the
+// daemon + scripts/check-protocol-sync.sh, since the Docker build now
+// runs from the repo root and can resolve the workspace package.
 
 /**
  * Audio I/O port — wire protocol (v1).

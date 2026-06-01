@@ -34,10 +34,6 @@ export function registerSource(source: ContextSource): void {
   log.info(`context: registered source ${source.name}`);
 }
 
-export function listSources(): ContextSource[] {
-  return Array.from(sources.values());
-}
-
 export async function gatherAll(args: GatherArgs): Promise<ContextEntry[]> {
   if (sources.size === 0) return [];
 

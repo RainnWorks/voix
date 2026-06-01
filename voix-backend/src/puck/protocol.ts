@@ -66,18 +66,3 @@ export function resolveCapture(hello: PuckHello): { intent: Intent; voiceId?: st
   const voiceId = hello.voice_id ?? hello.mode_id;
   return { intent, voiceId };
 }
-
-export type DaemonToPuck =
-  | { type: "ready"; mode: LegacyMode }
-  | { type: "decline"; reason: string }
-  | { type: "error"; message: string }
-  | { type: "user_speech_start" }
-  | { type: "user_speech_end" }
-  | { type: "transcript_delta"; text: string }
-  | { type: "transcript"; text: string }
-  /** Marker that the model started a turn. The puck doesn't *need*
-   *  this for echo gating — it inspects its own speaker state for
-   *  that — but kept as a signal for LED phasing on the firmware
-   *  side. */
-  | { type: "audio_start" }
-  | { type: "audio_end" };

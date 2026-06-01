@@ -133,10 +133,6 @@ export function listDevices(): DeviceRecord[] {
   return Array.from(cache.values()).sort((a, b) => b.lastSeenMs - a.lastSeenMs);
 }
 
-export function getDevice(deviceId: string): DeviceRecord | undefined {
-  return cache.get(deviceId);
-}
-
 /** Set a new voice for a device. Persists immediately. If you want the
  *  change to propagate to the puck before its next wake-word
  *  (re-pushing via HA's voix_set_state), do that at the call site —

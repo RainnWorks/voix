@@ -21,7 +21,7 @@
  * the daemon instead of HA.
  */
 
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -44,10 +44,6 @@ const DATA_ROOT = detectDataRoot();
 
 export function dataPath(...segments: string[]): string {
   return join(DATA_ROOT, "voix", ...segments);
-}
-
-export function ensureDir(path: string): void {
-  mkdirSync(path, { recursive: true });
 }
 
 export const paths = {

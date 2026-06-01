@@ -369,7 +369,3 @@ export class AudioIoConnection {
     this.pipeline = null;
   }
 }
-
-/** Expose the unused-in-this-file but-test-relevant constant so the
- *  test file can assert on it without re-declaring. */
-export const _LEGACY_PUCK_DEFAULT_CAPS = LEGACY_PUCK_DEFAULT_CAPS;

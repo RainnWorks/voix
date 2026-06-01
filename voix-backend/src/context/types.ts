@@ -62,18 +62,6 @@ export type ToolSpec = {
   __source?: string;
 };
 
-/** Legacy OpenAI Realtime function-call tool shape — what
- *  `session.tools` accepts on the wire. Kept as a separate type so the
- *  OpenAI realtime adapter can produce it explicitly via
- *  `toOpenAiTool(ToolSpec)`; no other provider should depend on this
- *  shape leaking past `src/realtime/openai.ts`. */
-export type OpenAiRealtimeToolSpec = {
-  type: "function";
-  name: string;
-  description: string;
-  parameters: Record<string, unknown>;
-};
-
 export type ToolResult = {
   /** JSON-serialised result string. OpenAI Realtime's
    *  function_call_output is a single string content field; structured

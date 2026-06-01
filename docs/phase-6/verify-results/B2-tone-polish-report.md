@@ -93,6 +93,11 @@ brand-facing tone copy, so §09 does not apply. Left untouched.)
   | `VoiceEditor.tsx` (donePrompt empty-state) | `Disabled — this voice has no "When I'm done" prompt, so…` | `Disabled. This voice has no "When I'm done" prompt, so…` |
   | `VoiceEditor.tsx` (no-providers empty-state) | `No X providers configured — add an API key in Add-on options.` | `No X providers configured. Add an API key in Add-on options.` |
   | `Onboarding.tsx` (hero a11y label) | `voix — push-to-talk voice assistant` | `voix, push-to-talk voice assistant` |
+  | `VoiceEditor.tsx` (save-error toasts ×2) | `Couldn't save — …` / `Couldn't save — check your connection.` | `Couldn't save. …` / `Couldn't save. Check your connection.` |
+
+  > The two save-error toasts arrived mid-run from concurrent B1 work
+  > (save-failure toast feature) after the first scan; caught on a
+  > re-scan and fixed in a follow-up commit.
 
   Em-dashes that remain in these files are all in **code comments**
   (JSDoc/inline), not brand surface — intentionally left.
@@ -107,6 +112,6 @@ brand-facing tone copy, so §09 does not apply. Left untouched.)
 
 ## Files changed
 
-- `packages/ui/src/voices/VoiceEditor.tsx` — 3 user-facing em-dash removals.
+- `packages/ui/src/voices/VoiceEditor.tsx` — 5 user-facing em-dash removals (3 in first pass + 2 save-error toasts in follow-up).
 - `packages/ui/src/onboarding/Onboarding.tsx` — 1 a11y-label em-dash removal.
 - `voix-backend/src/voices/builtins.ts` — **no change** (copy already on-brand).

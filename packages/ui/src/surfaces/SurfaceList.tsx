@@ -206,7 +206,13 @@ function formatLastSeen(ms: number): string {
 }
 
 const styles = StyleSheet.create({
-  scroll: { padding: spacing.xl, maxWidth: 720, alignSelf: "center", gap: 0 },
+  // `width: "100%"` is load-bearing: without it `alignSelf: "center"`
+  // overrides the ScrollView content container's default cross-axis
+  // stretch and the whole list shrink-wraps to its widest child's
+  // intrinsic width, collapsing every `flex: 1` rowBody to a ~16pt
+  // min-content column (B13 BLOCKER). The list fills the viewport, then
+  // the 720 cap + center keeps the desktop / iPad two-column layout.
+  scroll: { padding: spacing.xl, width: "100%", maxWidth: 720, alignSelf: "center", gap: 0 },
 
   row: {
     flexDirection: "row",

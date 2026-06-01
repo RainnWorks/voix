@@ -280,3 +280,36 @@ milestones balloon past the LOC cap, or two phases get tangled. When
 that happens: stop the current milestone, write down what you
 learned, edit this doc, then resume. The workflow is a tool, not
 the law.
+
+---
+
+## CI
+
+[![CI](https://github.com/RainnWorks/voix/actions/workflows/ci.yml/badge.svg)](https://github.com/RainnWorks/voix/actions/workflows/ci.yml)
+
+GitHub Actions runs the JS/TS side of the monorepo on every push to
+`main`, every pull request, and on-demand via **workflow_dispatch**.
+Workflow: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml).
+
+It runs on `macos-latest` (the repo also hosts the iOS/macOS RN
+clients) but **does not** run `xcodebuild` — that's too slow for CI and
+needs Apple Dev signing. CI covers everything that can be checked
+without a device or a signing identity:
+
+| Step | Command | What it guards |
+|---|---|---|
+| Repo checks | `bun run check` | native-sibling pins, protocol sync, pin bounds |
+| Backend tests | `bun test` (in `voix-backend`) | the 140+ daemon pipeline tests |
+| Backend typecheck | `bun run typecheck` (in `voix-backend`) | `tsc --noEmit` over the daemon |
+| UI build | `bun run build` (in `voix-backend/ui`) | `tsc --noEmit` + `vite build` of the web UI |
+| App typecheck | `bunx tsc -p clients/app/tsconfig.json --noEmit` | the RN client's types |
+
+Dependencies are cached on `~/.bun/install/cache` + the resolved
+`node_modules` trees, keyed on `bun.lock`. To reproduce a CI run
+locally, execute those five commands in order — each must exit 0.
+
+> **Note:** `voix-backend/tsconfig.json` declares `"types":
+> ["bun-types"]`, so `bun-types` is a direct devDependency of
+> `voix-backend`. Bun's isolated linker only hoists *direct* deps, so
+> without that entry the daemon typecheck fails to resolve `bun-types`
+> on a clean install. Don't drop it.

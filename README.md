@@ -1,5 +1,7 @@
 # voix
 
+[![CI](https://github.com/RainnWorks/voix/actions/workflows/ci.yml/badge.svg)](https://github.com/RainnWorks/voix/actions/workflows/ci.yml)
+
 Voice toolkit built on a Home Assistant Voice PE satellite, orchestrated through Home Assistant, with three distinct activation modes and a tiny Mac listener for the dictation path.
 
 ## Modes

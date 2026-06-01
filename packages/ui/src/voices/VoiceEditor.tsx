@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Children, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -305,11 +305,24 @@ export function VoiceEditor({ voiceId, onClose }: Props) {
         </SimplePhase>
       )}
 
-      <Pressable onPress={() => setAdvancedOpen((v) => !v)} style={styles.advancedToggle}>
-        <Text style={styles.advancedToggleText}>
-          {advancedOpen ? "Hide advanced" : "Show advanced"}
-        </Text>
-      </Pressable>
+      {/* Advanced disclosure (B15) — a full-width inset-grouped row with
+          a chevron, the iOS grouped-table idiom, instead of a small
+          link. Default view shows only Name / Tone / Type + the prompts;
+          providers, models and the engine choice live behind this. 44pt
+          tall, with an accessibility expanded state. */}
+      <View style={styles.advancedGroup}>
+        <Pressable
+          onPress={() => setAdvancedOpen((v) => !v)}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: advancedOpen }}
+          accessibilityLabel="Advanced"
+          accessibilityHint="Providers, models and pacing for this voice."
+          style={({ pressed }) => [styles.advancedRow, pressed && styles.advancedRowPressed]}
+        >
+          <Text style={styles.advancedRowLabel}>Advanced</Text>
+          <Text style={styles.advancedChevron}>{advancedOpen ? "⌄" : "›"}</Text>
+        </Pressable>
+      </View>
 
       {advancedOpen && isRealtime && (
         <>
@@ -318,29 +331,29 @@ export function VoiceEditor({ voiceId, onClose }: Props) {
               out: picking the engine changes how the voice sounds
               and paces replies, so the user needs to make this
               choice before they look at any plumbing. */}
-          <SectionLabel>Conversation feel</SectionLabel>
-          <SettingRow
-            label="Pacing"
-            desc="Live keeps the conversation flowing. Turn-based waits for you to finish, then answers. Changes how this voice sounds and paces replies."
-            control={
-              <Segmented
-                value={voice.discussEngine ?? "realtime"}
-                options={[
-                  { value: "realtime", label: "Live" },
-                  { value: "traditional", label: "Turn-based" },
-                ]}
-                onChange={(v) => {
-                  const next = v as NonNullable<Voice["discussEngine"]>;
-                  setVoice({ ...voice, discussEngine: next });
-                  void save({ discussEngine: next });
-                }}
-              />
-            }
-          />
+          <GroupSection title="Conversation feel">
+            <SettingRow
+              label="Pacing"
+              desc="Live keeps the conversation flowing. Turn-based waits for you to finish, then answers. Changes how this voice sounds and paces replies."
+              control={
+                <Segmented
+                  value={voice.discussEngine ?? "realtime"}
+                  options={[
+                    { value: "realtime", label: "Live" },
+                    { value: "traditional", label: "Turn-based" },
+                  ]}
+                  onChange={(v) => {
+                    const next = v as NonNullable<Voice["discussEngine"]>;
+                    setVoice({ ...voice, discussEngine: next });
+                    void save({ discussEngine: next });
+                  }}
+                />
+              }
+            />
+          </GroupSection>
 
           {(voice.discussEngine ?? "realtime") === "realtime" && (
-            <>
-              <SectionLabel>Talking phase plumbing</SectionLabel>
+            <GroupSection title="Talking phase plumbing">
               <SettingRow
                 label="Speaker"
                 desc="The TTS voice the realtime model speaks back in."
@@ -369,12 +382,11 @@ export function VoiceEditor({ voiceId, onClose }: Props) {
                   />
                 }
               />
-            </>
+            </GroupSection>
           )}
 
           {(voice.discussEngine ?? "realtime") === "traditional" && (
-            <>
-              <SectionLabel>Talking phase plumbing</SectionLabel>
+            <GroupSection title="Talking phase plumbing">
               <SettingRow
                 label="STT provider"
                 desc="Where mic audio gets transcribed."
@@ -422,57 +434,59 @@ export function VoiceEditor({ voiceId, onClose }: Props) {
                   Aura is the only impl; surfacing a text input
                   fishing for a string the user can't know is
                   worse than a sensible default. */}
-            </>
+            </GroupSection>
           )}
 
-          <SectionLabel>Output phase plumbing</SectionLabel>
-          {!donePromptFilled && (
-            <Text style={styles.sectionHint}>
-              Disabled. This voice has no "When I'm done" prompt, so
-              the model never produces a written result. Add one above
-              to enable the output provider + model.
-            </Text>
-          )}
-          <View style={!donePromptFilled && styles.disabled}>
+          <GroupSection
+            title="Output phase plumbing"
+            hint={
+              !donePromptFilled
+                ? 'Disabled. This voice has no "When I\'m done" prompt, so the model never produces a written result. Add one above to enable the output provider + model.'
+                : undefined
+            }
+            dimmed={!donePromptFilled}
+          >
             <OutputProviderRows voice={voice} setVoice={setVoice} save={save} />
-          </View>
+          </GroupSection>
         </>
       )}
 
       {advancedOpen && isDictation && (
         <>
-          <SectionLabel>STT pipeline</SectionLabel>
-          <SettingRow
-            label="STT provider"
-            desc="Where mic audio gets transcribed."
-            control={
-              <ProviderSegmented
-                kind="stt"
-                value={voice.sttProvider}
-                onChange={(v) => {
-                  setVoice({ ...voice, sttProvider: v });
-                  void save({ sttProvider: v });
-                }}
-              />
-            }
-          />
-          <SettingRow
-            label="STT model"
-            desc="Provider-specific model name. Empty = provider default."
-            control={
-              <TextInput
-                value={voice.sttModel}
-                onChangeText={(t) => setVoice({ ...voice, sttModel: t })}
-                onBlur={() => save({ sttModel: voice.sttModel })}
-                placeholder="gpt-4o-mini-transcribe"
-                placeholderTextColor={colors.textQuiet}
-                style={styles.input}
-              />
-            }
-          />
+          <GroupSection title="STT pipeline">
+            <SettingRow
+              label="STT provider"
+              desc="Where mic audio gets transcribed."
+              control={
+                <ProviderSegmented
+                  kind="stt"
+                  value={voice.sttProvider}
+                  onChange={(v) => {
+                    setVoice({ ...voice, sttProvider: v });
+                    void save({ sttProvider: v });
+                  }}
+                />
+              }
+            />
+            <SettingRow
+              label="STT model"
+              desc="Provider-specific model name. Empty = provider default."
+              control={
+                <TextInput
+                  value={voice.sttModel}
+                  onChangeText={(t) => setVoice({ ...voice, sttModel: t })}
+                  onBlur={() => save({ sttModel: voice.sttModel })}
+                  placeholder="gpt-4o-mini-transcribe"
+                  placeholderTextColor={colors.textQuiet}
+                  style={styles.input}
+                />
+              }
+            />
+          </GroupSection>
 
-          <SectionLabel>Output phase plumbing</SectionLabel>
-          <OutputProviderRows voice={voice} setVoice={setVoice} save={save} />
+          <GroupSection title="Output phase plumbing">
+            <OutputProviderRows voice={voice} setVoice={setVoice} save={save} />
+          </GroupSection>
         </>
       )}
     </ScrollView>
@@ -487,6 +501,42 @@ export function VoiceEditor({ voiceId, onClose }: Props) {
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return <Text style={styles.sectionLabel}>{children}</Text>;
+}
+
+/** Inset-grouped settings section (B15) — the iOS UITableView grouped
+ *  idiom that the Voices list already uses (Marina H2): an uppercase
+ *  section header, then one rounded card holding the rows with hairline
+ *  separators injected between them. Replaces the flat
+ *  SectionLabel-then-bare-rows layout in Advanced. `hint` renders a
+ *  caption under the header (e.g. the disabled-output explanation) and
+ *  `dimmed` greys the card when the section is inactive. */
+function GroupSection({
+  title,
+  hint,
+  dimmed,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  dimmed?: boolean;
+  children: React.ReactNode;
+}) {
+  const rows = Children.toArray(children).filter(Boolean);
+  return (
+    <View style={styles.groupSection}>
+      <Text style={styles.groupHeader}>{title}</Text>
+      {hint && <Text style={styles.groupHint}>{hint}</Text>}
+      <View style={[styles.group, dimmed && styles.disabled]}>
+        {rows.map((row, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: rows are static, order-stable
+          <View key={i}>
+            {i > 0 && <View style={styles.groupSeparator} />}
+            {row}
+          </View>
+        ))}
+      </View>
+    </View>
+  );
 }
 
 /** Phone-only iOS-style nav bar (B15). Left = back chevron + "Voices"
@@ -1109,16 +1159,62 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
 
-  advancedToggle: {
-    alignSelf: "flex-start",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+  // ─── Advanced disclosure + inset-grouped sections (B15) ──────────
+  advancedGroup: {
     marginTop: spacing.lg,
+    backgroundColor: colors.bgElevated,
+    borderRadius: radius.lg,
+    borderWidth: 0.5,
+    borderColor: colors.rule,
+    overflow: "hidden",
   },
-  advancedToggleText: {
+  advancedRow: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+  },
+  advancedRowPressed: { backgroundColor: colors.bgHover },
+  advancedRowLabel: {
     fontFamily: fontFamily.ui,
-    fontSize: 13,
-    color: colors.sysAccent,
+    fontSize: 15,
+    color: colors.ink,
+  },
+  advancedChevron: {
+    fontSize: 20,
+    color: colors.textQuiet,
+    fontWeight: "400",
+  },
+  groupSection: { marginTop: spacing.lg },
+  groupHeader: {
+    fontFamily: fontFamily.mono,
+    fontSize: 11,
+    color: colors.textMuted,
+    textTransform: "uppercase",
+    marginBottom: spacing.sm,
+    marginLeft: spacing.xs,
+  },
+  groupHint: {
+    fontFamily: fontFamily.ui,
+    fontSize: 12,
+    color: colors.textMuted,
+    lineHeight: 18,
+    marginBottom: spacing.sm,
+    marginLeft: spacing.xs,
+  },
+  group: {
+    backgroundColor: colors.bgElevated,
+    borderRadius: radius.lg,
+    borderWidth: 0.5,
+    borderColor: colors.rule,
+    overflow: "hidden",
+  },
+  groupSeparator: {
+    height: 0.5,
+    backgroundColor: colors.ruleSoft,
+    marginLeft: spacing.md,
   },
 
   settingRow: {
@@ -1126,8 +1222,9 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     justifyContent: "space-between",
     paddingVertical: spacing.md,
-    borderBottomWidth: 0.5,
-    borderBottomColor: colors.ruleSoft,
+    paddingHorizontal: spacing.md,
+    // B15: separators are now drawn by the enclosing GroupSection card,
+    // so the row no longer carries its own bottom hairline.
     gap: spacing.lg,
   },
   settingRowPhone: {

@@ -157,10 +157,12 @@ export function ConversationList({ onPickEntry }: Props) {
       >
         <TalkButton intent={intent} onSessionEnded={onSessionEnded} />
         <View style={styles.emptyBox}>
-          <Text style={styles.emptyTitle}>No conversations yet</Text>
-          <Text style={styles.emptyHint}>
-            Hold the button above and say something. Or talk to your puck.
-          </Text>
+          {/* Puck hero — the one sanctioned custom glyph — anchors the
+              empty state so a fresh install reads as intentional, not
+              blank (B1). */}
+          <Puck size={48} />
+          <Text style={styles.emptyTitle}>No conversations yet.</Text>
+          <Text style={styles.emptyHint}>Press the button above to start.</Text>
         </View>
       </ScrollView>
     );

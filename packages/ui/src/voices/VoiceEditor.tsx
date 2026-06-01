@@ -9,6 +9,7 @@ import {
   View,
 } from "react-native";
 import { Puck } from "../components/Puck";
+import { Toast } from "../components/Toast";
 import { type ProviderKind, type Voice, type VoiceUpdate, voicesApi } from "../lib/api";
 import {
   colors,
@@ -44,6 +45,10 @@ type Props = {
 export function VoiceEditor({ voiceId, onClose }: Props) {
   const [voice, setVoice] = useState<Voice | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Save failures surface as a transient bottom toast (B1) — distinct
+  // from `error`, which is the load-failure path that replaces the
+  // whole editor with an error box.
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(true);
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
@@ -68,10 +73,18 @@ export function VoiceEditor({ voiceId, onClose }: Props) {
     try {
       const next = await voicesApi.update(voice.id, patch);
       setVoice(next);
-      setError(null);
+      setSaveError(null);
       setSaved(true);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      // A network drop mid-save (the common case on a phone) gets a
+      // friendly, actionable toast; a real HTTP error keeps its detail
+      // so a misconfigured field is still debuggable (B1).
+      const msg = e instanceof Error ? e.message : String(e);
+      setSaveError(
+        /^\d{3}\s/.test(msg)
+          ? `Couldn't save — ${msg}`
+          : "Couldn't save — check your connection.",
+      );
       setSaved(true);
     }
   };
@@ -101,6 +114,7 @@ export function VoiceEditor({ voiceId, onClose }: Props) {
   const donePromptFilled = voice.donePrompt.trim().length > 0;
 
   return (
+    <View style={styles.editorRoot}>
     <ScrollView contentContainerStyle={styles.scroll}>
       <View style={styles.topBar}>
         <Pressable onPress={onClose}>
@@ -108,12 +122,6 @@ export function VoiceEditor({ voiceId, onClose }: Props) {
         </Pressable>
         <Text style={styles.savedText}>{saved ? "Saved" : "Saving…"}</Text>
       </View>
-
-      {error && (
-        <View style={styles.errorToast}>
-          <Text style={styles.errorMsg}>Couldn't save: {error}</Text>
-        </View>
-      )}
 
       <View style={styles.identityRow}>
         <Puck size={48} color={swatch.hex} />
@@ -452,6 +460,12 @@ export function VoiceEditor({ voiceId, onClose }: Props) {
         </>
       )}
     </ScrollView>
+      {/* Non-modal save-failure toast (B1) — floats over the form,
+          auto-dismisses, doesn't shove the layout. */}
+      {saveError && (
+        <Toast message={saveError} onDismiss={() => setSaveError(null)} />
+      )}
+    </View>
   );
 }
 
@@ -1049,6 +1063,9 @@ const styles = StyleSheet.create({
   },
   segmentedTextSelected: { color: colors.ink, fontWeight: "500" },
 
+  // flex:1 wrapper so the save-failure Toast can position absolutely
+  // against the editor's full content pane (B1).
+  editorRoot: { flex: 1 },
   loadingBox: { padding: spacing.xxl, alignItems: "center" },
   errorBox: {
     margin: spacing.lg,
@@ -1058,13 +1075,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: radius.md,
     gap: spacing.sm,
-  },
-  errorToast: {
-    padding: spacing.md,
-    backgroundColor: colors.dangerBg,
-    borderColor: colors.dangerBorder,
-    borderWidth: 1,
-    borderRadius: radius.sm,
   },
   errorTitle: {
     fontFamily: fontFamily.ui,

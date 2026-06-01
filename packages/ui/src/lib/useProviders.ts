@@ -85,9 +85,3 @@ export function useProviders(kind: ProviderKind): UseProvidersResult {
 
   return { providers, loading, error };
 }
-
-/** Test-only: reset the module cache. Not exported from the package's
- *  public surface; lives here so unit tests can scope state. */
-export function _resetProvidersCache(): void {
-  cache.clear();
-}

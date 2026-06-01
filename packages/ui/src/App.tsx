@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Linking, Platform } from "react-native";
 import { AppShell, type Section } from "./components/AppShell";
+import { DaemonBanner } from "./components/DaemonBanner";
 import { ConversationDetail } from "./conversations/ConversationDetail";
 import { ConversationList } from "./conversations/ConversationList";
 import { KeyboardCaptureScreen } from "./conversations/KeyboardCaptureScreen";
@@ -175,6 +176,10 @@ function AppInner() {
             ask. Renders only on macOS when trust is missing; no-op
             elsewhere. M22 fix — Yuki H6 + Marina UX-3. */}
         <MacAccessibilityBanner />
+        {/* App-wide "can't reach the daemon" nudge (B1). Renders null
+            while the daemon answers; on a network reach failure it drops
+            a soft HA-blue banner above whatever screen is showing. */}
+        <DaemonBanner />
         {content}
       </AppShell>
     </>

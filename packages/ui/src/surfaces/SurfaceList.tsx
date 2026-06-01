@@ -16,8 +16,16 @@
  * Voices screen). Marina + Wren can audit before M16's UI deploy.
  */
 
-import { useEffect, useState } from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { Icon, type IconName } from "../components/Icon";
 import { Puck } from "../components/Puck";
 import {
   type Surface,
@@ -32,24 +40,35 @@ export function SurfaceList() {
   const [surfaces, setSurfaces] = useState<Surface[] | null>(null);
   const [voiceById, setVoiceById] = useState<Record<string, Voice>>({});
   const [error, setError] = useState<string | null>(null);
+  // UIRefreshControl spinner when the user tugs the list down (B13 Wren
+  // #3). A surface's last-seen / connected state is exactly what a user
+  // pulls to re-check; Conversations and Voices already wired this.
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    Promise.all([surfacesApi.list(), voicesApi.list()])
+  const refresh = useCallback(() => {
+    return Promise.all([surfacesApi.list(), voicesApi.list()])
       .then(([s, v]) => {
-        if (cancelled) return;
         setSurfaces(s);
         const idx: Record<string, Voice> = {};
         for (const voice of v) idx[voice.id] = voice;
         setVoiceById(idx);
       })
       .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+        setError(e instanceof Error ? e.message : String(e));
       });
-    return () => {
-      cancelled = true;
-    };
   }, []);
+
+  // Pull-to-refresh — re-runs the same load and parks the native spinner
+  // until it settles. `refresh` swallows its own errors into the error
+  // box, so `finally` is safe without a catch here.
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    void refresh().finally(() => setRefreshing(false));
+  }, [refresh]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
   if (error) {
     return (
@@ -82,7 +101,16 @@ export function SurfaceList() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.scroll}>
+    <ScrollView
+      contentContainerStyle={styles.scroll}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={colors.sysAccent}
+        />
+      }
+    >
       {surfaces.map((surface) => (
         <SurfaceRow
           key={surface.deviceId}
@@ -139,20 +167,42 @@ function SurfaceGlyph({ kind, color }: { kind?: string; color: string }) {
   if (!kind || kind === "puck" || kind === "puck-legacy") {
     return <Puck size={32} color={color} />;
   }
-  const label =
-    kind === "phone-sat" ? "📱" : kind === "browser-tab" ? "🌐" : kind === "laptop-mic" ? "💻" : "?";
+  // SF-Symbol-equivalent vector glyphs (via the shared Icon component),
+  // not colour emoji — emoji are the loudest generic-RN tell, and an
+  // unrecognised kind resolves to questionmark.circle, not a typed "?"
+  // (Marina B13 #2 BLOCKER). Tinted with the bound voice's swatch.
+  const iconName: IconName =
+    kind === "phone-sat"
+      ? "phone"
+      : kind === "browser-tab"
+        ? "browser"
+        : kind === "laptop-mic"
+          ? "laptop"
+          : "unknown";
   return (
     <View style={styles.glyphFallback}>
-      <Text style={styles.glyphFallbackText}>{label}</Text>
+      <Icon name={iconName} size={20} color={color} />
     </View>
   );
 }
 
-/** Render a client kind for the inline tag. "puck-legacy" trims to
- *  "puck" — internal detail the user doesn't need. */
+/** Human-facing label for a client kind. The daemon's wire vocabulary
+ *  ("phone-sat", "puck-legacy") never reaches the user (Wren B13 #2 —
+ *  jargon leak, Nielsen #2). Unknown kinds fall through unchanged. */
 function prettifyKind(kind: string): string {
-  if (kind === "puck-legacy") return "puck";
-  return kind;
+  switch (kind) {
+    case "puck":
+    case "puck-legacy":
+      return "Voice PE";
+    case "phone-sat":
+      return "Phone";
+    case "browser-tab":
+      return "Browser";
+    case "laptop-mic":
+      return "Laptop";
+    default:
+      return kind;
+  }
 }
 
 function CapabilityChips({ capabilities }: { capabilities?: SurfaceCapabilities }) {
@@ -173,10 +223,13 @@ function CapabilityChips({ capabilities }: { capabilities?: SurfaceCapabilities 
     chips.push(`speaker ${capabilities.speaker.sample_rate_hz / 1000} kHz`);
   }
   if (capabilities.half_duplex_on_chip) {
-    chips.push("AEC on chip");
+    // "AEC on chip" was wire vocab; "Echo cancellation" is what it does
+    // (Wren B13 #2 — jargon leak).
+    chips.push("Echo cancellation");
   }
   if (capabilities.wake_words && capabilities.wake_words.length > 0) {
-    chips.push(`wake: ${capabilities.wake_words.join(", ")}`);
+    const plural = capabilities.wake_words.length > 1 ? "Wake words" : "Wake word";
+    chips.push(`${plural}: ${capabilities.wake_words.join(", ")}`);
   }
   if (capabilities.screen) {
     chips.push("screen");
@@ -258,7 +311,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  glyphFallbackText: { fontSize: 16 },
   // Tags = sentence-case UI font; chips below use mono. Distinct
   // typography keeps "puck" + "v1" reading as metadata about the
   // row, not as the row's payload. Both surfaces use bgSubtle —

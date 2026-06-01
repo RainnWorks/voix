@@ -13,13 +13,25 @@
 import { StyleSheet, Text } from "react-native";
 import { colors } from "../lib/theme";
 
-export type IconName = "mic" | "conversations" | "surfaces" | "settings";
+export type IconName =
+  | "mic"
+  | "conversations"
+  | "surfaces"
+  | "settings"
+  | "phone"
+  | "browser"
+  | "laptop"
+  | "unknown";
 
 const GLYPH: Record<IconName, string> = {
   mic: "🎙",
   conversations: "▤",
   surfaces: "◇",
   settings: "⚙",
+  phone: "▢",
+  browser: "◍",
+  laptop: "▭",
+  unknown: "?",
 };
 
 export function Icon({

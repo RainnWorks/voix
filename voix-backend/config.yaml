@@ -16,6 +16,24 @@ description: >-
   context gathering. The HA "voix" integration (separate) does device
   discovery + onboarding; the brain runs here.
 
+# Pull a prebuilt image instead of building locally (M20a). The
+# Supervisor's local builder pins the Docker build context to this
+# add-on directory, which can't reach the monorepo's packages/
+# workspace siblings — so the bundled web UI can't resolve its
+# @voix/ui / @voix/protocol deps and a local build fails. The image is
+# instead built from the repo root in CI (.github/workflows/addon-publish.yml),
+# where the full workspace is present, and published per-arch to GHCR.
+# `{arch}` is substituted by the Supervisor (aarch64 / amd64); the tag
+# tracks `version` above.
+#
+# GO-LIVE (one-time, Tom): the GHCR package is created on the first CI
+# publish — cut a release tag (e.g. `addon-v0.1.0`) so the workflow runs,
+# then make the two `voix-backend-{aarch64,amd64}` packages public under
+# github.com/RainnWorks so the Supervisor can pull them anonymously.
+# Until then, dev_mode (which clones the repo at boot) remains the only
+# working install path.
+image: ghcr.io/rainnworks/voix-backend-{arch}
+
 # Build for ARM (Pi 4 / Home Assistant Yellow) + x86_64 (NUC / generic
 # Docker hosts). 32-bit and armv7 aren't worth the test matrix yet —
 # add them if anyone asks.

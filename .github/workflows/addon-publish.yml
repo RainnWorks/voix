@@ -1,0 +1,81 @@
+name: Publish add-on image
+
+# Builds the voix-backend HA Add-on image from the REPO ROOT (where the
+# bun workspace + packages/ are present) and pushes it per-arch to GHCR.
+# config.yaml's `image:` field makes the HA Supervisor pull these instead
+# of building locally — the Supervisor's local builder can't use a
+# parent-dir context, so a from-root build only works here. See
+# docs/build-workflow.md (M20a).
+#
+# Trigger: push a tag like `addon-v0.1.0`, or run manually. The image
+# tag tracks config.yaml's `version`, plus a moving `latest`.
+#
+# Auth: the built-in GITHUB_TOKEN with packages:write. NOTE (one-time):
+# GHCR packages are private on first publish — make
+# voix-backend-{aarch64,amd64} public under github.com/RainnWorks so the
+# Supervisor can pull them anonymously.
+
+on:
+  push:
+    tags:
+      - "addon-v*"
+  workflow_dispatch:
+
+concurrency:
+  group: addon-publish-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    name: build • push (${{ matrix.ha_arch }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ha_arch: aarch64
+            platform: linux/arm64
+          - ha_arch: amd64
+            platform: linux/amd64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read add-on version
+        id: meta
+        run: |
+          version=$(grep -E '^version:' voix-backend/config.yaml | head -1 | sed -E 's/^version:[[:space:]]*"?([^"]+)"?/\1/')
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          # GHCR requires a lowercase owner/namespace.
+          owner=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')
+          echo "image=ghcr.io/${owner}/voix-backend-${{ matrix.ha_arch }}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: voix-backend/Dockerfile
+          platforms: ${{ matrix.platform }}
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}
+            ${{ steps.meta.outputs.image }}:latest
+          cache-from: type=gha,scope=addon-${{ matrix.ha_arch }}
+          cache-to: type=gha,mode=max,scope=addon-${{ matrix.ha_arch }}

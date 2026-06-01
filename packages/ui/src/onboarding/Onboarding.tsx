@@ -262,7 +262,7 @@ function Welcome({ ob, onNext }: { ob: ObPalette; onNext: () => void }) {
     <View style={styles.step}>
       <View
         style={styles.heroRow}
-        accessibilityLabel="voix — push-to-talk voice assistant"
+        accessibilityLabel="voix, push-to-talk voice assistant"
       >
         <Puck size={64} />
       </View>

@@ -228,7 +228,7 @@ export function VoiceEditor({ voiceId, onClose }: Props) {
             number={1}
             label="When we're talking"
             requiredTag="Needed"
-            hint="How the model behaves during the conversation — its persona, its rules, its register."
+            hint="How the model behaves during the conversation. Its persona, its rules, its register."
             connector="below"
           >
             <TextInput
@@ -404,7 +404,7 @@ export function VoiceEditor({ voiceId, onClose }: Props) {
           <SectionLabel>Output phase plumbing</SectionLabel>
           {!donePromptFilled && (
             <Text style={styles.sectionHint}>
-              Disabled — this voice has no "When I'm done" prompt, so
+              Disabled. This voice has no "When I'm done" prompt, so
               the model never produces a written result. Add one above
               to enable the output provider + model.
             </Text>
@@ -629,7 +629,7 @@ function ProviderSegmented({
   if (providers.length === 0) {
     return (
       <Text style={styles.sectionHint}>
-        No {kind.toUpperCase()} providers configured — add an API key in Add-on options.
+        No {kind.toUpperCase()} providers configured. Add an API key in Add-on options.
       </Text>
     );
   }

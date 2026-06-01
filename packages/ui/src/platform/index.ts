@@ -37,7 +37,7 @@ export type {
 
 export { storage } from "./storage";
 export { haptics } from "./haptics";
-export { appInfo, validateDaemonUrl, InvalidDaemonUrlError } from "./appInfo";
+export { appInfo, validateDaemonUrl, InvalidDaemonUrlError, DEFAULT_DAEMON_URL } from "./appInfo";
 export { permissions } from "./permissions";
 export { InlineAudioPlayer } from "./inlineAudio";
 export { PlatformWebSocket, type PlatformWebSocketInstance } from "./websocket";

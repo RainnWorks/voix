@@ -32,8 +32,14 @@ import type { AppInfo } from "./types";
  * Default daemon URL for fresh installs. Tom's M20-era dev box on
  * `192.168.99.x`. Overridable via `setApiBase()`; consumers reading
  * `getApiBase()` get the persisted value, not this constant.
+ *
+ * Exported so the "Reset to default" affordance (DaemonUrlInput, used
+ * by both onboarding step 3 and Settings) sources the reset target
+ * from one place instead of a duplicated literal (B8 — Settings URL
+ * editor verify-pass).
  */
-const DEFAULT_DEV_DAEMON_URL = "http://192.168.99.86:8765/";
+export const DEFAULT_DAEMON_URL = "http://192.168.99.86:8765/";
+const DEFAULT_DEV_DAEMON_URL = DEFAULT_DAEMON_URL;
 
 const API_BASE_KEY = "voix.api_base";
 

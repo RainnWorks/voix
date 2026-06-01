@@ -21,6 +21,15 @@
 import type { AppInfo } from "./types";
 
 /**
+ * Web's API base is whatever the document was served from (relative
+ * fetch root = ""), so there's no dev-box default to reset to. Exported
+ * for import parity with the native impl — DaemonUrlInput hides the
+ * reset link on web (`!isWeb`), so this value is never actually used as
+ * a reset target here.
+ */
+export const DEFAULT_DAEMON_URL = "";
+
+/**
  * Typed error from `setApiBase` when the input isn't a valid daemon
  * URL. Web's `setApiBase` is a no-op (daemon URL is wherever the
  * document was served from) but consumers may still import the

@@ -13,9 +13,10 @@
  *     via appInfo.setApiBase(); callers also get `onChange(url)` to
  *     mirror the value in their own state.
  *   • "Reset to default" link below the input reverts to
- *     DEFAULT_DEV_DAEMON_URL (which lives inside appInfo.native.ts;
- *     we re-export the constant as DEFAULT_DAEMON_URL_HINT for the
- *     placeholder).
+ *     DEFAULT_DAEMON_URL (exported from the appInfo platform shim — one
+ *     source of truth, no duplicated literal). The placeholder is a
+ *     separate generic pattern so an empty field doesn't masquerade as
+ *     a pre-filled one.
  *
  * The component is Promise-shaped — no async-await rabbit holes for the
  * caller. Web siblings render the same component but appInfo.setApiBase()
@@ -25,10 +26,15 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { appInfo, validateDaemonUrl, InvalidDaemonUrlError } from "../platform";
+import { appInfo, validateDaemonUrl, InvalidDaemonUrlError, DEFAULT_DAEMON_URL } from "../platform";
 import { colors, fontFamily, radius, spacing } from "../lib/theme";
 
-const DEFAULT_DAEMON_URL_HINT = "http://192.168.99.86:8765/";
+// Placeholder is a generic pattern, NOT the concrete dev default
+// (DEFAULT_DAEMON_URL). Using the real default as the placeholder made
+// an empty field look pre-filled and indistinguishable from a populated
+// one (B8 verify-pass). The "Reset to default" link still writes the
+// concrete DEFAULT_DAEMON_URL sourced from the platform shim.
+const DAEMON_URL_PLACEHOLDER = "http://192.168.x.x:8765/";
 const DEBOUNCE_MS = 600;
 const PROBE_TIMEOUT_MS = 4000;
 
@@ -169,8 +175,8 @@ export function DaemonUrlInput({ initial, onChange, showResetLink = true, appear
   }, [url]);
 
   const handleReset = useCallback(() => {
-    setUrl(DEFAULT_DAEMON_URL_HINT);
-    void appInfo.setApiBase(DEFAULT_DAEMON_URL_HINT);
+    setUrl(DEFAULT_DAEMON_URL);
+    void appInfo.setApiBase(DEFAULT_DAEMON_URL);
   }, []);
 
   // On web the input is purely informational — setApiBase is a no-op
@@ -205,7 +211,7 @@ export function DaemonUrlInput({ initial, onChange, showResetLink = true, appear
           autoCapitalize="none"
           autoCorrect={false}
           keyboardType="url"
-          placeholder={DEFAULT_DAEMON_URL_HINT}
+          placeholder={DAEMON_URL_PLACEHOLDER}
           placeholderTextColor={field.placeholder}
           style={[
             styles.input,

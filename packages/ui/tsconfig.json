@@ -6,5 +6,9 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": []
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  // Tests run under the bun runtime (which provides node:/bun: builtins +
+  // import.meta.dir), not the RN bundler — keep them out of the app typecheck
+  // graph, mirroring how voix-backend keeps its tests outside `src`. (B3)
+  "exclude": ["src/**/__tests__/**"]
 }

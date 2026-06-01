@@ -77,7 +77,9 @@ export function VoiceList({ onPickVoice }: Props) {
   if (!voices) {
     return (
       <View style={styles.loadingBox}>
-        <ActivityIndicator color={colors.haBlue} />
+        {/* Large, system-tinted spinner (B1). The spinner is chrome,
+            not a voix moment — system accent, not HA blue. */}
+        <ActivityIndicator size="large" color={colors.sysAccent} />
       </View>
     );
   }

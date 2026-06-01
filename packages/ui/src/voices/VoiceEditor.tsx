@@ -878,6 +878,9 @@ function Segmented<T extends string>({
           <Pressable
             key={opt.value}
             onPress={() => onChange(opt.value)}
+            accessibilityRole="button"
+            accessibilityState={{ selected }}
+            accessibilityLabel={opt.label}
             style={[styles.segmentedItem, selected && styles.segmentedItemSelected]}
           >
             <Text style={[styles.segmentedText, selected && styles.segmentedTextSelected]}>
@@ -1433,26 +1436,41 @@ const styles = StyleSheet.create({
     textAlignVertical: "top",
   },
 
+  // ─── Segmented control (B15) ─────────────────────────────────────
+  // Styled to read as a native iOS UISegmentedControl: a tinted track
+  // (the iOS system tertiary-fill grey) with a white selected pill that
+  // carries a soft shadow and sits inside a 2pt inset. Comfortable 40pt
+  // height so each segment is an easy phone target.
   segmented: {
     flexDirection: "row",
     width: "100%",
-    borderRadius: radius.sm,
-    backgroundColor: colors.bgSubtle,
+    borderRadius: 9,
+    backgroundColor: "rgba(118,118,128,0.12)",
     padding: 2,
   },
   segmentedItem: {
     flex: 1,
+    minHeight: 36,
     paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
     alignItems: "center",
-    borderRadius: radius.sm - 2,
+    justifyContent: "center",
+    borderRadius: 7,
   },
-  segmentedItemSelected: { backgroundColor: colors.bgElevated },
+  segmentedItemSelected: {
+    backgroundColor: colors.bgElevated,
+    shadowColor: "#000",
+    shadowOpacity: 0.12,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+  },
   segmentedText: {
     fontFamily: fontFamily.ui,
-    fontSize: 12,
-    color: colors.textMuted,
+    fontSize: 13,
+    color: colors.textBody,
   },
-  segmentedTextSelected: { color: colors.ink, fontWeight: "500" },
+  segmentedTextSelected: { color: colors.ink, fontWeight: "600" },
 
   // flex:1 wrapper so the save-failure Toast can position absolutely
   // against the editor's full content pane (B1).

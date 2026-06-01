@@ -3,8 +3,11 @@
 > **Phase 6 closed 2026-06-01.** M19–M24 + M-Arch Wave A/B + M-MobileFit all
 > shipped end-to-end (RN foundation → macOS shell → iOS app → iOS keyboard).
 > The Phase 6 table below is retained for the record; `v0.phase-6` tags
-> pending Tom physical-device acceptance. Next milestone: **M20a** (HA Add-on
-> Docker context shift), then **Phase 7 / M25**. See `docs/STATE.md`.
+> pending Tom physical-device acceptance. **M20a** (HA Add-on Docker
+> context shift) landed on source 2026-06-01 — production install now
+> pulls a prebuilt GHCR image; see the Add-on deployment section below
+> for the one-time go-live. Next milestone: **Phase 7 / M25**. See
+> `docs/STATE.md`.
 
 How we move from the inventory + build plan to shipped code. This is
 the operational rhythm; the strategic targets are in
@@ -44,14 +47,6 @@ drifted from the plan.
    path, delete the old path in that PR. No "we'll clean it up later."
 9. **STATE.md is the session handoff.** Update it at every milestone
    merge so the next Claude session can pick up cold.
-10. **Don't edit one `protocol.ts` without the other.** M19 fix-pass
-    left the daemon shipping its own copy of the wire-protocol types
-    (`voix-backend/src/audio_io/protocol.ts`) parallel to the
-    canonical `packages/protocol/src/audio-io.ts` so the HA Add-on
-    Docker build can install from the `voix-backend/` context alone.
-    The two files must stay byte-identical below the SYNC NOTE
-    headers. Run `scripts/check-protocol-sync.sh` before pushing any
-    change touching either; it flags drift.
 
 ## Test coverage rule
 
@@ -217,7 +212,7 @@ would force a desktop/mobile split for no gain. See
 |---|---|---|---|
 | M19 | Monorepo shape + shared UI package | `packages/ui/` holds every component currently in `voix-backend/ui/src/`. `voix-backend/ui/` becomes a thin web-target consumer of it. Existing daemon ingress UI renders identically. | `bun run build` in voix-backend/ui produces the same UI; HA add-on Open Web UI works unchanged. |
 | M20 | RN app scaffold (`clients/app/`) | Replace the `app/` Tauri relic with an RN-CLI app. iOS + macOS targets enabled; metro bundler points at `packages/ui`. Pre-pivot Tauri code archived to `legacy/tauri-clipboard/` branch. | `npx react-native run-ios` boots; `npx react-native run-macos` boots; shared UI renders on both. |
-| M20a | HA Add-on Docker context shift | Move `voix-backend/Dockerfile` build context to repo root so `bun install` can resolve `@voix/ui` and `@voix/protocol` workspace deps. Rewrite the `voix-backend/config.yaml` `dockerfile:` + `image:` paths to match. Verify by triggering an HAOS Add-on rebuild on the stable channel. Half-day's work; deferred from M20 to keep the RN-foundation commit clean. | HAOS Add-on stable-channel build succeeds; the bundled web UI loads in `Open Web UI`. Until this lands, only `dev_mode` (clones the full repo) works. |
+| M20a ✅ | HA Add-on Docker context shift | **Landed on source 2026-06-01.** Dockerfile rebuilt from repo-root context so the bundled UI resolves `@voix/ui`/`@voix/protocol`. The Supervisor's local builder can't use a parent-dir context, so config.yaml gained an `image:` field and the image is built+pushed per-arch from the repo root by CI (`addon-publish.yml`); the Supervisor pulls it. The `protocol.ts` parallel-copy kludge was retired (re-export `@voix/protocol`). | Local `docker build -f voix-backend/Dockerfile .` succeeds, container boots, /api/voices + bundled UI serve. **Go-live pending Tom:** cut an `addon-v*` tag → CI publishes → make GHCR packages public. `dev_mode` works meanwhile. |
 | M21 | Platform shims | Abstract the web-only leaks (`window.location`, `document.title`, `AudioContext`, `getUserMedia`) behind a `packages/ui/platform/` interface. Web impl, RN-iOS impl, RN-macOS impl. | One source set; all three targets compile. Shim coverage: fetch, WebSocket, audio capture, audio playback, friendly name, base URL. |
 | M22 | macOS shell: hotkey + paste | Global hotkey opens PTT overlay; produced entry hits clipboard + (with Accessibility) pastes into the focused app. | Cold-launch app, press hotkey, dictate, see paste. |
 | M23 | iOS app shell | Full app: Conversations, Voices, Surfaces screens; press-to-talk works. Background audio mode for in-session continuity. | Cold-launch on iPhone, dictate a session, see it in Conversations. |
@@ -307,7 +302,7 @@ without a device or a signing identity:
 
 | Step | Command | What it guards |
 |---|---|---|
-| Repo checks | `bun run check` | native-sibling pins, protocol sync, pin bounds |
+| Repo checks | `bun run check` | native-sibling pins, pin bounds |
 | Backend tests | `bun test` (in `voix-backend`) | the 140+ daemon pipeline tests |
 | Backend typecheck | `bun run typecheck` (in `voix-backend`) | `tsc --noEmit` over the daemon |
 | UI build | `bun run build` (in `voix-backend/ui`) | `tsc --noEmit` + `vite build` of the web UI |
@@ -322,3 +317,45 @@ locally, execute those five commands in order — each must exit 0.
 > `voix-backend`. Bun's isolated linker only hoists *direct* deps, so
 > without that entry the daemon typecheck fails to resolve `bun-types`
 > on a clean install. Don't drop it.
+
+## HA Add-on image (Docker)
+
+The add-on is a bun workspace member: its web UI imports `@voix/ui` and
+`@voix/protocol`, which live in `packages/` — a sibling of
+`voix-backend/`, not a child. So the daemon image **must build from the
+repo root**, where the whole workspace is present:
+
+```
+docker build -f voix-backend/Dockerfile -t voix-backend .   # from repo root
+```
+
+The Dockerfile copies the workspace root manifests + `packages/` +
+`voix-backend/{src,ui}`, then `bun install --filter './voix-backend'
+--filter './voix-backend/ui'` to pull just the daemon + UI dep closure
+(the RN app under `clients/*` and the root's own RN deps are skipped).
+The image mirrors the monorepo layout (`/app/voix-backend/...`), so
+`run.sh` runs the daemon from `/app/voix-backend` and the UI dist
+resolves via its import.meta-relative path.
+
+**Why a prebuilt image (the `image:` field), not a Supervisor local
+build:** the HA Supervisor's local builder pins the Docker build context
+to the add-on directory (`voix-backend/`), which can't reach
+`packages/`. There's no config knob to change that context (build.yaml
+is deprecated; the Dockerfile must sit in the add-on dir). So
+`config.yaml` sets `image: ghcr.io/rainnworks/voix-backend-{arch}` and
+the Supervisor **pulls** the image instead of building it.
+`.github/workflows/addon-publish.yml` builds it from the repo root,
+per-arch, and pushes to GHCR.
+
+**Go-live (one-time, Tom):**
+1. Cut an `addon-v<version>` tag (matching `config.yaml`'s `version`) —
+   this fires `addon-publish.yml`, which publishes
+   `voix-backend-aarch64` + `voix-backend-amd64` to GHCR.
+2. Make both GHCR packages **public** under `github.com/RainnWorks` so
+   the Supervisor can pull them anonymously.
+3. Bump `version` + cut a new `addon-v*` tag on each subsequent release;
+   the Supervisor pulls the tag matching `version`.
+
+Until go-live, the only working install path is **`dev_mode`** (the
+add-on's `run.sh` clones the full repo at boot and runs from the
+workspace, so it never needs the prebuilt image).

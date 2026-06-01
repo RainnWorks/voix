@@ -1,5 +1,11 @@
 # Build workflow
 
+> **Phase 6 closed 2026-06-01.** M19–M24 + M-Arch Wave A/B + M-MobileFit all
+> shipped end-to-end (RN foundation → macOS shell → iOS app → iOS keyboard).
+> The Phase 6 table below is retained for the record; `v0.phase-6` tags
+> pending Tom physical-device acceptance. Next milestone: **M20a** (HA Add-on
+> Docker context shift), then **Phase 7 / M25**. See `docs/STATE.md`.
+
 How we move from the inventory + build plan to shipped code. This is
 the operational rhythm; the strategic targets are in
 `voix-build-plan.md` and the inventory map is in
@@ -193,7 +199,10 @@ M10-M12 parallelise. M13 needs all three to be ready.
 
 These parallelise once M15 is in.
 
-### Phase 6 — RN end-to-end (the client foundation)
+### Phase 6 — RN end-to-end (the client foundation) — ✅ CLOSED 2026-06-01
+
+**Status:** closed on source. M19–M24 + M-Arch Wave A/B + M-MobileFit shipped
++ verified; `v0.phase-6` tag pending Tom physical-device acceptance.
 
 **Decision (2026-05-31):** Drop the Tauri shell. The pre-pivot
 `app/` Tauri code is a relic. The voix UI is already

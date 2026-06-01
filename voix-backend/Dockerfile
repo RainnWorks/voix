@@ -1,37 +1,29 @@
 # voix-backend — Home Assistant Add-on container.
 #
+# **Build context = repo root** (M20a). This image is NOT built by the
+# HA Supervisor's local builder — that builder pins the context to the
+# add-on directory (voix-backend/), which can't reach the monorepo's
+# packages/ workspace siblings, so the bundled web UI can never resolve
+# its `@voix/ui` / `@voix/protocol` workspace deps. Instead the image is
+# built from the repo root in CI (.github/workflows/addon-publish.yml)
+# and pushed per-arch to GHCR; config.yaml's `image:` field makes the
+# Supervisor *pull* it rather than build locally. See docs/build-workflow.md.
+#
+#   docker build -f voix-backend/Dockerfile -t voix-backend .   # from repo root
+#
 # Bun's official Alpine image gives us a small, fast base with Bun
 # built in. We add `git` so dev mode can pull straight from the repo
 # at runtime (see run.sh).
 #
-# Two-stage logical layout (still single Docker stage to keep the
-# image small):
-#   1. Daemon deps + sources baked at /app (production default)
-#   2. UI bundle built at image time, lives at /app/ui/dist
+# Layout baked into the image (mirrors the monorepo so workspace
+# resolution + the daemon's import.meta-relative UI dist path both
+# work unchanged):
+#   /app/package.json, /app/bun.lock      — workspace root
+#   /app/packages/{protocol,ui}           — shared source packages
+#   /app/voix-backend/src                 — daemon
+#   /app/voix-backend/ui/dist             — built web UI (served by the daemon)
 # In dev mode the entrypoint clones the live repo into /data and runs
 # from there instead — including rebuilding the UI when commits land.
-#
-# Monorepo note (M19 fix-pass): the repo is a bun workspace root. The
-# daemon's package.json deliberately declares NO workspace:* deps so
-# this image can build the daemon from the voix-backend/ context
-# alone. The wire-protocol types are parallel-copied at
-# voix-backend/src/audio_io/protocol.ts and
-# packages/protocol/src/audio-io.ts — see the SYNC NOTE headers in
-# both files; scripts/check-protocol-sync.sh enforces parity.
-#
-# UI caveat: voix-backend/ui/package.json still has workspace:* deps
-# on @voix/ui + @voix/protocol. The `cd ui && bun install` step below
-# can't resolve those from inside this image (packages/ lives outside
-# the build context). For M19 the HA Add-on dev_mode path (run.sh
-# clones the whole repo + installs from the workspace root) is the
-# only supported install path. Production HA Add-on Store install
-# remains broken; M20a will land a pre-build vendoring step.
-#
-# `--frozen-lockfile` is dropped because the canonical lockfile lives
-# at the repo root and isn't in this build context. Image builds are
-# reproducible only up to version-range resolution, not pinned-tree
-# resolution. Acceptable trade-off given the daemon's dep surface is
-# small + well-pinned.
 
 FROM oven/bun:1-alpine
 
@@ -41,21 +33,46 @@ RUN apk add --no-cache git ca-certificates jq
 
 WORKDIR /app
 
-# Daemon dependency layer first — source changes don't bust the dep
-# cache.
-COPY package.json ./
-RUN bun install --production
+# ─── Dependency layer ───────────────────────────────────────────────
+# Copy only the workspace manifests + lockfile first so source edits
+# don't bust the dep cache. We deliberately do NOT copy clients/ — the
+# `--filter` install below scopes resolution to the daemon, the web UI,
+# and their shared workspace packages, so the RN app's heavy native
+# deps (react-native-macos et al.) never enter this image.
+COPY package.json bun.lock ./
+# Shared tsconfig base — every workspace's tsconfig `extends` this for
+# jsx + strictness. The UI build's `tsc` step fails without it.
+COPY tsconfig.base.json ./
+COPY voix-backend/package.json ./voix-backend/package.json
+COPY voix-backend/ui/package.json ./voix-backend/ui/package.json
+COPY packages/protocol/package.json ./packages/protocol/package.json
+COPY packages/ui/package.json ./packages/ui/package.json
 
-COPY src ./src
-COPY tsconfig.json ./tsconfig.json
+# Scoped install: voix-backend + voix-backend/ui pull their full
+# dependency closure (which includes @voix/ui + @voix/protocol via the
+# workspace links). The root package's own RN deps and clients/* are
+# skipped. `--frozen-lockfile` is intentionally omitted: clients/* isn't
+# in this context, so the resolved workspace set is a strict subset of
+# the lockfile's — bun would reject that as drift. The dep surface here
+# is small + well-pinned, so range resolution is an acceptable trade.
+RUN bun install --filter './voix-backend' --filter './voix-backend/ui'
 
-# UI: install + build inside the image so /app/ui/dist ships ready to
-# serve. Adds ~250 KB of static assets to the final image.
-COPY ui/package.json ui/tsconfig.json ui/vite.config.ts ui/index.html ./ui/
-COPY ui/src ./ui/src
-RUN cd ui && bun install && bun run build && rm -rf node_modules
+# ─── Source layer ───────────────────────────────────────────────────
+# Shared packages (consumed by the UI; re-exported by the daemon's
+# audio_io/protocol.ts).
+COPY packages ./packages
 
-COPY run.sh /run.sh
+# Daemon sources.
+COPY voix-backend/src ./voix-backend/src
+COPY voix-backend/tsconfig.json ./voix-backend/tsconfig.json
+
+# Web UI: build inside the image so /app/voix-backend/ui/dist ships
+# ready to serve. The daemon resolves dist/ relative to its own source
+# location (src/ui/route.ts), so the voix-backend/ subdir must be kept.
+COPY voix-backend/ui ./voix-backend/ui
+RUN cd voix-backend/ui && bun run build
+
+COPY voix-backend/run.sh /run.sh
 RUN chmod +x /run.sh
 
 # Default WS port. Add-on options override via env, but declared here

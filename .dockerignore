@@ -1,0 +1,26 @@
+# Docker build context = repo root (see voix-backend/Dockerfile, M20a).
+# Without this file the whole monorepo — node_modules, .git, and the
+# iOS/macOS native build trees — would be shipped to the daemon as build
+# context, making `docker build .` slow and bloating layer cache keys.
+# The Dockerfile uses selective COPY, so excluding the rest is safe.
+
+# Dependency + VCS noise
+**/node_modules
+.git
+.github
+
+# The RN app + its native build artifacts are never part of the daemon
+# image (the --filter install skips clients/* anyway).
+clients
+
+# Build outputs
+**/dist
+**/.pioenvs
+**/.esphome
+esphome
+
+# Editor / OS cruft
+.DS_Store
+**/*.log
+.claude
+docs

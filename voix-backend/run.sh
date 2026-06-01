@@ -48,8 +48,11 @@ DEV_POLL_S="${DEV_POLL_S:-${DEV_POLL_S_DEFAULT}}"
 log() { printf "[run.sh] %s\n" "$*"; }
 
 if [ "${DEV_MODE}" != "true" ] && [ "${DEV_MODE}" != "1" ]; then
-  log "production mode — running /app/src/index.ts"
-  cd /app
+  log "production mode — running /app/voix-backend/src/index.ts"
+  # M20a: the image now mirrors the monorepo layout (build context =
+  # repo root), so the daemon lives under voix-backend/ with the
+  # workspace root one level up at /app for node_modules resolution.
+  cd /app/voix-backend
   exec bun src/index.ts
 fi
 

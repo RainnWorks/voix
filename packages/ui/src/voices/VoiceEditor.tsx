@@ -82,8 +82,8 @@ export function VoiceEditor({ voiceId, onClose }: Props) {
       const msg = e instanceof Error ? e.message : String(e);
       setSaveError(
         /^\d{3}\s/.test(msg)
-          ? `Couldn't save — ${msg}`
-          : "Couldn't save — check your connection.",
+          ? `Couldn't save. ${msg}`
+          : "Couldn't save. Check your connection.",
       );
       setSaved(true);
     }

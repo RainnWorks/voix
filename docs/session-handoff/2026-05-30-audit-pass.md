@@ -1,3 +1,9 @@
+> **⚠️ SUPERSEDED (2026-06-01).** This handoff predates Phase 6 — it captures
+> the M01–M18 + audit-pass arc only. For the current state of voix read
+> `docs/STATE.md`; for the full archived narrative (Phases 1–6, per-milestone
+> diaries) read `docs/session-handoff/2026-06-01-overnight.md`. Kept for the
+> historical audit-pass detail, not as a cold-read entry point.
+
 # Session handoff — 2026-05-30 audit pass
 
 **Read this if you are picking up after a context compaction.** Layered:

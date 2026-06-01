@@ -49,9 +49,16 @@ type ErrorState = {
 export function TalkButton({
   onSessionEnded,
   intent,
+  providerWarning,
 }: {
   onSessionEnded?: () => void;
   intent: Intent;
+  /** B1 — set when the active voice names an STT/LLM provider the daemon
+   *  has no API key for (so a press would fail at the daemon). When
+   *  present it replaces the neutral hint with an actionable nudge so we
+   *  neither crash nor fail silently. ConversationList computes it;
+   *  callers without an active voice (MacOverlay) omit it. */
+  providerWarning?: string | null;
 }) {
   const [status, setStatus] = useState<BrowserClientStatus>("idle");
   const [error, setError] = useState<ErrorState | null>(null);
@@ -225,9 +232,22 @@ export function TalkButton({
           {labelFor(status, intent)}
         </Text>
       </Pressable>
-      <Text style={styles.hint} accessibilityLiveRegion="polite">
-        {hintCopy}
-      </Text>
+      {/* A missing-key warning preempts the neutral hint (B1): the
+          press would fail at the daemon, so say why + where to fix it
+          rather than letting the user hold a dead button. */}
+      {providerWarning ? (
+        <Text
+          style={styles.hintWarning}
+          accessibilityLiveRegion="polite"
+          accessibilityRole="alert"
+        >
+          {providerWarning}
+        </Text>
+      ) : (
+        <Text style={styles.hint} accessibilityLiveRegion="polite">
+          {hintCopy}
+        </Text>
+      )}
       {/* Explicit terminal cue so the button never decays silently from
           "Connecting…" back to idle (Wren v3 H1/F2). */}
       {terminal && !error && (
@@ -436,6 +456,17 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.ui,
     fontSize: 11,
     color: colors.textMuted,
+  },
+  // Missing-key nudge — a touch louder than the neutral hint (ink, not
+  // textMuted) but still a text cue, not the red danger pill. The fix
+  // lives one tab away, so this reads as guidance, not a failure.
+  hintWarning: {
+    fontFamily: fontFamily.ui,
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.ink,
+    textAlign: "center",
+    maxWidth: 320,
   },
   // Terminal cue after a session closes. "Done" reads quiet (a normal
   // end); "heard-nothing" reads a touch louder (an actionable nudge to

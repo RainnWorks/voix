@@ -30,6 +30,7 @@ import {
   type Voice,
   devicesApi,
   historyApi,
+  providersApi,
   voicesApi,
 } from "../lib/api";
 import { colors, fontFamily, nearestSwatch, radius, spacing } from "../lib/theme";
@@ -48,6 +49,11 @@ export function ConversationList({ onPickEntry }: Props) {
   // same heartbeat as entries so swapping the active voice on the
   // Voices screen propagates back when the user returns here.
   const [activeVoice, setActiveVoice] = useState<Voice | null>(null);
+  // B1 — STT providers the daemon actually has a key for. A provider is
+  // only registered when its key is present, so an active voice whose
+  // `sttProvider` is missing from this list would fail at the daemon;
+  // the TalkButton surfaces that as a hint instead of dying on press.
+  const [sttProviders, setSttProviders] = useState<string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Pull-to-refresh state (A1 iOS nativeness). Drives the native
   // UIRefreshControl spinner when the user tugs the list down.
@@ -58,14 +64,18 @@ export function ConversationList({ onPickEntry }: Props) {
       historyApi.list({ limit: 200 }),
       voicesApi.list(),
       devicesApi.list(),
+      // Tolerate a provider-registry blip: a failed lookup just means we
+      // skip the missing-key hint, not that the whole list errors out.
+      providersApi.list("stt").catch(() => null),
     ])
-      .then(([h, v, d]: [HistoryEntry[], Voice[], Device[]]) => {
+      .then(([h, v, d, stt]: [HistoryEntry[], Voice[], Device[], string[] | null]) => {
         setEntries(h);
         const idx: Record<string, Voice> = {};
         for (const voice of v) idx[voice.id] = voice;
         setVoiceById(idx);
         const first = d[0];
         setActiveVoice(first ? (idx[first.voiceId] ?? null) : null);
+        setSttProviders(stt);
       })
       .catch((e) => {
         setError(e instanceof Error ? e.message : String(e));
@@ -136,6 +146,17 @@ export function ConversationList({ onPickEntry }: Props) {
   // until the first session lands a device record.
   const intent: Intent = activeVoice?.type === "dictation" ? "dictate" : "discuss";
 
+  // B1 — missing-key guard. If the active voice names an STT provider
+  // the daemon hasn't registered (no key on file), pressing the button
+  // would fail at the daemon; nudge to the Voices tab instead. We only
+  // warn once the registry has loaded (`sttProviders !== null`) so a
+  // slow lookup doesn't flash a false negative.
+  const wantsStt = activeVoice?.sttProvider?.trim();
+  const providerWarning =
+    wantsStt && sttProviders && !sttProviders.includes(wantsStt)
+      ? `voix needs a ${providerDisplayName(wantsStt)} key for this voice. Edit it from the Voices tab.`
+      : null;
+
   // Shared native pull-to-refresh control — same instance shape on the
   // empty + populated branches so the gesture works even before the
   // first conversation lands (the empty state is exactly when a user
@@ -155,7 +176,7 @@ export function ConversationList({ onPickEntry }: Props) {
         contentContainerStyle={styles.scroll}
         refreshControl={refreshControl}
       >
-        <TalkButton intent={intent} onSessionEnded={onSessionEnded} />
+        <TalkButton intent={intent} onSessionEnded={onSessionEnded} providerWarning={providerWarning} />
         <View style={styles.emptyBox}>
           {/* Puck hero — the one sanctioned custom glyph — anchors the
               empty state so a fresh install reads as intentional, not
@@ -170,7 +191,7 @@ export function ConversationList({ onPickEntry }: Props) {
 
   return (
     <ScrollView contentContainerStyle={styles.scroll} refreshControl={refreshControl}>
-      <TalkButton intent={intent} onSessionEnded={onSessionEnded} />
+      <TalkButton intent={intent} onSessionEnded={onSessionEnded} providerWarning={providerWarning} />
       {entries.map((entry) => (
         <SwipeableRow
           key={entry.id}
@@ -233,6 +254,19 @@ function Row({
       </View>
     </Pressable>
   );
+}
+
+/** Human-readable provider name for the missing-key nudge (B1). Mirrors
+ *  VoiceEditor's PROVIDER_LABELS for the names that surface here; falls
+ *  back to a Capitalised form so an unknown provider still reads cleanly. */
+function providerDisplayName(name: string): string {
+  const labels: Record<string, string> = {
+    deepgram: "Deepgram",
+    openai: "OpenAI",
+    openrouter: "OpenRouter",
+    aura: "Aura",
+  };
+  return labels[name] ?? name.charAt(0).toUpperCase() + name.slice(1);
 }
 
 function formatTimestamp(iso: string): string {

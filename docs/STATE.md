@@ -24,10 +24,13 @@ lessons-learned, the old next-iteration test plan) was pruned out on
   + Coordinator Delta B).
 - **M-MobileFit + 2026-06-01 overnight polish (A1–A3, B1–B5) — closed on
   source.** See the M-MobileFit closure summary below.
-- **Next up:** **M20a** (HA Add-on Docker context shift — still queued;
-  until it lands the production *stable-channel* Add-on build is broken,
-  only `dev_mode` works) and **Phase 7 / M25** (HA connector trim to
-  ~600–800 LOC). Overnight backlog: `/tmp/voix-overnight-backlog.md`.
+- **Next up:** **Phase 7 / M25** — HA connector trim of
+  `ha-integration/custom_components/voix/` to ~600–800 LOC (discovery +
+  adoption push + light/sensor/button/text entities + MCP tool exposure).
+  **M20a landed on source overnight** (`08644c0`…`aafc3c9`); the production
+  *stable-channel* Add-on now needs a one-time Tom go-live (cut an
+  `addon-v*` tag → CI publishes → make GHCR packages public). `dev_mode`
+  works meanwhile. Overnight backlog: `/tmp/voix-overnight-backlog.md`.
 
 ---
 
@@ -89,6 +92,35 @@ tom-smoke-v3-*,tom-smoke-v4-*}.md`.
 
 ---
 
+## New since 2026-06-01 overnight
+
+~50 commits across A1–A3, B1–B15, C1–C3. The load-bearing changes:
+
+- **New infrastructure** — **M20a/B7** rebuilt the HA Add-on Docker build
+  from repo root so the bundled UI resolves `@voix/{ui,protocol}`;
+  `config.yaml` gained an `image:` field and CI (`addon-publish.yml`)
+  builds+pushes per-arch to GHCR (Supervisor pulls). The `protocol.ts`
+  parallel-copy kludge was retired. **B6** added a GitHub Actions CI
+  (typecheck + test + build); **B11** added behavioural tests (history
+  ENOENT/malformed recovery, echo-gate half-duplex, end_session relay).
+- **Phase 6 polish** — **A1** iOS nativeness (TalkButton Taptics, pull-to-
+  refresh, swipe-to-delete); **B1** empty/error states across all screens;
+  **B8** Settings daemon-URL editor; **B13/B15** Surfaces + Voice-editor
+  native list/segmented-control treatment; **B2** purged user-facing
+  em-dashes.
+- **Bug fixes** — **C1** fixed a real **SurfaceList BLOCKER** (the scroll
+  container shrink-wrapped to ~16pt; `width:100%` restores full-width rows)
+  + replaced emoji device glyphs with SF-Symbol vectors. **C2/C3** acted on
+  the B9 dead-code audit (deleted dead exports) and B10 bundle-size swaps
+  (web route code-split).
+- **macOS re-pass (B12)** — Marina + Wren run against the macOS shell after
+  A2 parity; **passes the BLOCKER bar on both axes** (review-only, no code
+  change). One optional follow-up surfaced: the macOS menu bar is still
+  stock Cocoa document boilerplate (`File ▸ New/Open/Save…`) with a dead
+  `⌘N` — a "menu-bar voix-ify" item, not a blocker.
+
+---
+
 ## Tom-pending hands-on list (live-device behaviour, M19–M24)
 
 These are the only items requiring Tom's physical hands — physical hardware,
@@ -124,6 +156,12 @@ screenshots, and per-step expectations are consolidated in
    - End-to-end bounce (tap pill → record → return → text inserts) in ≥4
      host apps.
    - Memory profile: keyboard RSS < 30 MB during idle.
+7. **Production HA Add-on go-live (M20a/B7)** — code shipped; the
+   stable-channel install flips on once Tom cuts an `addon-v0.1.0` tag
+   (CI builds + pushes the per-arch images to GHCR) and **makes both GHCR
+   packages public** under `github.com/RainnWorks` (private on first
+   publish). Until then `dev_mode` is the working install path. Detail:
+   `docs/phase-6/verify-results/B7-m20a-docker-report.md`.
 
 ---
 

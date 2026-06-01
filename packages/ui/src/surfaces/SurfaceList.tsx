@@ -69,10 +69,13 @@ export function SurfaceList() {
   if (surfaces.length === 0) {
     return (
       <View style={styles.emptyBox}>
-        <Text style={styles.emptyTitle}>No surfaces yet</Text>
+        {/* Puck hero anchors the zero-surfaces state (B1) so it reads as
+            intentional, not a blank pane. */}
+        <Puck size={48} />
+        <Text style={styles.emptyTitle}>No surfaces connected.</Text>
         <Text style={styles.emptyHint}>
-          Pucks, phones, and browser tabs show up here after their
-          first connection.
+          Your phone, browser, and puck appear here when they reach the
+          daemon.
         </Text>
       </View>
     );

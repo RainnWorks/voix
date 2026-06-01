@@ -21,6 +21,7 @@ import {
   spacing,
 } from "../lib/theme";
 import { useProviders } from "../lib/useProviders";
+import { useResponsive } from "../lib/useResponsive";
 
 /** Human-readable label for a registered provider name. Falls back to
  *  the name verbatim so an as-yet-unknown provider still renders
@@ -43,6 +44,7 @@ type Props = {
 };
 
 export function VoiceEditor({ voiceId, onClose }: Props) {
+  const { isPhone } = useResponsive();
   const [voice, setVoice] = useState<Voice | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Save failures surface as a transient bottom toast (B1) — distinct
@@ -115,13 +117,27 @@ export function VoiceEditor({ voiceId, onClose }: Props) {
 
   return (
     <View style={styles.editorRoot}>
+      {/* On a phone this editor is a pushed detail screen, so it carries
+          its own iOS-style nav bar: a back affordance on the left, the
+          screen title centred, and a "Done" button on the right (B15).
+          Edits auto-save on blur — the iOS Settings pattern — so "Done"
+          and the back chevron both just dismiss; there's no dirty draft
+          to discard. The live "Saving…" status sits under the title so
+          the user still gets save feedback without an inline status row.
+          On wide canvases the desktop shell already draws a title bar,
+          so we keep the lightweight inline back link there. */}
+      {isPhone ? (
+        <NavBar title="Edit voice" saving={!saved} onClose={onClose} />
+      ) : null}
     <ScrollView contentContainerStyle={styles.scroll}>
-      <View style={styles.topBar}>
-        <Pressable onPress={onClose}>
-          <Text style={styles.backLink}>Back to voices</Text>
-        </Pressable>
-        <Text style={styles.savedText}>{saved ? "Saved" : "Saving…"}</Text>
-      </View>
+      {!isPhone && (
+        <View style={styles.topBar}>
+          <Pressable onPress={onClose}>
+            <Text style={styles.backLink}>Back to voices</Text>
+          </Pressable>
+          <Text style={styles.savedText}>{saved ? "Saved" : "Saving…"}</Text>
+        </View>
+      )}
 
       <View style={styles.identityRow}>
         <Puck size={48} color={swatch.hex} />
@@ -473,6 +489,53 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   return <Text style={styles.sectionLabel}>{children}</Text>;
 }
 
+/** Phone-only iOS-style nav bar (B15). Left = back chevron + "Voices"
+ *  (the standard pushed-screen back affordance), centre = title with a
+ *  live "Saving…" subtitle, right = "Done". Both the back chevron and
+ *  Done dismiss the editor — edits auto-save on blur, so there is no
+ *  separate commit step. Hit targets are a full 44pt tall per HIG. */
+function NavBar({
+  title,
+  saving,
+  onClose,
+}: {
+  title: string;
+  saving: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <View style={styles.navBar}>
+      <Pressable
+        onPress={onClose}
+        hitSlop={{ top: 8, bottom: 8, right: 12 }}
+        accessibilityRole="button"
+        accessibilityLabel="Back to voices"
+        style={({ pressed }) => [styles.navSide, styles.navLeft, pressed && styles.navPressed]}
+      >
+        <Text style={styles.navChevron}>‹</Text>
+        <Text style={styles.navBackText}>Voices</Text>
+      </Pressable>
+
+      <View style={styles.navTitleWrap} pointerEvents="none">
+        <Text style={styles.navTitle} numberOfLines={1}>
+          {title}
+        </Text>
+        {saving && <Text style={styles.navSubtitle}>Saving…</Text>}
+      </View>
+
+      <Pressable
+        onPress={onClose}
+        hitSlop={{ top: 8, bottom: 8, left: 12 }}
+        accessibilityRole="button"
+        accessibilityLabel="Done"
+        style={({ pressed }) => [styles.navSide, styles.navRight, pressed && styles.navPressed]}
+      >
+        <Text style={styles.navDoneText}>Done</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 /** The primary Realtime / Dictation chooser. Wider than a segmented
  *  control because it also carries a subtitle that explains the
  *  trade. */
@@ -602,13 +665,19 @@ function SettingRow({
   desc: string;
   control: React.ReactNode;
 }) {
+  const { isPhone } = useResponsive();
+  // B15: on a phone a label + a 200pt-min control side-by-side leaves
+  // ~150pt for the control on a 393pt screen — text inputs clip and
+  // segmented controls cramp. Stack vertically so the control gets the
+  // full width, the iOS grouped-form idiom. Wide canvases keep the
+  // two-column row the desktop guide specifies.
   return (
-    <View style={styles.settingRow}>
-      <View style={styles.settingLeft}>
+    <View style={[styles.settingRow, isPhone && styles.settingRowPhone]}>
+      <View style={[styles.settingLeft, isPhone && styles.settingLeftPhone]}>
         <Text style={styles.settingLabel}>{label}</Text>
         <Text style={styles.settingDesc}>{desc}</Text>
       </View>
-      <View style={styles.settingRight}>{control}</View>
+      <View style={[styles.settingRight, isPhone && styles.settingRightPhone]}>{control}</View>
     </View>
   );
 }
@@ -737,6 +806,63 @@ function OutputProviderRows({
 
 const styles = StyleSheet.create({
   scroll: { padding: spacing.xl, maxWidth: 720, alignSelf: "center", gap: spacing.lg },
+
+  // ─── Phone nav bar (B15) ─────────────────────────────────────────
+  navBar: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: spacing.sm,
+    borderBottomWidth: 0.5,
+    borderBottomColor: colors.ruleSoft,
+    backgroundColor: colors.bgElevated,
+  },
+  navSide: {
+    minHeight: 44,
+    minWidth: 64,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.sm,
+  },
+  navLeft: { justifyContent: "flex-start" },
+  navRight: { justifyContent: "flex-end" },
+  navPressed: { opacity: 0.4 },
+  navChevron: {
+    fontFamily: fontFamily.ui,
+    fontSize: 26,
+    lineHeight: 28,
+    color: colors.sysAccent,
+    marginRight: 1,
+  },
+  navBackText: {
+    fontFamily: fontFamily.ui,
+    fontSize: 17,
+    color: colors.sysAccent,
+  },
+  navDoneText: {
+    fontFamily: fontFamily.ui,
+    fontSize: 17,
+    fontWeight: "600",
+    color: colors.sysAccent,
+  },
+  navTitleWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  navTitle: {
+    fontFamily: fontFamily.ui,
+    fontSize: 16,
+    fontWeight: "600",
+    color: colors.ink,
+  },
+  navSubtitle: {
+    fontFamily: fontFamily.mono,
+    fontSize: 10,
+    color: colors.textMuted,
+  },
 
   topBar: {
     flexDirection: "row",
@@ -1004,7 +1130,13 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.ruleSoft,
     gap: spacing.lg,
   },
+  settingRowPhone: {
+    flexDirection: "column",
+    alignItems: "stretch",
+    gap: spacing.sm,
+  },
   settingLeft: { flex: 1, gap: 2 },
+  settingLeftPhone: { flex: 0 },
   settingLabel: {
     fontFamily: fontFamily.ui,
     fontSize: 13,
@@ -1016,6 +1148,7 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   settingRight: { minWidth: 200, maxWidth: 320, alignItems: "stretch" },
+  settingRightPhone: { minWidth: 0, maxWidth: undefined, width: "100%" },
 
   input: {
     width: "100%",
@@ -1039,6 +1172,11 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
     borderColor: colors.rule,
     minHeight: 120,
+    // B15: cap the auto-grow height. A long prompt was letting a single
+    // multiline TextInput balloon to ~580pt on a phone — one field
+    // eating 1.5 screens and burying everything below it. The field
+    // now tops out and scrolls internally, native-textarea style.
+    maxHeight: 220,
     textAlignVertical: "top",
   },
 

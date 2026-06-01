@@ -20,7 +20,6 @@ export function VoiceList({ onPickVoice }: Props) {
   const [voices, setVoices] = useState<Voice[] | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [activating, setActivating] = useState<string | null>(null);
   // Pull-to-refresh state (A1 iOS nativeness). Drives the native
   // UIRefreshControl spinner when the user tugs the list down.
   const [refreshing, setRefreshing] = useState(false);
@@ -51,20 +50,6 @@ export function VoiceList({ onPickVoice }: Props) {
     setRefreshing(true);
     void load().finally(() => setRefreshing(false));
   }, [load]);
-
-  const activateVoice = async (voiceId: string) => {
-    const device = devices[0]; // single-puck household for now
-    if (!device) return;
-    setActivating(voiceId);
-    try {
-      const next = await devicesApi.setVoice(device.deviceId, voiceId);
-      setDevices([next, ...devices.slice(1)]);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setActivating(null);
-    }
-  };
 
   if (error) {
     return (
@@ -124,10 +109,8 @@ export function VoiceList({ onPickVoice }: Props) {
             key={m.id}
             voice={m}
             active={m.id === activeVoiceId}
-            activating={activating === m.id}
             last={i === voices.length - 1}
             onEdit={() => onPickVoice(m.id)}
-            onActivate={() => activateVoice(m.id)}
           />
         ))}
       </View>
@@ -162,79 +145,73 @@ function friendlyDeviceName(device: Device): string {
 }
 
 /**
- * One grouped-list row. Tapping the row body **activates** the voice
- * (the picker's primary action — checkmark moves to it); the trailing
- * chevron drills into the editor. This replaces the card's split
- * "tap-to-edit + Activate-link" model with the native picker shape
- * Marina v3 #2 asked for.
+ * One grouped-list row. The WHOLE row is a single tap target that drills
+ * into the voice editor (E1) — on iOS-native inset-grouped lists the row
+ * body is the hit area and the chevron is only a visual disclosure cue,
+ * not a separate ~20pt target the user has to aim at (the desktop /
+ * HA add-on pain point Tom flagged). The trailing checkmark stays as a
+ * read-only indicator of the active voice; choosing the active voice
+ * lives in Settings → Default voice (handleSetDefaultVoice), so making
+ * the row edit-only loses no capability.
+ *
+ * On web, react-native-web renders the Pressable with `cursor: pointer`
+ * automatically (it has an onPress), and `onHoverIn/Out` drive the soft
+ * bgHover highlight (Marina v4 #6) — both no-ops on touch.
  */
 function VoiceRow({
   voice,
   active,
-  activating,
   last,
   onEdit,
-  onActivate,
 }: {
   voice: Voice;
   active: boolean;
-  activating: boolean;
   last: boolean;
   onEdit: () => void;
-  onActivate: () => void;
 }) {
   const swatch = nearestSwatch(voice.color);
+  const [hovered, setHovered] = useState(false);
   return (
-    <View style={[styles.row, !last && styles.rowSeparator]}>
-      <Pressable
-        onPress={active ? undefined : onActivate}
-        disabled={activating}
-        accessibilityRole="radio"
-        accessibilityState={{ selected: active }}
-        accessibilityLabel={
-          active ? `${voice.name}, active voice` : `Activate ${voice.name}`
-        }
-        style={({ pressed }) => [styles.rowMain, pressed && !active && styles.rowPressed]}
-      >
-        {/* Leading accessory — the brand swatch (a sanctioned voix glyph). */}
-        <Puck size={30} color={swatch.hex} />
-        <View style={styles.rowBody}>
-          <Text style={styles.rowName} numberOfLines={1}>
-            {voice.name}
+    <Pressable
+      onPress={onEdit}
+      onHoverIn={() => setHovered(true)}
+      onHoverOut={() => setHovered(false)}
+      accessibilityRole="button"
+      accessibilityLabel={active ? `${voice.name}, active voice` : voice.name}
+      accessibilityHint="Opens the voice editor."
+      style={({ pressed }) => [
+        styles.row,
+        !last && styles.rowSeparator,
+        styles.rowMain,
+        (pressed || hovered) && styles.rowPressed,
+      ]}
+    >
+      {/* Leading accessory — the brand swatch (a sanctioned voix glyph). */}
+      <Puck size={30} color={swatch.hex} />
+      <View style={styles.rowBody}>
+        <Text style={styles.rowName} numberOfLines={1}>
+          {voice.name}
+        </Text>
+        {voice.tone ? (
+          <Text style={styles.rowTone} numberOfLines={1}>
+            {voice.tone}
           </Text>
-          {voice.tone ? (
-            <Text style={styles.rowTone} numberOfLines={1}>
-              {voice.tone}
-            </Text>
-          ) : (
-            <Text style={styles.rowDesc} numberOfLines={1}>
-              {voice.routingHint ||
-                (voice.type === "realtime"
-                  ? "Real-time back and forth."
-                  : "Press, speak, paste.")}
-            </Text>
-          )}
-        </View>
-        {/* Trailing checkmark on the active row — replaces the "ACTIVE"
-            badge + "Activate" link (Marina v3 #2). System accent = a
-            chrome selection mark, not a voix moment. */}
-        {activating ? (
-          <ActivityIndicator size="small" color={colors.sysAccent} />
-        ) : active ? (
-          <Text style={styles.checkmark}>✓</Text>
-        ) : null}
-      </Pressable>
-      {/* Detail-disclosure chevron — drills into the voice editor. */}
-      <Pressable
-        onPress={onEdit}
-        hitSlop={{ top: 12, bottom: 12, left: 8, right: 12 }}
-        accessibilityRole="button"
-        accessibilityLabel={`Edit ${voice.name}`}
-        style={({ pressed }) => [styles.chevronHit, pressed && styles.rowPressed]}
-      >
-        <Text style={styles.chevron}>›</Text>
-      </Pressable>
-    </View>
+        ) : (
+          <Text style={styles.rowDesc} numberOfLines={1}>
+            {voice.routingHint ||
+              (voice.type === "realtime"
+                ? "Real-time back and forth."
+                : "Press, speak, paste.")}
+          </Text>
+        )}
+      </View>
+      {/* Trailing checkmark — read-only mark of the active voice. System
+          accent = a chrome selection mark, not a voix moment. */}
+      {active ? <Text style={styles.checkmark}>✓</Text> : null}
+      {/* Detail-disclosure chevron — a visual cue only; the whole row is
+          the hit target (E1). */}
+      <Text style={styles.chevron}>›</Text>
+    </Pressable>
   );
 }
 
@@ -288,14 +265,17 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0.5,
     borderBottomColor: colors.ruleSoft,
   },
+  // The whole row is one tap target (E1): full-width padding, no flex:1
+  // (it no longer shares a horizontal flex row with a separate chevron
+  // Pressable). Trailing padding gives the chevron breathing room from
+  // the card edge.
   rowMain: {
-    flex: 1,
     minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
     paddingLeft: spacing.lg,
-    paddingRight: spacing.sm,
+    paddingRight: spacing.lg,
     paddingVertical: spacing.md,
     minHeight: 56,
   },
@@ -313,13 +293,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: colors.sysAccent,
   },
-  // Native-style detail-disclosure chevron.
-  chevronHit: {
-    minHeight: 56,
-    paddingHorizontal: spacing.md,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  // Native-style detail-disclosure chevron — a visual cue only now.
   chevron: {
     fontSize: 20,
     color: colors.textQuiet,

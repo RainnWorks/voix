@@ -1,8 +1,6 @@
 import { Children, useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -55,11 +53,6 @@ export function VoiceEditor({ voiceId, onClose }: Props) {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(true);
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  // B15 — the puck-colour palette moved off the form into a sheet. The
-  // inline 12-swatch grid was a chunk of vertical space high up the
-  // editor for a setting most users touch once; a tap-to-edit row that
-  // opens a formSheet matches the iOS picker idiom.
-  const [colorSheetOpen, setColorSheetOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -193,36 +186,45 @@ export function VoiceEditor({ voiceId, onClose }: Props) {
         </View>
       </View>
 
-      {/* Tap-to-edit colour row (B15) — a grouped row showing the current
-          swatch + its name, opening the palette in a formSheet. */}
-      <View style={styles.colorGroup}>
-        <Pressable
-          onPress={() => setColorSheetOpen(true)}
-          accessibilityRole="button"
-          accessibilityLabel={`Puck colour, ${swatch.name}`}
-          accessibilityHint="Opens the colour palette."
-          style={({ pressed }) => [styles.colorRow, pressed && styles.advancedRowPressed]}
-        >
-          <Text style={styles.advancedRowLabel}>Puck colour</Text>
-          <View style={styles.colorRowRight}>
-            <View style={[styles.colorSwatchDot, { backgroundColor: swatch.hex }]} />
-            <Text style={styles.colorRowValue}>{swatch.name}</Text>
-            <Text style={styles.advancedChevron}>›</Text>
-          </View>
-        </Pressable>
+      {/* Inline 12-swatch picker (E1 — reverts the B15 formSheet back to
+          the original M04 design). A 1-tap action shouldn't cost a sheet
+          open/pick/close round-trip: the palette sits right below the
+          name field as a horizontal row of circles. Tapping a swatch
+          autosaves immediately (same path as every other field) — no
+          dirty state, the puck preview updates on the next render.
+          The active swatch gets a coloured border on a wrapper View
+          (NOT outline/boxShadow — Tom's "outlineStyle none banned"
+          constraint). */}
+      <SectionLabel>Puck colour</SectionLabel>
+      <View style={styles.swatchRow}>
+        {paletteOrder.map((key) => {
+          const entry = modePalette[key];
+          const selected = key === swatch.key;
+          return (
+            <Pressable
+              key={key}
+              onPress={() => {
+                const color = [...entry.rgb] as [number, number, number];
+                setVoice({ ...voice, color });
+                void save({ color });
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={entry.name}
+              accessibilityState={{ selected }}
+              style={({ pressed }) => [styles.swatchHit, pressed && styles.swatchHitPressed]}
+            >
+              <View
+                style={[
+                  styles.swatchRing,
+                  selected && { borderColor: entry.hex, borderWidth: 1.5 },
+                ]}
+              >
+                <View style={[styles.swatch, { backgroundColor: entry.hex }]} />
+              </View>
+            </Pressable>
+          );
+        })}
       </View>
-
-      <ColorSheet
-        open={colorSheetOpen}
-        selectedKey={swatch.key}
-        onClose={() => setColorSheetOpen(false)}
-        onPick={(rgb) => {
-          const color = [...rgb] as [number, number, number];
-          setVoice({ ...voice, color });
-          void save({ color });
-          setColorSheetOpen(false);
-        }}
-      />
 
       {/* Voice type — the primary axis. Realtime is conversational
           and can optionally produce an output by tool-call; Dictation
@@ -716,78 +718,6 @@ function SimplePhase({
   );
 }
 
-/** Puck-colour palette in a sheet (B15). Presented as an iOS `formSheet`
- *  (a slide-up card) so the twelve-swatch grid no longer eats vertical
- *  space high up the form. RN's Modal renders a plain full-screen modal
- *  on web/macOS where `presentationStyle` is a no-op — the grid + Done
- *  header read the same on every canvas. Picking a swatch saves and
- *  dismisses. */
-function ColorSheet({
-  open,
-  selectedKey,
-  onClose,
-  onPick,
-}: {
-  open: boolean;
-  selectedKey: string;
-  onClose: () => void;
-  onPick: (rgb: readonly [number, number, number]) => void;
-}) {
-  return (
-    <Modal
-      visible={open}
-      animationType="slide"
-      transparent={false}
-      presentationStyle={Platform.OS === "ios" ? "formSheet" : undefined}
-      onRequestClose={onClose}
-    >
-      <View style={styles.sheetRoot}>
-        <View style={styles.sheetHeader}>
-          <Text style={styles.sheetTitle}>Puck colour</Text>
-          <Pressable
-            onPress={onClose}
-            hitSlop={{ top: 8, bottom: 8, left: 12 }}
-            accessibilityRole="button"
-            accessibilityLabel="Done"
-            style={({ pressed }) => [styles.sheetDoneHit, pressed && styles.navPressed]}
-          >
-            <Text style={styles.sheetDone}>Done</Text>
-          </Pressable>
-        </View>
-        <Text style={styles.sheetHint}>The puck's inner glow — pick one of twelve.</Text>
-        <View style={styles.sheetGrid}>
-          {paletteOrder.map((key) => {
-            const entry = modePalette[key];
-            const selected = key === selectedKey;
-            return (
-              <Pressable
-                key={key}
-                onPress={() => onPick(entry.rgb)}
-                accessibilityRole="button"
-                accessibilityLabel={entry.name}
-                accessibilityState={{ selected }}
-                style={({ pressed }) => [styles.sheetSwatchHit, pressed && styles.swatchHitPressed]}
-              >
-                <View
-                  style={[
-                    styles.sheetSwatchRing,
-                    selected && { borderColor: entry.hex, borderWidth: 2 },
-                  ]}
-                >
-                  <View style={[styles.sheetSwatch, { backgroundColor: entry.hex }]} />
-                </View>
-                <Text style={styles.sheetSwatchLabel} numberOfLines={1}>
-                  {entry.name}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
 function SettingRow({
   label,
   desc,
@@ -1090,93 +1020,26 @@ const styles = StyleSheet.create({
 
   swatchHitPressed: { opacity: 0.7 },
 
-  // ─── Tap-to-edit colour row + palette sheet (B15) ────────────────
-  colorGroup: {
-    marginTop: spacing.lg,
-    backgroundColor: colors.bgElevated,
-    borderRadius: radius.lg,
-    borderWidth: 0.5,
-    borderColor: colors.rule,
-    overflow: "hidden",
-  },
-  colorRow: {
-    minHeight: 44,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-  },
-  colorRowRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  colorSwatchDot: { width: 22, height: 22, borderRadius: 11 },
-  colorRowValue: {
-    fontFamily: fontFamily.ui,
-    fontSize: 15,
-    color: colors.textMuted,
-  },
-  sheetRoot: {
-    flex: 1,
-    backgroundColor: colors.bg,
-    padding: spacing.xl,
-  },
-  sheetHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: spacing.xs,
-  },
-  sheetTitle: {
-    fontFamily: fontFamily.ui,
-    fontSize: 20,
-    fontWeight: "700",
-    color: colors.ink,
-  },
-  sheetDoneHit: {
-    minHeight: 44,
-    minWidth: 44,
-    alignItems: "flex-end",
-    justifyContent: "center",
-  },
-  sheetDone: {
-    fontFamily: fontFamily.ui,
-    fontSize: 17,
-    fontWeight: "600",
-    color: colors.sysAccent,
-  },
-  sheetHint: {
-    fontFamily: fontFamily.ui,
-    fontSize: 13,
-    color: colors.textMuted,
-    marginBottom: spacing.lg,
-  },
-  sheetGrid: {
+  // ─── Inline 12-swatch picker (E1 — reverted from B15 formSheet) ──
+  // Horizontal wrapping row of circles below the name field. Gap is
+  // the small-spacing token (≈ the 4–6pt the M04 design called for on
+  // phone); it grows naturally on wider canvases as the row flows.
+  // The active swatch shows a coloured BORDER on the wrapper ring —
+  // not outline/boxShadow (Tom's "outlineStyle none banned" rule).
+  swatchRow: {
     flexDirection: "row",
     flexWrap: "wrap",
+    gap: spacing.sm,
+    marginTop: spacing.xs,
   },
-  sheetSwatchHit: {
-    width: "25%",
-    minHeight: 72,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: spacing.sm,
-    gap: spacing.xs,
-  },
-  sheetSwatchRing: {
-    padding: 3,
+  swatchHit: { padding: spacing.xs / 2 },
+  swatchRing: {
+    padding: spacing.xs / 2,
     borderRadius: 999,
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: "transparent",
   },
-  sheetSwatch: { width: 34, height: 34, borderRadius: 17 },
-  sheetSwatchLabel: {
-    fontFamily: fontFamily.ui,
-    fontSize: 11,
-    color: colors.textMuted,
-  },
+  swatch: { width: 22, height: 22, borderRadius: 11 },
 
   // ─── Voice type chooser ──────────────────────────────────────────
   // Note on colour: Marina (audit) flagged that HA blue is the puck's

@@ -1,17 +1,25 @@
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Linking, Platform } from "react-native";
 import { AppShell, type Section } from "./components/AppShell";
 import { DaemonBanner } from "./components/DaemonBanner";
-import { ConversationDetail } from "./conversations/ConversationDetail";
 import { ConversationList } from "./conversations/ConversationList";
 import { KeyboardCaptureScreen } from "./conversations/KeyboardCaptureScreen";
+// Route-gated screens are pulled through the platform-split `lazyScreens`
+// module (B10 swap #3): web wraps them in `React.lazy` so Vite emits
+// separate async chunks; native re-exports them directly (no lazy, no
+// fallback flash). Web vs native resolution is handled by the
+// `.native.ts` sibling — see lazyScreens.ts / lazyScreens.native.ts.
+import {
+  ConversationDetail,
+  Onboarding,
+  SettingsScreen,
+  VoiceEditor,
+  isOnboardingComplete,
+} from "./lazyScreens";
 import { MacAccessibilityBanner } from "./macos/MacAccessibilityBanner";
 import { MacOverlay } from "./macos/MacOverlay";
-import { Onboarding, isOnboardingComplete } from "./onboarding/Onboarding";
 import { SafeAreaProvider } from "./platform";
-import { SettingsScreen } from "./settings/SettingsScreen";
 import { SurfaceList } from "./surfaces/SurfaceList";
-import { VoiceEditor } from "./voices/VoiceEditor";
 import { VoiceList } from "./voices/VoiceList";
 
 // Parse `voix://capture?session_id=<uuid>&return=<encoded url>` into
@@ -109,7 +117,14 @@ function AppInner() {
     );
   }
   if (!onboardingDone) {
-    return <Onboarding onDone={() => setOnboardingDone(true)} />;
+    // Suspense here is a no-op on native (Onboarding resolves
+    // synchronously); on web this branch never runs (onboardingDone is
+    // forced true), so the lazy Onboarding chunk is never fetched.
+    return (
+      <Suspense fallback={null}>
+        <Onboarding onDone={() => setOnboardingDone(true)} />
+      </Suspense>
+    );
   }
 
   let title: string;
@@ -180,7 +195,10 @@ function AppInner() {
             while the daemon answers; on a network reach failure it drops
             a soft HA-blue banner above whatever screen is showing. */}
         <DaemonBanner />
-        {content}
+        {/* Suspense boundary for the lazy, route-gated screens on web
+            (VoiceEditor / SettingsScreen / ConversationDetail). On native
+            these resolve synchronously so the fallback never shows. */}
+        <Suspense fallback={null}>{content}</Suspense>
       </AppShell>
     </>
   );

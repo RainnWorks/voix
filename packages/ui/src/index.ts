@@ -33,9 +33,13 @@ export { Puck } from "./components/Puck";
 export { Wordmark } from "./components/Wordmark";
 export { AppShell, type Section } from "./components/AppShell";
 export { VoiceList } from "./voices/VoiceList";
-export { VoiceEditor } from "./voices/VoiceEditor";
+// VoiceEditor + ConversationDetail are re-exported through `lazyScreens`
+// (not their direct module paths) so the web build can code-split them
+// (B10 swap #3). A direct static re-export here would pin them into the
+// initial chunk and defeat the `React.lazy` split in App.tsx. The
+// `.native` sibling re-exports them directly, so native is unchanged.
 export { ConversationList } from "./conversations/ConversationList";
-export { ConversationDetail } from "./conversations/ConversationDetail";
+export { ConversationDetail, VoiceEditor } from "./lazyScreens";
 export { TalkButton } from "./conversations/TalkButton";
 export { InlineAudioPlayer } from "./platform";
 export { SurfaceList } from "./surfaces/SurfaceList";
